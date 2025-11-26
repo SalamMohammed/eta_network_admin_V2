@@ -1,0 +1,223 @@
+import 'package:flutter/material.dart';
+import '../../shared/theme/colors.dart';
+
+class UserDetailPage extends StatefulWidget {
+  final Map<String, dynamic>? user;
+  const UserDetailPage({super.key, this.user});
+
+  @override
+  State<UserDetailPage> createState() => _UserDetailPageState();
+}
+
+class _UserDetailPageState extends State<UserDetailPage> with SingleTickerProviderStateMixin {
+  late final TabController _tab;
+  @override
+  void initState() {
+    super.initState();
+    _tab = TabController(length: 4, vsync: this);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final u = widget.user ?? {
+      'username': 'user_0',
+      'uid': 'UID0000',
+      'email': 'user_0@example.com',
+      'country': 'US',
+      'rank': 'Explorer',
+      'streakDays': 5,
+      'totalPoints': 123456,
+      'hourlyRate': 0.2,
+      'createdAt': '2025-11-24',
+      'updatedAt': '2025-11-25',
+      'deviceId': 'device-xyz',
+    };
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: AppColors.primaryBackground, borderRadius: BorderRadius.circular(16)),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(u['username'], style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 6),
+                      Wrap(spacing: 12, runSpacing: 6, children: [
+                        Text('uid: ${u['uid']}'),
+                        Text('email: ${u['email']}'),
+                        Text('country: ${u['country']}'),
+                        Text('deviceId: ${u['deviceId']}'),
+                        Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppColors.vipAccent, borderRadius: BorderRadius.circular(8)), child: Text(u['rank'], style: const TextStyle(color: Colors.white))),
+                        Text('Streak: ${u['streakDays']}'),
+                        Text('TotalPoints: ${u['totalPoints']}'),
+                        Text('HourlyRate: ${u['hourlyRate']}'),
+                        Text('Joined: ${u['createdAt']}'),
+                        Text('Last activity: ${u['updatedAt']}'),
+                      ]),
+                    ],
+                  ),
+                ),
+                Wrap(spacing: 8, runSpacing: 8, children: [
+                  ElevatedButton(onPressed: () => _showAdjustBalance(context), child: const Text('Adjust Balance')),
+                  ElevatedButton(onPressed: () {}, child: const Text('Change Rank')),
+                  ElevatedButton(onPressed: () {}, child: const Text('Reset Streak')),
+                  ElevatedButton(onPressed: () {}, child: const Text('Ban / Unban')),
+                  ElevatedButton(onPressed: () {}, child: const Text('Send Test Notification')),
+                ]),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Container(
+            decoration: BoxDecoration(color: AppColors.primaryBackground, borderRadius: BorderRadius.circular(16)),
+            child: Column(
+              children: [
+                TabBar(
+                  controller: _tab,
+                  tabs: const [
+                    Tab(text: 'Mining Sessions & Earnings'),
+                    Tab(text: 'Point Logs'),
+                    Tab(text: 'Referrals'),
+                    Tab(text: 'Notifications & Tokens'),
+                  ],
+                ),
+                SizedBox(
+                  height: 500,
+                  child: TabBarView(
+                    controller: _tab,
+                    children: [
+                      _buildMiningSessions(),
+                      _buildPointLogs(),
+                      _buildReferrals(),
+                      _buildNotifications(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMiningSessions() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Latest Sessions'),
+        const SizedBox(height: 8),
+        Container(height: 120, decoration: BoxDecoration(color: AppColors.deepLayer, borderRadius: BorderRadius.circular(12))),
+        const SizedBox(height: 12),
+        Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: AppColors.deepLayer, borderRadius: BorderRadius.circular(12)), child: const Text('Current session status: Active')), 
+      ]),
+    );
+  }
+
+  Widget _buildPointLogs() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Point Logs'),
+        const SizedBox(height: 8),
+        Expanded(
+          child: SingleChildScrollView(
+            child: DataTable(columns: const [
+              DataColumn(label: Text('Timestamp')),
+              DataColumn(label: Text('Type')),
+              DataColumn(label: Text('Amount')),
+              DataColumn(label: Text('Description')),
+            ], rows: List.generate(10, (i) {
+              return const DataRow(cells: [
+                DataCell(Text('2025-11-25 10:00')),
+                DataCell(Text('tap')),
+                DataCell(Text('+10')),
+                DataCell(Text('Tap mine')),
+              ]);
+            })),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildReferrals() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Invited By: user_99'),
+        const SizedBox(height: 12),
+        Expanded(
+          child: SingleChildScrollView(
+            child: DataTable(columns: const [
+              DataColumn(label: Text('Username')),
+              DataColumn(label: Text('Created At')),
+              DataColumn(label: Text('Status')),
+            ], rows: List.generate(10, (i) {
+              return DataRow(cells: [
+                DataCell(Text('invited_$i')),
+                const DataCell(Text('2025-11-20')),
+                DataCell(Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: AppColors.primaryAccent, borderRadius: BorderRadius.circular(8)), child: const Text('Active'))),
+              ]);
+            })),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildNotifications() {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('FCM Tokens'),
+        const SizedBox(height: 8),
+        Container(height: 120, decoration: BoxDecoration(color: AppColors.deepLayer, borderRadius: BorderRadius.circular(12))),
+        const SizedBox(height: 12),
+        Row(children: [
+          Checkbox(value: false, onChanged: (_) {}),
+          const Text('Disable all notifications for this user.'),
+        ]),
+      ]),
+    );
+  }
+
+  Future<void> _showAdjustBalance(BuildContext context) async {
+    final amountCtrl = TextEditingController();
+    final reasonCtrl = TextEditingController();
+    String type = 'bonus';
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.primaryBackground,
+          title: const Text('Adjust Balance'),
+          content: SizedBox(
+            width: 420,
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: amountCtrl, decoration: const InputDecoration(labelText: 'Amount (+/-)')),
+              TextField(controller: reasonCtrl, decoration: const InputDecoration(labelText: 'Reason')),
+              DropdownButton<String>(value: type, items: const [
+                DropdownMenuItem(value: 'bonus', child: Text('bonus')),
+                DropdownMenuItem(value: 'correction', child: Text('correction')),
+                DropdownMenuItem(value: 'penalty', child: Text('penalty')),
+              ], onChanged: (v) => setState(() => type = v ?? 'bonus')),
+              const SizedBox(height: 8),
+              const Text('This will create a point_logs entry.'),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Submit')),
+          ],
+        );
+      },
+    );
+  }
+}

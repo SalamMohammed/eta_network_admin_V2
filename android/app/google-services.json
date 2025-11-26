@@ -1,0 +1,97 @@
+{
+  "project_info": {
+    "project_number": "899853959610",
+    "project_id": "eta-network-31964",
+    "storage_bucket": "eta-network-31964.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:899853959610:android:5d96ee7bb1f1f808b31d83",
+        "android_client_info": {
+          "package_name": "com.ApexSoftSolutions.EtaNetworkV2"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:899853959610:android:3e70022c18d0a8dbb31d83",
+        "android_client_info": {
+          "package_name": "com.eta.network"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:899853959610:android:ddedc1b191db1f0db31d83",
+        "android_client_info": {
+          "package_name": "net.ApexSoft.EtaNetwork"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
