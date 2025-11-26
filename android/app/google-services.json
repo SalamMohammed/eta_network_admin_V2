@@ -7,35 +7,6 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:899853959610:android:5d96ee7bb1f1f808b31d83",
-        "android_client_info": {
-          "package_name": "com.ApexSoftSolutions.EtaNetworkV2"
-        }
-      },
-      "oauth_client": [
-        {
-          "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
-      "api_key": [
-        {
-          "current_key": "AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
-        }
-      }
-    },
-    {
-      "client_info": {
         "mobilesdk_app_id": "1:899853959610:android:3e70022c18d0a8dbb31d83",
         "android_client_info": {
           "package_name": "com.eta.network"
@@ -43,7 +14,7 @@
       },
       "oauth_client": [
         {
-          "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+          "client_id": "899853959610-th8ebstq66aeo174cq6r2gv0bcu5pq1b.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
@@ -58,35 +29,13 @@
             {
               "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
               "client_type": 3
-            }
-          ]
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:899853959610:android:ddedc1b191db1f0db31d83",
-        "android_client_info": {
-          "package_name": "net.ApexSoft.EtaNetwork"
-        }
-      },
-      "oauth_client": [
-        {
-          "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
-      "api_key": [
-        {
-          "current_key": "AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": [
+            },
             {
-              "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
-              "client_type": 3
+              "client_id": "899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "net.ApexSoft.EtaNetwork"
+              }
             }
           ]
         }

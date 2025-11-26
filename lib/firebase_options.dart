@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -33,10 +30,7 @@ class DefaultFirebaseOptions {
           'you can reconfigure this by running the FlutterFire CLI again.',
         );
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -64,6 +58,28 @@ class DefaultFirebaseOptions {
     projectId: 'eta-network-31964',
     storageBucket: 'eta-network-31964.firebasestorage.app',
     androidClientId: '899853959610-euk59ct1o7u65derouq8muiu8fh7si2m.apps.googleusercontent.com',
+    iosClientId: '899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com',
     iosBundleId: 'net.ApexSoft.EtaNetwork',
   );
+
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyBdVZ48BWKKXG7Xc1e97mKyKcssHIF2fz0',
+    appId: '1:899853959610:web:344ca8ceca463376b31d83',
+    messagingSenderId: '899853959610',
+    projectId: 'eta-network-31964',
+    authDomain: 'eta-network-31964.firebaseapp.com',
+    storageBucket: 'eta-network-31964.firebasestorage.app',
+    measurementId: 'G-6TCV239WMP',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyBdVZ48BWKKXG7Xc1e97mKyKcssHIF2fz0',
+    appId: '1:899853959610:web:99cae1604971329cb31d83',
+    messagingSenderId: '899853959610',
+    projectId: 'eta-network-31964',
+    authDomain: 'eta-network-31964.firebaseapp.com',
+    storageBucket: 'eta-network-31964.firebasestorage.app',
+    measurementId: 'G-048TGLLK3F',
+  );
+
 }

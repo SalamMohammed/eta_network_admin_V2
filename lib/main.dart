@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'shared/theme/app_theme.dart';
-import 'entry/selector_page.dart';
-import 'dart:io' show Platform;
+import 'auth/auth_gate.dart';
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (kIsWeb ||
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS ||
+        defaultTargetPlatform == TargetPlatform.windows) {
       await Firebase.initializeApp(
         options: DefaultFirebaseOptions.currentPlatform,
       );
@@ -27,7 +31,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'Eta Network admin',
       theme: AppTheme.dark,
-      home: const SelectorPage(),
+      home: const AuthGate(),
     );
   }
 }
