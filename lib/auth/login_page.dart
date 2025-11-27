@@ -61,6 +61,15 @@ class _LoginPageState extends State<LoginPage> {
         return 'Incorrect password';
       case 'invalid-email':
         return 'Invalid email address';
+      case 'invalid-credential':
+      case 'invalid-login-credentials':
+        return 'Email or password is incorrect';
+      case 'too-many-requests':
+        return 'Too many attempts. Try again later';
+      case 'user-disabled':
+        return 'This user account is disabled';
+      case 'operation-not-allowed':
+        return 'Email/password sign-in is not enabled';
       case 'network-request-failed':
         return 'Network error, check your connection';
       default:

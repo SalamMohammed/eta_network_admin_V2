@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:math';
 import '../shared/theme/colors.dart';
 import '../shared/firestore_constants.dart';
 import 'login_page.dart';
@@ -35,15 +36,39 @@ class _SignupPageState extends State<SignupPage> {
       );
 
       final uid = cred.user!.uid;
+      final username = _emailController.text.trim().split('@').first;
+      final referralCode = _generateReferralCode();
       await FirebaseFirestore.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
           .set({
+            FirestoreUserFields.uid: uid,
             FirestoreUserFields.email: cred.user!.email,
+            FirestoreUserFields.username: username,
+            FirestoreUserFields.referralCode: referralCode,
+            FirestoreUserFields.invitedBy: null,
             FirestoreUserFields.role: FirestoreUserRoles.free,
+            FirestoreUserFields.rank: FirestoreUserRanks.explorer,
+            FirestoreUserFields.totalPoints: 0,
+            FirestoreUserFields.hourlyRate: 0,
+            FirestoreUserFields.lastMiningStart: null,
+            FirestoreUserFields.lastMiningEnd: null,
+            FirestoreUserFields.streakDays: 0,
+            FirestoreUserFields.country: null,
+            FirestoreUserFields.deviceId: null,
             FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
             FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
+
+      await FirebaseFirestore.instance
+          .collection(FirestoreConstants.pointLogs)
+          .add({
+            FirestorePointLogFields.userId: uid,
+            FirestorePointLogFields.type: FirestorePointLogTypes.bonus,
+            FirestorePointLogFields.amount: 0,
+            FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
+            FirestorePointLogFields.description: 'Account created',
+          });
 
       if (mounted) {
         Navigator.pushReplacement(
@@ -55,7 +80,11 @@ class _SignupPageState extends State<SignupPage> {
       setState(() {
         _error = _friendlyAuthError(e);
       });
-    } catch (_) {
+    } on FirebaseException catch (e) {
+      setState(() {
+        _error = _friendlyFirestoreError(e);
+      });
+    } catch (e) {
       setState(() {
         _error = 'Registration failed';
       });
@@ -193,10 +222,32 @@ class _SignupPageState extends State<SignupPage> {
         return 'Password is too weak (min 6 chars)';
       case 'operation-not-allowed':
         return 'Email/password sign-in is not enabled';
+      case 'invalid-credential':
+      case 'invalid-login-credentials':
+        return 'Email or password is incorrect';
+      case 'too-many-requests':
+        return 'Too many attempts. Try again later';
       case 'network-request-failed':
         return 'Network error, check your connection';
       default:
         return e.message ?? 'Authentication error';
     }
+  }
+
+  String _friendlyFirestoreError(FirebaseException e) {
+    switch (e.code) {
+      case 'permission-denied':
+        return 'Firestore permission denied. Update security rules to allow user writes.';
+      case 'unavailable':
+        return 'Firestore unavailable. Check your network.';
+      default:
+        return e.message ?? 'Firestore error';
+    }
+  }
+
+  String _generateReferralCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rnd = Random();
+    return List.generate(8, (_) => chars[rnd.nextInt(chars.length)]).join();
   }
 }

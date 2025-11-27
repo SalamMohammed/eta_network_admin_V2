@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../shared/theme/colors.dart';
+import '../../auth/auth_gate.dart';
 
 class Header extends StatelessWidget {
   const Header({super.key});
@@ -53,6 +55,24 @@ class Header extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           ElevatedButton(onPressed: () {}, child: const Text('New')),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              // reset navigation to auth gate
+              if (context.mounted) {
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AuthGate()),
+                  (route) => false,
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.vipAccent,
+            ),
+            child: const Text('Logout'),
+          ),
         ],
       ),
     );

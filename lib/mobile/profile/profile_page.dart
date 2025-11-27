@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../shared/theme/colors.dart';
+import '../../auth/auth_gate.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -68,7 +70,16 @@ class ProfilePage extends StatelessWidget {
             ]),
             const SizedBox(height: 12),
             ElevatedButton(
-              onPressed: () {},
+              onPressed: () async {
+                await FirebaseAuth.instance.signOut();
+                if (context.mounted) {
+                  Navigator.pushAndRemoveUntil(
+                    context,
+                    MaterialPageRoute(builder: (_) => const AuthGate()),
+                    (route) => false,
+                  );
+                }
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.vipAccent,
               ),
