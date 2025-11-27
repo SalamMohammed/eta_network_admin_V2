@@ -1,102 +1,460 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../shared/theme/colors.dart';
+import '../../shared/firestore_constants.dart';
 
-class AppConfigPage extends StatelessWidget {
+class AppConfigPage extends StatefulWidget {
   const AppConfigPage({super.key});
+  @override
+  State<AppConfigPage> createState() => _AppConfigPageState();
+}
+
+class _AppConfigPageState extends State<AppConfigPage> {
+  final baseRateCtrl = TextEditingController();
+  final sessionHoursCtrl = TextEditingController();
+  final inviteeFixedCtrl = TextEditingController();
+  final percentPerRefCtrl = TextEditingController();
+  final maxRefCountCtrl = TextEditingController();
+  final maxStreakDaysCtrl = TextEditingController();
+  final maxStreakMultCtrl = TextEditingController();
+  final rankRulesJsonCtrl = TextEditingController();
+  final rankMultsJsonCtrl = TextEditingController();
+  final List<TextEditingController> streakKeyCtrls = [];
+  final List<TextEditingController> streakMultCtrls = [];
+  final List<TextEditingController> rankNameCtrls = [];
+  final List<TextEditingController> rankMinRefsCtrls = [];
+  final List<TextEditingController> rankMinStreakCtrls = [];
+  final List<TextEditingController> rankMultCtrls = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final general = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.general)
+        .get();
+    final g = general.data() ?? {};
+    baseRateCtrl.text =
+        ((g[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ?? 0.2)
+            .toString();
+    sessionHoursCtrl.text =
+        ((g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
+                24)
+            .toString();
+
+    final referrals = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.referrals)
+        .get();
+    final r = referrals.data() ?? {};
+    inviteeFixedCtrl.text =
+        ((r[FirestoreReferralConfigFields.inviteeFixedBonusPoints] as num?)
+                    ?.toDouble() ??
+                0.0)
+            .toString();
+    percentPerRefCtrl.text =
+        ((r[FirestoreReferralConfigFields.referrerPercentPerReferral] as num?)
+                    ?.toDouble() ??
+                0.0)
+            .toString();
+    maxRefCountCtrl.text =
+        ((r[FirestoreReferralConfigFields.referrerMaxCount] as num?)?.toInt() ??
+                100)
+            .toString();
+
+    final streak = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.streak)
+        .get();
+    final s = streak.data() ?? {};
+    maxStreakDaysCtrl.text =
+        ((s[FirestoreStreakConfigFields.maxStreakDays] as num?)?.toInt() ?? 15)
+            .toString();
+    maxStreakMultCtrl.text =
+        ((s[FirestoreStreakConfigFields.maxStreakMultiplier] as num?)
+                    ?.toDouble() ??
+                2.0)
+            .toString();
+    final Map<String, dynamic> table =
+        (s[FirestoreAppConfigFields.streakBonusTable]
+            as Map<String, dynamic>?) ??
+        {};
+    streakKeyCtrls.clear();
+    streakMultCtrls.clear();
+    for (final e in table.entries) {
+      streakKeyCtrls.add(TextEditingController(text: e.key));
+      streakMultCtrls.add(
+        TextEditingController(
+          text: ((e.value as num?)?.toDouble() ?? 1.0).toString(),
+        ),
+      );
+    }
+
+    final ranks = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.ranks)
+        .get();
+    final rk = ranks.data() ?? {};
+    final Map<String, dynamic> rules =
+        (rk[FirestoreRankConfigFields.rankRules] as Map<String, dynamic>?) ??
+        {};
+    final Map<String, dynamic> mults =
+        (rk[FirestoreRankConfigFields.rankMultipliers]
+            as Map<String, dynamic>?) ??
+        {};
+    final Set<String> allRanks = {...rules.keys, ...mults.keys};
+    rankNameCtrls.clear();
+    rankMinRefsCtrls.clear();
+    rankMinStreakCtrls.clear();
+    rankMultCtrls.clear();
+    for (final name in allRanks) {
+      final rule = (rules[name] as Map<String, dynamic>?) ?? {};
+      rankNameCtrls.add(TextEditingController(text: name));
+      rankMinRefsCtrls.add(
+        TextEditingController(
+          text: ((rule['minActiveReferrals'] as num?)?.toInt() ?? 0).toString(),
+        ),
+      );
+      rankMinStreakCtrls.add(
+        TextEditingController(
+          text: ((rule['minStreakDays'] as num?)?.toInt() ?? 0).toString(),
+        ),
+      );
+      rankMultCtrls.add(
+        TextEditingController(
+          text: ((mults[name] as num?)?.toDouble() ?? 1.0).toString(),
+        ),
+      );
+    }
+    setState(() {});
+  }
+
+  Future<void> _saveGeneral() async {
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.general)
+        .set({
+          FirestoreAppConfigFields.baseRate:
+              double.tryParse(baseRateCtrl.text) ?? 0.2,
+          FirestoreAppConfigFields.sessionDurationHours:
+              int.tryParse(sessionHoursCtrl.text) ?? 24,
+        }, SetOptions(merge: true));
+  }
+
+  Future<void> _saveReferrals() async {
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.referrals)
+        .set({
+          FirestoreReferralConfigFields.inviteeFixedBonusPoints:
+              double.tryParse(inviteeFixedCtrl.text) ?? 0.0,
+          FirestoreReferralConfigFields.referrerPercentPerReferral:
+              double.tryParse(percentPerRefCtrl.text) ?? 0.0,
+          FirestoreReferralConfigFields.referrerMaxCount:
+              int.tryParse(maxRefCountCtrl.text) ?? 100,
+        }, SetOptions(merge: true));
+  }
+
+  Future<void> _saveStreak() async {
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.streak)
+        .set({
+          FirestoreStreakConfigFields.maxStreakDays:
+              int.tryParse(maxStreakDaysCtrl.text) ?? 15,
+          FirestoreStreakConfigFields.maxStreakMultiplier:
+              double.tryParse(maxStreakMultCtrl.text) ?? 2.0,
+        }, SetOptions(merge: true));
+  }
+
+  Future<void> _saveStreakTable() async {
+    final Map<String, dynamic> table = {};
+    for (int i = 0; i < streakKeyCtrls.length; i++) {
+      final key = streakKeyCtrls[i].text.trim();
+      final mult = double.tryParse(streakMultCtrls[i].text.trim()) ?? 1.0;
+      if (key.isEmpty) continue;
+      table[key] = mult;
+    }
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.streak)
+        .set({
+          FirestoreAppConfigFields.streakBonusTable: table,
+        }, SetOptions(merge: true));
+  }
+
+  Future<void> _saveRanks() async {
+    final Map<String, dynamic> rules = {};
+    final Map<String, dynamic> mults = {};
+    for (int i = 0; i < rankNameCtrls.length; i++) {
+      final name = rankNameCtrls[i].text.trim();
+      if (name.isEmpty) continue;
+      final minRefs = int.tryParse(rankMinRefsCtrls[i].text.trim()) ?? 0;
+      final minStreak = int.tryParse(rankMinStreakCtrls[i].text.trim()) ?? 0;
+      final mult = double.tryParse(rankMultCtrls[i].text.trim()) ?? 1.0;
+      rules[name] = {'minActiveReferrals': minRefs, 'minStreakDays': minStreak};
+      mults[name] = mult;
+    }
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.ranks)
+        .set({
+          FirestoreRankConfigFields.rankRules: rules,
+          FirestoreRankConfigFields.rankMultipliers: mults,
+        }, SetOptions(merge: true));
+  }
+
+  void _addStreakRow() {
+    streakKeyCtrls.add(TextEditingController());
+    streakMultCtrls.add(TextEditingController(text: '1.0'));
+    setState(() {});
+  }
+
+  void _removeStreakRow(int i) {
+    streakKeyCtrls.removeAt(i);
+    streakMultCtrls.removeAt(i);
+    setState(() {});
+  }
+
+  void _addRankRow() {
+    rankNameCtrls.add(TextEditingController());
+    rankMinRefsCtrls.add(TextEditingController(text: '0'));
+    rankMinStreakCtrls.add(TextEditingController(text: '0'));
+    rankMultCtrls.add(TextEditingController(text: '1.0'));
+    setState(() {});
+  }
+
+  void _removeRankRow(int i) {
+    rankNameCtrls.removeAt(i);
+    rankMinRefsCtrls.removeAt(i);
+    rankMinStreakCtrls.removeAt(i);
+    rankMultCtrls.removeAt(i);
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
-    final baseRateCtrl = TextEditingController(text: '0.2');
-    final maxDailyCtrl = TextEditingController(text: '0');
-    final invBonusCtrl = TextEditingController(text: '10');
-    final inviteeBonusCtrl = TextEditingController(text: '0');
-    final maxRefBonusCtrl = TextEditingController(text: '100');
-    bool enableReferral = true;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('Earning Configuration (app_config)', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 16),
-        _panel(
-          title: 'Base Rate & Limits',
-          child: Row(children: [
-            _field('Base rate per hour', baseRateCtrl),
-            const SizedBox(width: 12),
-            _field('Max daily earning', maxDailyCtrl),
-            const SizedBox(width: 12),
-            ElevatedButton(onPressed: () {}, child: const Text('Save changes')),
-          ]),
-        ),
-        const SizedBox(height: 16),
-        _panel(
-          title: 'Referral Bonus Settings',
-          child: Column(children: [
-            Row(children: [
-              _field('Inviter bonus', invBonusCtrl),
-              const SizedBox(width: 12),
-              _field('Invitee bonus', inviteeBonusCtrl),
-              const SizedBox(width: 12),
-              _field('MaxReferralBonus per user', maxRefBonusCtrl),
-            ]),
-            const SizedBox(height: 8),
-            Row(children: [
-              Checkbox(value: enableReferral, onChanged: (_) {}),
-              const Text('Enable referral bonuses'),
-            ]),
-          ]),
-        ),
-        const SizedBox(height: 16),
-        _panel(
-          title: 'Streak Bonus Settings',
-          child: Column(children: [
-            _streakRow('1–3 days', '+0%'),
-            _streakRow('4–7 days', '+5%'),
-            _streakRow('8–15 days', '+10%'),
-            const SizedBox(height: 8),
-            Row(children: [
-              ElevatedButton(onPressed: () {}, child: const Text('Add Rule')),
-              const SizedBox(width: 8),
-              ElevatedButton(onPressed: () {}, child: const Text('Save')),
-            ]),
-          ]),
-        ),
-        const SizedBox(height: 16),
-        _panel(
-          title: 'Rank Rules',
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(columns: const [
-              DataColumn(label: Text('Rank')),
-              DataColumn(label: Text('Required active invited')),
-              DataColumn(label: Text('Required streakDays')),
-            ], rows: const [
-              DataRow(cells: [DataCell(Text('Explorer')), DataCell(Text('0')), DataCell(Text('0'))]),
-              DataRow(cells: [DataCell(Text('Builder')), DataCell(Text('5')), DataCell(Text('4'))]),
-              DataRow(cells: [DataCell(Text('Guardian')), DataCell(Text('10')), DataCell(Text('8'))]),
-            ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text(
+            'Earning Configuration (app_config)',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
           ),
-        ),
-      ]),
+          const SizedBox(height: 16),
+          _panel(
+            title: 'Base Rate & Limits',
+            child: Row(
+              children: [
+                _field('Base rate per hour', baseRateCtrl),
+                const SizedBox(width: 12),
+                _field('Session duration hours', sessionHoursCtrl),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  onPressed: _saveGeneral,
+                  child: const Text('Save changes'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _panel(
+            title: 'Referral Bonus Settings',
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    _field('Invitee fixed bonus points', inviteeFixedCtrl),
+                    const SizedBox(width: 12),
+                    _field('Referrer % per referral', percentPerRefCtrl),
+                    const SizedBox(width: 12),
+                    _field('Max referrer count', maxRefCountCtrl),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    ElevatedButton(
+                      onPressed: _saveReferrals,
+                      child: const Text('Save'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _panel(
+            title: 'Streak Bonus Settings',
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    _field('Max streak days', maxStreakDaysCtrl),
+                    const SizedBox(width: 12),
+                    _field('Max streak multiplier', maxStreakMultCtrl),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Column(
+                  children: [
+                    for (int i = 0; i < streakKeyCtrls.length; i++)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: streakKeyCtrls[i],
+                              decoration: const InputDecoration(
+                                labelText: 'Day or range (e.g., 5 or 4-7)',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: streakMultCtrls[i],
+                              decoration: const InputDecoration(
+                                labelText: 'Multiplier',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          IconButton(
+                            onPressed: () => _removeStreakRow(i),
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: _addStreakRow,
+                          child: const Text('Add Rule'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: _saveStreakTable,
+                          child: const Text('Save'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: _saveStreak,
+                          child: const Text('Save Caps'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _panel(
+            title: 'Rank Rules',
+            child: Column(
+              children: [
+                Column(
+                  children: [
+                    for (int i = 0; i < rankNameCtrls.length; i++)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: rankNameCtrls[i],
+                              decoration: const InputDecoration(
+                                labelText: 'Rank name',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: rankMinRefsCtrls[i],
+                              decoration: const InputDecoration(
+                                labelText: 'Min active referrals',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: rankMinStreakCtrls[i],
+                              decoration: const InputDecoration(
+                                labelText: 'Min streak days',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: rankMultCtrls[i],
+                              decoration: const InputDecoration(
+                                labelText: 'Multiplier',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          IconButton(
+                            onPressed: () => _removeRankRow(i),
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: _addRankRow,
+                          child: const Text('Add Rank'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: _saveRanks,
+                          child: const Text('Save'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _panel({required String title, required Widget child}) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: AppColors.primaryBackground, borderRadius: BorderRadius.circular(16)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        const SizedBox(height: 8),
-        child,
-      ]),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBackground,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          child,
+        ],
+      ),
     );
   }
 
   Widget _field(String label, TextEditingController controller) {
-    return Expanded(child: TextField(controller: controller, decoration: InputDecoration(labelText: label)));
-  }
-
-  Widget _streakRow(String range, String bonus) {
-    return Row(children: [Expanded(child: Text(range)), Expanded(child: Text(bonus)), ElevatedButton(onPressed: () {}, child: const Text('Edit'))]);
+    return Expanded(
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(labelText: label),
+      ),
+    );
   }
 }

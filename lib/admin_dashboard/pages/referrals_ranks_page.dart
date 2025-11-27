@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../shared/theme/colors.dart';
 import '../widgets/chart_placeholder.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../shared/firestore_constants.dart';
+import '../../services/rank_engine.dart';
 
 class ReferralsRanksPage extends StatelessWidget {
   const ReferralsRanksPage({super.key});
@@ -22,6 +25,15 @@ class ReferralsRanksPage extends StatelessWidget {
           decoration: BoxDecoration(color: AppColors.primaryBackground, borderRadius: BorderRadius.circular(16)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             const Text('Referrals'),
+            const SizedBox(height: 8),
+            Row(children: [
+              ElevatedButton(
+                onPressed: () async {
+                  await _updateRanksBatch(limit: 50);
+                },
+                child: const Text('Update Ranks (50 users)'),
+              ),
+            ]),
             const SizedBox(height: 8),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -47,6 +59,17 @@ class ReferralsRanksPage extends StatelessWidget {
         const ChartPlaceholder(title: 'Users per rank'),
       ]),
     );
+  }
+
+  Future<void> _updateRanksBatch({int limit = 50}) async {
+    final qs = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .orderBy(FirestoreUserFields.createdAt)
+        .limit(limit)
+        .get();
+    for (final d in qs.docs) {
+      await RankEngine.updateUserRank(d.id);
+    }
   }
 
   Widget _metric(String label, String value) {

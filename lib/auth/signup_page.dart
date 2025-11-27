@@ -6,6 +6,7 @@ import '../shared/theme/colors.dart';
 import '../shared/firestore_constants.dart';
 import 'login_page.dart';
 import '../entry/selector_page.dart';
+import '../services/referral_engine.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({super.key});
@@ -20,6 +21,7 @@ class _SignupPageState extends State<SignupPage> {
   final _formKey = GlobalKey<FormState>();
   bool _loading = false;
   String? _error;
+  final _referralController = TextEditingController();
 
   Future<void> _signup() async {
     if (!_formKey.currentState!.validate()) {
@@ -47,6 +49,7 @@ class _SignupPageState extends State<SignupPage> {
             FirestoreUserFields.username: username,
             FirestoreUserFields.referralCode: referralCode,
             FirestoreUserFields.invitedBy: null,
+            FirestoreUserFields.referralLocked: false,
             FirestoreUserFields.role: FirestoreUserRoles.free,
             FirestoreUserFields.rank: FirestoreUserRanks.explorer,
             FirestoreUserFields.totalPoints: 0,
@@ -59,6 +62,14 @@ class _SignupPageState extends State<SignupPage> {
             FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
             FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
+
+      final providedCode = _referralController.text.trim();
+      await ReferralEngine.processReferralOnSignup(
+        uid: uid,
+        referralCode: providedCode.isEmpty ? null : providedCode,
+        inviteeEmail: cred.user?.email,
+        inviteeUsername: username,
+      );
 
       await FirebaseFirestore.instance
           .collection(FirestoreConstants.pointLogs)
@@ -169,6 +180,13 @@ class _SignupPageState extends State<SignupPage> {
                               }
                               return null;
                             },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _referralController,
+                            decoration: const InputDecoration(
+                              labelText: 'Referral code (optional)',
+                            ),
                           ),
                           const SizedBox(height: 16),
                           if (_error != null) ...[

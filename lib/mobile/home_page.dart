@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import '../shared/theme/colors.dart';
 import 'widgets/glowing_button.dart';
 import 'widgets/progress_ring.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../services/earnings_engine.dart';
+import '../shared/firestore_constants.dart';
 
 class MobileHomePage extends StatefulWidget {
   const MobileHomePage({super.key});
@@ -12,9 +16,54 @@ class MobileHomePage extends StatefulWidget {
 
 class _MobileHomePageState extends State<MobileHomePage> {
   bool miningActive = false;
-  double progress = 0.4; // 40% of 24h
-  double hourlyRate = 0.20;
-  int streakDays = 6;
+  double progress = 0.0;
+  double hourlyRate = 0.0;
+  int streakDays = 0;
+  double totalPoints = 0.0;
+  Timestamp? lastStart;
+  Timestamp? lastEnd;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    await EarningsEngine.syncEarnings();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final snap = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .get();
+    final d = snap.data() ?? {};
+    setState(() {
+      totalPoints =
+          (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
+      hourlyRate =
+          (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+      streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
+      lastStart = d[FirestoreUserFields.lastMiningStart] as Timestamp?;
+      lastEnd = d[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+      miningActive =
+          lastEnd != null && DateTime.now().isBefore(lastEnd!.toDate());
+      progress = _computeProgress();
+    });
+  }
+
+  double _computeProgress() {
+    if (lastStart == null || lastEnd == null) return 0.0;
+    final start = lastStart!.toDate();
+    final end = lastEnd!.toDate();
+    final now = DateTime.now();
+    if (!now.isAfter(start)) return 0.0;
+    final total = end.difference(start).inSeconds;
+    final done = now.isBefore(end) ? now.difference(start).inSeconds : total;
+    if (total <= 0) return 0.0;
+    final p = done / total;
+    return p.clamp(0.0, 1.0);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,18 +89,12 @@ class _MobileHomePageState extends State<MobileHomePage> {
               child: Column(
                 children: [
                   const SizedBox(height: 8),
-                  TweenAnimationBuilder<double>(
-                    tween: Tween(begin: 0, end: 12456),
-                    duration: const Duration(milliseconds: 800),
-                    builder: (_, v, __) {
-                      return Text(
-                        v.toStringAsFixed(0),
-                        style: const TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      );
-                    },
+                  Text(
+                    totalPoints.toStringAsFixed(0),
+                    style: const TextStyle(
+                      fontSize: 36,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                   const Text(
                     'Total ETA',
@@ -77,20 +120,25 @@ class _MobileHomePageState extends State<MobileHomePage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  miningActive
-                      ? const GlowingButton(label: 'Mining…', onPressed: null)
-                      : GlowingButton(
-                          label: 'START EARNING',
-                          onPressed: () async {
-                            await Future.delayed(
-                              const Duration(milliseconds: 800),
-                            );
+                  GlowingButton(
+                    label: miningActive ? 'Mining…' : 'START EARNING',
+                    onPressed: miningActive
+                        ? null
+                        : () async {
+                            final res = await EarningsEngine.startMining();
                             setState(() {
-                              miningActive = true;
-                              progress = 0.01;
+                              hourlyRate =
+                                  (res['hourlyRate'] as num?)?.toDouble() ??
+                                  hourlyRate;
+                              lastStart = res['lastMiningStart'] as Timestamp?;
+                              lastEnd = res['lastMiningEnd'] as Timestamp?;
+                              miningActive =
+                                  lastEnd != null &&
+                                  DateTime.now().isBefore(lastEnd!.toDate());
+                              progress = _computeProgress();
                             });
                           },
-                        ),
+                  ),
                 ],
               ),
             ),

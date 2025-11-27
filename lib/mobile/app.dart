@@ -38,7 +38,9 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
       floatingActionButton: index == 0
           ? FloatingActionButton(
               backgroundColor: AppColors.primaryAccent,
-              onPressed: () {},
+              onPressed: () {
+                // No-op: refresh handled inside home page
+              },
               child: const Icon(Icons.refresh_rounded, color: AppColors.deepLayer),
             )
           : null,

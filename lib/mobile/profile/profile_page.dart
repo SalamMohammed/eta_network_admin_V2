@@ -1,10 +1,75 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../shared/theme/colors.dart';
 import '../../auth/auth_gate.dart';
+import '../../shared/firestore_constants.dart';
+import '../../services/referral_engine.dart';
+import '../../services/earnings_engine.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  String username = '';
+  String rank = '';
+  String email = '';
+  String uid = '';
+  bool referralLocked = true;
+  String? invitedBy;
+  int streakDays = 0;
+  int referralCount = 0;
+  final _referralCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    await EarningsEngine.syncEarnings();
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) return;
+    uid = u.uid;
+    email = u.email ?? '';
+    final snap = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .get();
+    final d = snap.data() ?? {};
+    setState(() {
+      username = (d[FirestoreUserFields.username] as String?) ?? '';
+      rank = (d[FirestoreUserFields.rank] as String?) ?? '';
+      referralLocked = (d[FirestoreUserFields.referralLocked] as bool?) ?? true;
+      invitedBy = d[FirestoreUserFields.invitedBy] as String?;
+      streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
+    });
+    final countAgg = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.referrals)
+        .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
+        .where(FirestoreReferralFields.isActive, isEqualTo: true)
+        .count()
+        .get();
+    setState(() {
+      referralCount = countAgg.count ?? 0;
+    });
+  }
+
+  Future<void> _submitReferral() async {
+    final code = _referralCtrl.text.trim();
+    if (code.isEmpty ||
+        referralLocked ||
+        (invitedBy != null && invitedBy!.isNotEmpty)) {
+      return;
+    }
+    await ReferralEngine.processReferralOnProfile(uid: uid, referralCode: code);
+    await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -35,10 +100,10 @@ class ProfilePage extends StatelessWidget {
                   const SizedBox(width: 12),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Text('alex'),
-                      SizedBox(height: 6),
-                      Text('Explorer'),
+                    children: [
+                      Text(username.isNotEmpty ? username : '—'),
+                      const SizedBox(height: 6),
+                      Text(rank.isNotEmpty ? rank : '—'),
                     ],
                   ),
                   const Spacer(),
@@ -48,17 +113,29 @@ class ProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _section('Account Info', [
-              _kv('Username', 'alex'),
-              _kv('Email', 'alex@example.com'),
-              _kv('UID', 'UID1234…'),
+              _kv('Username', username.isNotEmpty ? username : '—'),
+              _kv('Email', email.isNotEmpty ? email : '—'),
+              _kv('UID', uid.isNotEmpty ? uid : '—'),
               _kv('Device ID', 'device-xyz'),
               _kv('Timezone', 'UTC+1'),
             ]),
             _section('Performance', [
-              _kv('StreakDays', '6'),
-              _kv('Referral count', '12'),
+              _kv('StreakDays', '$streakDays'),
+              _kv('Referral count', '$referralCount'),
               _kv('Total mining sessions', '142'),
             ]),
+            if (!referralLocked && (invitedBy == null || invitedBy!.isEmpty))
+              _section('Add Referral Code', [
+                TextField(
+                  controller: _referralCtrl,
+                  decoration: const InputDecoration(labelText: 'Referral code'),
+                ),
+                const SizedBox(height: 8),
+                ElevatedButton(
+                  onPressed: _submitReferral,
+                  child: const Text('Confirm'),
+                ),
+              ]),
             _section('Notifications', [
               _toggle('Enable notifications', true),
               _toggle('Streak reminders', true),

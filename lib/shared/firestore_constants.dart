@@ -14,6 +14,7 @@ class FirestoreUserFields {
   static const String username = 'username';
   static const String referralCode = 'referralCode';
   static const String invitedBy = 'invitedBy';
+  static const String referralLocked = 'referralLocked';
   static const String role = 'role';
   static const String rank = 'rank';
   static const String totalPoints = 'totalPoints';
@@ -58,10 +59,40 @@ class FirestoreReferralFields {
   static const String inviterId = 'inviterId';
   static const String inviteeId = 'inviteeId';
   static const String timestamp = 'timestamp';
+  static const String isActive = 'isActive';
 }
 
 class FirestoreAppConfigFields {
   static const String baseRate = 'baseRate';
   static const String maxReferralBonus = 'maxReferralBonus';
   static const String streakBonusTable = 'streakBonusTable';
+  static const String sessionDurationHours = 'sessionDurationHours';
+  static const String maxReferralBonusRate = 'maxReferralBonusRate';
+  static const String referralBonusStep = 'referralBonusStep';
+}
+
+class FirestoreAppConfigDocs {
+  static const String general = 'general';
+  static const String referrals = 'referrals';
+  static const String streak = 'streak';
+  static const String ranks = 'ranks';
+}
+
+class FirestoreReferralConfigFields {
+  static const String referrerBonus = 'referrerBonus';
+  static const String inviteeBonus = 'inviteeBonus';
+  static const String activateOnFirstSession = 'activateOnFirstSession';
+  static const String inviteeFixedBonusPoints = 'inviteeFixedBonusPoints';
+  static const String referrerPercentPerReferral = 'referrerPercentPerReferral';
+  static const String referrerMaxCount = 'referrerMaxCount';
+}
+
+class FirestoreStreakConfigFields {
+  static const String maxStreakDays = 'maxStreakDays';
+  static const String maxStreakMultiplier = 'maxStreakMultiplier';
+}
+
+class FirestoreRankConfigFields {
+  static const String rankRules = 'rankRules';
+  static const String rankMultipliers = 'rankMultipliers';
 }

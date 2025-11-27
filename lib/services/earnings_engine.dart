@@ -1,0 +1,361 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import '../shared/firestore_constants.dart';
+import 'rank_engine.dart';
+
+class EarningsEngine {
+  static Future<Map<String, dynamic>> syncEarnings() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return {};
+    final userRef = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid);
+    final snap = await userRef.get();
+    if (!snap.exists) return {};
+    final data = snap.data() ?? {};
+    final Timestamp? startTs =
+        data[FirestoreUserFields.lastMiningStart] as Timestamp?;
+    final Timestamp? endTs =
+        data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+    final double hourlyRate =
+        (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+    double totalPoints =
+        (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
+    if (startTs == null) {
+      return {
+        FirestoreUserFields.totalPoints: totalPoints,
+        FirestoreUserFields.hourlyRate: hourlyRate,
+        FirestoreUserFields.lastMiningStart: startTs,
+        FirestoreUserFields.lastMiningEnd: endTs,
+      };
+    }
+    final now = DateTime.now();
+    final start = startTs.toDate();
+    final end = endTs?.toDate();
+    final sessionEnd = end ?? now;
+    final effectiveEnd = now.isBefore(sessionEnd) ? now : sessionEnd;
+    if (!effectiveEnd.isAfter(start)) {
+      return {
+        FirestoreUserFields.totalPoints: totalPoints,
+        FirestoreUserFields.hourlyRate: hourlyRate,
+        FirestoreUserFields.lastMiningStart: startTs,
+        FirestoreUserFields.lastMiningEnd: endTs,
+      };
+    }
+    final elapsedHours =
+        effectiveEnd.difference(start).inMilliseconds / (1000 * 60 * 60);
+    final earned = elapsedHours * hourlyRate;
+    if (earned <= 0) {
+      return {
+        FirestoreUserFields.totalPoints: totalPoints,
+        FirestoreUserFields.hourlyRate: hourlyRate,
+        FirestoreUserFields.lastMiningStart: startTs,
+        FirestoreUserFields.lastMiningEnd: endTs,
+      };
+    }
+    totalPoints += earned;
+    await userRef.update({
+      FirestoreUserFields.totalPoints: totalPoints,
+      FirestoreUserFields.lastMiningStart: Timestamp.fromDate(effectiveEnd),
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+    });
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.pointLogs)
+        .add({
+          FirestorePointLogFields.userId: uid,
+          FirestorePointLogFields.type: FirestorePointLogTypes.tap,
+          FirestorePointLogFields.amount: earned,
+          FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
+          FirestorePointLogFields.description: 'Session earnings',
+        });
+    return {
+      FirestoreUserFields.totalPoints: totalPoints,
+      FirestoreUserFields.hourlyRate: hourlyRate,
+      FirestoreUserFields.lastMiningStart: Timestamp.fromDate(effectiveEnd),
+      FirestoreUserFields.lastMiningEnd: endTs,
+    };
+  }
+
+  static Future<Map<String, dynamic>> startMining({String? deviceId}) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return {};
+    await syncEarnings();
+    final userRef = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid);
+    final snap = await userRef.get();
+    final data = snap.data() ?? {};
+    final bool isBanned = (data['isBanned'] as bool?) ?? false;
+    if (isBanned) {
+      throw Exception('User banned');
+    }
+    final Timestamp? lastEndTs =
+        data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+    final DateTime now = DateTime.now();
+    if (lastEndTs != null && now.isBefore(lastEndTs.toDate())) {
+      return {
+        FirestoreUserFields.hourlyRate:
+            (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0,
+        FirestoreUserFields.lastMiningStart:
+            data[FirestoreUserFields.lastMiningStart],
+        FirestoreUserFields.lastMiningEnd: lastEndTs,
+        FirestoreUserFields.totalPoints:
+            (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0,
+        FirestoreUserFields.streakDays:
+            (data[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0,
+      };
+    }
+    // Update streak before calculating rate (only if no active session)
+    final int newStreakDays = await _computeAndPersistStreak(userRef, data);
+
+    final cfgRef = FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.general);
+    final cfgSnap = await cfgRef.get();
+    final cfg = cfgSnap.data() ?? {};
+    final streakCfgSnap = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.streak)
+        .get();
+    final streakCfg = streakCfgSnap.data() ?? {};
+    final ranksCfgSnap = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.ranks)
+        .get();
+    final ranksCfg = ranksCfgSnap.data() ?? {};
+    await RankEngine.updateUserRank(uid);
+    final afterRankSnap = await userRef.get();
+    final afterRankData = afterRankSnap.data() ?? {};
+    final double baseRate =
+        (cfg[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ?? 0.2;
+    final int sessionHours =
+        (cfg[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
+        24;
+    final double streakMultiplier = _streakMultiplier(newStreakDays, streakCfg);
+    final double rankMultiplier = _rankMultiplierByName(
+      (afterRankData[FirestoreUserFields.rank] as String?) ?? '',
+      ranksCfg,
+    );
+    final agg = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.referrals)
+        .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
+        .where(FirestoreReferralFields.isActive, isEqualTo: true)
+        .count()
+        .get();
+    final int referralCount = agg.count ?? 0;
+    final double referralMultiplier = await _referralMultiplier(referralCount);
+    final double hourlyRate =
+        baseRate * streakMultiplier * rankMultiplier * referralMultiplier;
+    final DateTime start = now;
+    final DateTime end = now.add(Duration(hours: sessionHours));
+    await userRef.update({
+      FirestoreUserFields.hourlyRate: hourlyRate,
+      FirestoreUserFields.lastMiningStart: Timestamp.fromDate(start),
+      FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(end),
+      FirestoreUserFields.deviceId: deviceId,
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      FirestoreUserFields.streakDays: newStreakDays,
+    });
+    // First-session referral activation: if configured, activate and award bonuses once.
+    final refCfgSnap = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.referrals)
+        .get();
+    final refCfg = refCfgSnap.data() ?? {};
+    final bool activateOnFirstSession =
+        (refCfg[FirestoreReferralConfigFields.activateOnFirstSession]
+            as bool?) ??
+        false;
+    if (activateOnFirstSession) {
+      final pendingReferral = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.referrals)
+          .where(FirestoreReferralFields.inviteeId, isEqualTo: uid)
+          .where(FirestoreReferralFields.isActive, isEqualTo: false)
+          .limit(1)
+          .get();
+      if (pendingReferral.docs.isNotEmpty) {
+        final doc = pendingReferral.docs.first;
+        final inviterUid = doc[FirestoreReferralFields.inviterId] as String?;
+        if (inviterUid != null && inviterUid.isNotEmpty) {
+          final double referrerBonus =
+              (refCfg[FirestoreReferralConfigFields.referrerBonus] as num?)
+                  ?.toDouble() ??
+              0.0;
+          final double inviteeBonus =
+              (refCfg[FirestoreReferralConfigFields.inviteeBonus] as num?)
+                  ?.toDouble() ??
+              0.0;
+          final batch = FirebaseFirestore.instance.batch();
+          final referralsDocRef = FirebaseFirestore.instance
+              .collection(FirestoreConstants.referrals)
+              .doc(doc.id);
+          final users = FirebaseFirestore.instance.collection(
+            FirestoreConstants.users,
+          );
+          final inviterRef = users.doc(inviterUid);
+          final inviteeRef = users.doc(uid);
+          final points = FirebaseFirestore.instance.collection(
+            FirestoreConstants.pointLogs,
+          );
+          final inviterLog = points.doc();
+          final inviteeLog = points.doc();
+          batch.update(referralsDocRef, {
+            FirestoreReferralFields.isActive: true,
+          });
+          batch.set(inviterLog, {
+            FirestorePointLogFields.userId: inviterUid,
+            FirestorePointLogFields.type: FirestorePointLogTypes.referral,
+            FirestorePointLogFields.amount: referrerBonus,
+            FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
+            FirestorePointLogFields.description:
+                'Referral bonus activated on first session',
+          });
+          batch.set(inviteeLog, {
+            FirestorePointLogFields.userId: uid,
+            FirestorePointLogFields.type: FirestorePointLogTypes.referral,
+            FirestorePointLogFields.amount: inviteeBonus,
+            FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
+            FirestorePointLogFields.description:
+                'Referral bonus (invitee) activated on first session',
+          });
+          batch.update(inviterRef, {
+            FirestoreUserFields.totalPoints: FieldValue.increment(
+              referrerBonus,
+            ),
+          });
+          batch.update(inviteeRef, {
+            FirestoreUserFields.totalPoints: FieldValue.increment(inviteeBonus),
+          });
+          await batch.commit();
+          await RankEngine.updateUserRank(inviterUid);
+          await RankEngine.updateUserRank(uid);
+        }
+      }
+    }
+    final refreshed = await userRef.get();
+    final out = refreshed.data() ?? {};
+    return {
+      FirestoreUserFields.hourlyRate: hourlyRate,
+      FirestoreUserFields.lastMiningStart: Timestamp.fromDate(start),
+      FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(end),
+      FirestoreUserFields.streakDays:
+          (out[FirestoreUserFields.streakDays] as num?)?.toInt() ??
+          newStreakDays,
+      FirestoreUserFields.totalPoints:
+          (out[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0,
+    };
+  }
+
+  static Future<int> _computeAndPersistStreak(
+    DocumentReference userRef,
+    Map<String, dynamic> data,
+  ) async {
+    final Timestamp? lastEndTs =
+        data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+    final DateTime nowUtc = DateTime.now().toUtc();
+    final DateTime today = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
+    final int current =
+        (data[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
+
+    bool kept = false;
+    if (lastEndTs != null) {
+      final endUtc = lastEndTs.toDate().toUtc();
+      final d = DateTime.utc(endUtc.year, endUtc.month, endUtc.day);
+      kept = d == today.subtract(const Duration(days: 1));
+    }
+
+    final streakCfgSnap = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.streak)
+        .get();
+    final streakCfg = streakCfgSnap.data() ?? {};
+    final int maxDays =
+        (streakCfg[FirestoreStreakConfigFields.maxStreakDays] as num?)
+            ?.toInt() ??
+        15;
+
+    int updated = kept ? current + 1 : 1;
+    if (updated > maxDays) updated = maxDays;
+
+    final batch = FirebaseFirestore.instance.batch();
+    batch.update(userRef, {
+      FirestoreUserFields.streakDays: updated,
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+    });
+    if (kept && updated != current) {
+      final logRef = FirebaseFirestore.instance
+          .collection(FirestoreConstants.pointLogs)
+          .doc();
+      batch.set(logRef, {
+        FirestorePointLogFields.userId: userRef.id,
+        FirestorePointLogFields.type: FirestorePointLogTypes.streak,
+        FirestorePointLogFields.amount: 0,
+        FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
+        FirestorePointLogFields.description: 'Streak updated to $updated days',
+      });
+    }
+    await batch.commit();
+    return updated;
+  }
+
+  static double _streakMultiplier(
+    int streakDays,
+    Map<String, dynamic> streakCfg,
+  ) {
+    final table = streakCfg[FirestoreAppConfigFields.streakBonusTable];
+    if (table is Map<String, dynamic>) {
+      double m = 1.0;
+      table.forEach((k, v) {
+        final int threshold = int.tryParse(k) ?? 0;
+        final double mult = (v as num?)?.toDouble() ?? 1.0;
+        if (streakDays >= threshold && mult > m) m = mult;
+      });
+      return m;
+    }
+    final int maxDays =
+        (streakCfg[FirestoreStreakConfigFields.maxStreakDays] as num?)
+            ?.toInt() ??
+        15;
+    final double maxMult =
+        (streakCfg[FirestoreStreakConfigFields.maxStreakMultiplier] as num?)
+            ?.toDouble() ??
+        2.0;
+    final int d = streakDays.clamp(0, maxDays);
+    final double t = maxDays > 0 ? d / maxDays : 0.0;
+    return 1.0 + t * (maxMult - 1.0);
+  }
+
+  static double _rankMultiplierByName(
+    String rank,
+    Map<String, dynamic> ranksCfg,
+  ) {
+    final mults = ranksCfg[FirestoreRankConfigFields.rankMultipliers];
+    if (mults is Map<String, dynamic>) {
+      final v = mults[rank];
+      return (v as num?)?.toDouble() ?? 1.0;
+    }
+    return 1.0;
+  }
+
+  static Future<double> _referralMultiplier(int count) async {
+    final cfgSnap = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.referrals)
+        .get();
+    final cfg = cfgSnap.data() ?? {};
+    final double percentPerReferral =
+        (cfg[FirestoreReferralConfigFields.referrerPercentPerReferral] as num?)
+            ?.toDouble() ??
+        ((FirestoreAppConfigFields.referralBonusStep != '')
+            ? (cfg[FirestoreAppConfigFields.referralBonusStep] as num?)
+                      ?.toDouble() ??
+                  0.0
+            : 0.0);
+    final int maxCount =
+        (cfg[FirestoreReferralConfigFields.referrerMaxCount] as num?)
+            ?.toInt() ??
+        100;
+    final int effective = count.clamp(0, maxCount);
+    return 1.0 + (percentPerReferral * effective);
+  }
+}
