@@ -320,8 +320,11 @@ class EarningsEngine {
         (streakCfg[FirestoreStreakConfigFields.maxStreakMultiplier] as num?)
             ?.toDouble() ??
         2.0;
-    final int d = streakDays.clamp(0, maxDays);
-    final double t = maxDays > 0 ? d / maxDays : 0.0;
+    if (streakDays <= 1) {
+      return 1.0;
+    }
+    final int d = streakDays.clamp(1, maxDays);
+    final double t = maxDays > 1 ? (d - 1) / (maxDays - 1) : 0.0;
     return 1.0 + t * (maxMult - 1.0);
   }
 
