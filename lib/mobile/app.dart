@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../shared/theme/colors.dart';
 import 'home_page.dart';
 import 'balance/balance_page.dart';
 import 'referrals/referrals_page.dart';
@@ -30,20 +29,21 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
         onDestinationSelected: (i) => setState(() => index = i),
         destinations: const [
           NavigationDestination(icon: Icon(Icons.bolt_rounded), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.history_toggle_off_rounded), label: 'Balance'),
-          NavigationDestination(icon: Icon(Icons.group_add_rounded), label: 'Referrals'),
-          NavigationDestination(icon: Icon(Icons.person_rounded), label: 'Profile'),
+          NavigationDestination(
+            icon: Icon(Icons.history_toggle_off_rounded),
+            label: 'Balance',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.group_add_rounded),
+            label: 'Referrals',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_rounded),
+            label: 'Profile',
+          ),
         ],
       ),
-      floatingActionButton: index == 0
-          ? FloatingActionButton(
-              backgroundColor: AppColors.primaryAccent,
-              onPressed: () {
-                // No-op: refresh handled inside home page
-              },
-              child: const Icon(Icons.refresh_rounded, color: AppColors.deepLayer),
-            )
-          : null,
+      floatingActionButton: null,
     );
   }
 }

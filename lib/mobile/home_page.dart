@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import '../shared/theme/colors.dart';
 import 'widgets/glowing_button.dart';
 import 'widgets/progress_ring.dart';
@@ -22,6 +23,12 @@ class _MobileHomePageState extends State<MobileHomePage> {
   double totalPoints = 0.0;
   Timestamp? lastStart;
   Timestamp? lastEnd;
+  Timer? _simTimer;
+  double _simBase = 0.0;
+  DateTime? _simAnchor;
+  double _displayTotal = 0.0;
+  String _remaining = '';
+  int _sessionHours = 24;
 
   @override
   void initState() {
@@ -29,10 +36,24 @@ class _MobileHomePageState extends State<MobileHomePage> {
     _refresh();
   }
 
+  @override
+  void dispose() {
+    _simTimer?.cancel();
+    super.dispose();
+  }
+
   Future<void> _refresh() async {
     await EarningsEngine.syncEarnings();
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+    final general = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.general)
+        .get();
+    final g = general.data() ?? {};
+    _sessionHours =
+        ((g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
+        24);
     final snap = await FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
@@ -49,19 +70,57 @@ class _MobileHomePageState extends State<MobileHomePage> {
       miningActive =
           lastEnd != null && DateTime.now().isBefore(lastEnd!.toDate());
       progress = _computeProgress();
+      _displayTotal = totalPoints;
+    });
+    _updateRemaining();
+    _startSimulationIfNeeded();
+  }
+
+  void _startSimulationIfNeeded() {
+    _simTimer?.cancel();
+    if (!miningActive || lastEnd == null) {
+      setState(() {
+        _displayTotal = totalPoints;
+      });
+      return;
+    }
+    _simBase = totalPoints;
+    _simAnchor = DateTime.now();
+    final end = lastEnd!.toDate();
+    _simTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      final anchor = _simAnchor!;
+      final now = DateTime.now();
+      if (!now.isBefore(end)) {
+        _simTimer?.cancel();
+        setState(() {
+          _displayTotal = _simBase;
+          miningActive = false;
+          progress = _computeProgress();
+          _updateRemaining();
+        });
+        EarningsEngine.syncEarnings().then((_) => _refresh());
+        return;
+      }
+      final elapsedSec = now.difference(anchor).inMilliseconds / 1000.0;
+      final remainingSec = end.difference(anchor).inSeconds.toDouble();
+      final incPerSec = hourlyRate > 0.0 ? (hourlyRate / 3600.0) : 0.0;
+      final inc = (elapsedSec * incPerSec).clamp(0.0, remainingSec * incPerSec);
+      setState(() {
+        _displayTotal = _simBase + inc;
+        progress = _computeProgress();
+        _updateRemaining();
+      });
     });
   }
 
   double _computeProgress() {
-    if (lastStart == null || lastEnd == null) return 0.0;
-    final start = lastStart!.toDate();
+    if (lastEnd == null) return 0.0;
     final end = lastEnd!.toDate();
     final now = DateTime.now();
-    if (!now.isAfter(start)) return 0.0;
-    final total = end.difference(start).inSeconds;
-    final done = now.isBefore(end) ? now.difference(start).inSeconds : total;
-    if (total <= 0) return 0.0;
-    final p = done / total;
+    final totalSec = (_sessionHours * 3600).toDouble();
+    final remainingSec = end.difference(now).inSeconds.toDouble();
+    final doneSec = (totalSec - remainingSec).clamp(0.0, totalSec);
+    final p = totalSec > 0 ? (doneSec / totalSec) : 0.0;
     return p.clamp(0.0, 1.0);
   }
 
@@ -90,7 +149,7 @@ class _MobileHomePageState extends State<MobileHomePage> {
                 children: [
                   const SizedBox(height: 8),
                   Text(
-                    totalPoints.toStringAsFixed(0),
+                    _displayTotal.toStringAsFixed(3),
                     style: const TextStyle(
                       fontSize: 36,
                       fontWeight: FontWeight.w800,
@@ -113,7 +172,9 @@ class _MobileHomePageState extends State<MobileHomePage> {
                           Text(miningActive ? 'Mining Active' : 'Inactive'),
                           const SizedBox(height: 6),
                           Text(
-                            miningActive ? '12h 12m remaining' : 'Tap to start',
+                            _remaining.isNotEmpty
+                                ? _remaining
+                                : (miningActive ? '—' : 'Tap to start'),
                           ),
                         ],
                       ),
@@ -136,27 +197,33 @@ class _MobileHomePageState extends State<MobileHomePage> {
                                   lastEnd != null &&
                                   DateTime.now().isBefore(lastEnd!.toDate());
                               progress = _computeProgress();
+                              _displayTotal = totalPoints;
                             });
+                            _startSimulationIfNeeded();
                           },
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                _smallCard('Today\'s Earnings', '+240'),
-                const SizedBox(width: 12),
-                _smallCard('Your Rank', 'Explorer'),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _smallCard('Streak Days', '$streakDays'),
-                const SizedBox(width: 12),
-                _smallCard('Session', '08:00 → 12:00'),
-              ],
+            Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBackground,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Text(
+                  'Streak Days: $streakDays',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -164,26 +231,17 @@ class _MobileHomePageState extends State<MobileHomePage> {
     );
   }
 
-  Widget _smallCard(String title, String value) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: AppColors.primaryBackground,
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _updateRemaining() {
+    if (!miningActive || lastEnd == null) {
+      _remaining = '';
+      return;
+    }
+    final end = lastEnd!.toDate();
+    final now = DateTime.now();
+    Duration rem = end.difference(now);
+    if (rem.isNegative) rem = Duration.zero;
+    final h = rem.inHours;
+    final m = rem.inMinutes % 60;
+    _remaining = '${h}h ${m}m remaining';
   }
 }
