@@ -154,7 +154,7 @@ class _CoinCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 12),
-          _CoinMiningControls(
+          CoinMiningControls(
             coinOwnerId:
                 (data[FirestoreUserCoinFields.ownerId] as String?) ?? '',
           ),
@@ -507,14 +507,14 @@ class _LinkRow {
     : urlCtrl = TextEditingController(text: url);
 }
 
-class _CoinMiningControls extends StatefulWidget {
+class CoinMiningControls extends StatefulWidget {
   final String coinOwnerId;
-  const _CoinMiningControls({required this.coinOwnerId});
+  const CoinMiningControls({super.key, required this.coinOwnerId});
   @override
-  State<_CoinMiningControls> createState() => _CoinMiningControlsState();
+  State<CoinMiningControls> createState() => _CoinMiningControlsState();
 }
 
-class _CoinMiningControlsState extends State<_CoinMiningControls> {
+class _CoinMiningControlsState extends State<CoinMiningControls> {
   Timer? _timer;
   double _display = 0.0;
   Timestamp? _end;

@@ -272,7 +272,14 @@ class _MobileHomePageState extends State<MobileHomePage> {
           .limit(5)
           .snapshots(),
       builder: (context, snap) {
-        final docs = snap.data?.docs ?? const [];
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        final docs = (snap.data?.docs ?? const [])
+            .where(
+              (doc) =>
+                  (doc.data()[FirestoreUserCoinFields.ownerId] as String?) !=
+                  uid,
+            )
+            .toList();
         if (docs.isEmpty) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -281,15 +288,7 @@ class _MobileHomePageState extends State<MobileHomePage> {
             const SizedBox(height: 8),
             Column(
               children: [
-                for (final doc in docs)
-                  _coinRow(
-                    ownerId:
-                        (doc.data()[FirestoreUserCoinFields.ownerId]
-                            as String?) ??
-                        doc.id,
-                    title:
-                        '${(doc.data()[FirestoreUserCoinFields.name] as String?) ?? '—'} • ${((doc.data()[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ?? 0.0).toStringAsFixed(3)}/h',
-                  ),
+                for (final doc in docs) _communityCoinCard(doc.data()),
               ],
             ),
           ],
@@ -298,23 +297,35 @@ class _MobileHomePageState extends State<MobileHomePage> {
     );
   }
 
-  Widget _coinRow({required String ownerId, required String title}) {
+  Widget _communityCoinCard(Map<String, dynamic> data) {
+    final ownerId = (data[FirestoreUserCoinFields.ownerId] as String?) ?? '';
+    final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
+    final rate =
+        (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+        0.0;
     return Container(
       padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.symmetric(horizontal: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: AppColors.primaryBackground,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(child: Text(title)),
-          ElevatedButton(
-            onPressed: () async {
-              await CoinService.startCoinMining(ownerId);
-            },
-            child: const Text('Start Mining'),
+          Row(
+            children: [
+              Expanded(child: Text('$name • ${rate.toStringAsFixed(3)}/h')),
+              ElevatedButton(
+                onPressed: () async {
+                  await CoinService.startCoinMining(ownerId);
+                },
+                child: const Text('Add & Start'),
+              ),
+            ],
           ),
+          const SizedBox(height: 8),
+          CoinMiningControls(coinOwnerId: ownerId),
         ],
       ),
     );
