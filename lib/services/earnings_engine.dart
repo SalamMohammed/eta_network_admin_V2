@@ -105,14 +105,33 @@ class EarningsEngine {
             (data[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0,
       };
     }
-    // Update streak before calculating rate (only if no active session)
-    final int newStreakDays = await _computeAndPersistStreak(userRef, data);
-
+    // Enforce single account per device if enabled
     final cfgRef = FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.general);
     final cfgSnap = await cfgRef.get();
     final cfg = cfgSnap.data() ?? {};
+    final bool enforceSingleDevice =
+        (cfg[FirestoreAppConfigFields.deviceSingleUserEnforced] as bool?) ??
+        false;
+    if (enforceSingleDevice) {
+      final String dev = deviceId ?? '';
+      if (dev.isNotEmpty) {
+        final qs = await FirebaseFirestore.instance
+            .collection(FirestoreConstants.users)
+            .where(FirestoreUserFields.deviceId, isEqualTo: dev)
+            .limit(1)
+            .get();
+        if (qs.docs.isNotEmpty && qs.docs.first.id != uid) {
+          throw Exception('Device already bound to another account');
+        }
+      }
+    }
+
+    // Update streak before calculating rate (only if no active session)
+    final int newStreakDays = await _computeAndPersistStreak(userRef, data);
+
+    // cfg already loaded above
     final streakCfgSnap = await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.streak)
@@ -257,11 +276,27 @@ class EarningsEngine {
     final int current =
         (data[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
 
-    bool kept = false;
+    final int lastUpdatedDay =
+        (data[FirestoreUserFields.streakLastUpdatedDay] as num?)?.toInt() ?? 0;
+    int todayInt = nowUtc.year * 10000 + nowUtc.month * 100 + nowUtc.day;
+    final DateTime yesterday = today.subtract(const Duration(days: 1));
+    int yesterdayInt =
+        yesterday.year * 10000 + yesterday.month * 100 + yesterday.day;
+
+    bool increment = false;
     if (lastEndTs != null) {
       final endUtc = lastEndTs.toDate().toUtc();
-      final d = DateTime.utc(endUtc.year, endUtc.month, endUtc.day);
-      kept = d == today.subtract(const Duration(days: 1));
+      final DateTime d = DateTime.utc(endUtc.year, endUtc.month, endUtc.day);
+      final int dInt = d.year * 10000 + d.month * 100 + d.day;
+      if (dInt == yesterdayInt) {
+        increment = true; // ended yesterday, always increment today
+      } else if (dInt == todayInt) {
+        increment = (lastUpdatedDay != todayInt); // increment only once per day
+      } else {
+        increment = false; // missed yesterday → reset to 1 below
+      }
+    } else {
+      increment = false;
     }
 
     final streakCfgSnap = await FirebaseFirestore.instance
@@ -274,15 +309,19 @@ class EarningsEngine {
             ?.toInt() ??
         15;
 
-    int updated = kept ? current + 1 : 1;
+    int updated = increment ? current + 1 : 1;
     if (updated > maxDays) updated = maxDays;
 
     final batch = FirebaseFirestore.instance.batch();
-    batch.update(userRef, {
+    final Map<String, dynamic> updates = {
       FirestoreUserFields.streakDays: updated,
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-    });
-    if (kept && updated != current) {
+    };
+    if (updated != current) {
+      updates[FirestoreUserFields.streakLastUpdatedDay] = todayInt;
+    }
+    batch.update(userRef, updates);
+    if (increment && updated != current) {
       final logRef = FirebaseFirestore.instance
           .collection(FirestoreConstants.pointLogs)
           .doc();

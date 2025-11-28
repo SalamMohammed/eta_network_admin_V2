@@ -22,6 +22,7 @@ class FirestoreUserFields {
   static const String lastMiningStart = 'lastMiningStart';
   static const String lastMiningEnd = 'lastMiningEnd';
   static const String streakDays = 'streakDays';
+  static const String streakLastUpdatedDay = 'streakLastUpdatedDay';
   static const String country = 'country';
   static const String deviceId = 'deviceId';
   static const String createdAt = 'createdAt';
@@ -69,6 +70,7 @@ class FirestoreAppConfigFields {
   static const String sessionDurationHours = 'sessionDurationHours';
   static const String maxReferralBonusRate = 'maxReferralBonusRate';
   static const String referralBonusStep = 'referralBonusStep';
+  static const String deviceSingleUserEnforced = 'deviceSingleUserEnforced';
 }
 
 class FirestoreAppConfigDocs {

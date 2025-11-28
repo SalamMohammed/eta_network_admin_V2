@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/earnings_engine.dart';
 import '../shared/firestore_constants.dart';
+import '../shared/device_id.dart';
 
 class MobileHomePage extends StatefulWidget {
   const MobileHomePage({super.key});
@@ -29,17 +30,23 @@ class _MobileHomePageState extends State<MobileHomePage> {
   double _displayTotal = 0.0;
   String _remaining = '';
   int _sessionHours = 24;
+  String? _deviceId;
 
   @override
   void initState() {
     super.initState();
     _refresh();
+    _ensureDeviceId();
   }
 
   @override
   void dispose() {
     _simTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _ensureDeviceId() async {
+    _deviceId = await DeviceId.get();
   }
 
   Future<void> _refresh() async {
@@ -186,7 +193,10 @@ class _MobileHomePageState extends State<MobileHomePage> {
                     onPressed: miningActive
                         ? null
                         : () async {
-                            final res = await EarningsEngine.startMining();
+                            final devId = _deviceId ?? await DeviceId.get();
+                            final res = await EarningsEngine.startMining(
+                              deviceId: devId,
+                            );
                             setState(() {
                               hourlyRate =
                                   (res['hourlyRate'] as num?)?.toDouble() ??

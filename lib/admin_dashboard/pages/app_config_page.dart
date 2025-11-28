@@ -12,6 +12,7 @@ class AppConfigPage extends StatefulWidget {
 class _AppConfigPageState extends State<AppConfigPage> {
   final baseRateCtrl = TextEditingController();
   final sessionHoursCtrl = TextEditingController();
+  bool deviceSingleUser = false;
   final inviteeFixedCtrl = TextEditingController();
   final percentPerRefCtrl = TextEditingController();
   final maxRefCountCtrl = TextEditingController();
@@ -45,6 +46,9 @@ class _AppConfigPageState extends State<AppConfigPage> {
         ((g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
                 24)
             .toString();
+    deviceSingleUser =
+        ((g[FirestoreAppConfigFields.deviceSingleUserEnforced] as bool?) ??
+        false);
 
     final referrals = await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
@@ -142,6 +146,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
               double.tryParse(baseRateCtrl.text) ?? 0.2,
           FirestoreAppConfigFields.sessionDurationHours:
               int.tryParse(sessionHoursCtrl.text) ?? 24,
+          FirestoreAppConfigFields.deviceSingleUserEnforced: deviceSingleUser,
         }, SetOptions(merge: true));
   }
 
@@ -255,6 +260,16 @@ class _AppConfigPageState extends State<AppConfigPage> {
                 _field('Base rate per hour', baseRateCtrl),
                 const SizedBox(width: 12),
                 _field('Session duration hours', sessionHoursCtrl),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: CheckboxListTile(
+                    value: deviceSingleUser,
+                    onChanged: (v) =>
+                        setState(() => deviceSingleUser = v ?? false),
+                    title: const Text('Enforce single account per device'),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+                ),
                 const SizedBox(width: 12),
                 ElevatedButton(
                   onPressed: _saveGeneral,
