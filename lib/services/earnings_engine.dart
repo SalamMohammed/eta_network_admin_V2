@@ -17,6 +17,8 @@ class EarningsEngine {
         data[FirestoreUserFields.lastMiningStart] as Timestamp?;
     final Timestamp? endTs =
         data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+    final Timestamp? syncedTs =
+        data[FirestoreUserFields.lastSyncedAt] as Timestamp?;
     final double hourlyRate =
         (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
     double totalPoints =
@@ -30,11 +32,11 @@ class EarningsEngine {
       };
     }
     final now = DateTime.now();
-    final start = startTs.toDate();
     final end = endTs?.toDate();
     final sessionEnd = end ?? now;
     final effectiveEnd = now.isBefore(sessionEnd) ? now : sessionEnd;
-    if (!effectiveEnd.isAfter(start)) {
+    final from = (syncedTs ?? startTs).toDate();
+    if (!effectiveEnd.isAfter(from)) {
       return {
         FirestoreUserFields.totalPoints: totalPoints,
         FirestoreUserFields.hourlyRate: hourlyRate,
@@ -43,7 +45,7 @@ class EarningsEngine {
       };
     }
     final elapsedHours =
-        effectiveEnd.difference(start).inMilliseconds / (1000 * 60 * 60);
+        effectiveEnd.difference(from).inMilliseconds / (1000 * 60 * 60);
     final earned = elapsedHours * hourlyRate;
     if (earned <= 0) {
       return {
@@ -53,10 +55,9 @@ class EarningsEngine {
         FirestoreUserFields.lastMiningEnd: endTs,
       };
     }
-    totalPoints += earned;
     await userRef.update({
-      FirestoreUserFields.totalPoints: totalPoints,
-      FirestoreUserFields.lastMiningStart: Timestamp.fromDate(effectiveEnd),
+      FirestoreUserFields.totalPoints: FieldValue.increment(earned),
+      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
     });
     await FirebaseFirestore.instance
@@ -69,9 +70,10 @@ class EarningsEngine {
           FirestorePointLogFields.description: 'Session earnings',
         });
     return {
-      FirestoreUserFields.totalPoints: totalPoints,
+      FirestoreUserFields.totalPoints: (totalPoints + earned),
       FirestoreUserFields.hourlyRate: hourlyRate,
-      FirestoreUserFields.lastMiningStart: Timestamp.fromDate(effectiveEnd),
+      FirestoreUserFields.lastMiningStart: startTs,
+      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
       FirestoreUserFields.lastMiningEnd: endTs,
     };
   }
@@ -171,6 +173,7 @@ class EarningsEngine {
       FirestoreUserFields.hourlyRate: hourlyRate,
       FirestoreUserFields.lastMiningStart: Timestamp.fromDate(start),
       FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(end),
+      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(start),
       FirestoreUserFields.deviceId: deviceId,
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       FirestoreUserFields.streakDays: newStreakDays,
@@ -256,6 +259,7 @@ class EarningsEngine {
     return {
       FirestoreUserFields.hourlyRate: hourlyRate,
       FirestoreUserFields.lastMiningStart: Timestamp.fromDate(start),
+      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(start),
       FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(end),
       FirestoreUserFields.streakDays:
           (out[FirestoreUserFields.streakDays] as num?)?.toInt() ??

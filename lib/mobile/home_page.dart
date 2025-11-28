@@ -8,6 +8,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/earnings_engine.dart';
 import '../shared/firestore_constants.dart';
 import '../shared/device_id.dart';
+import 'balance/my_coin_block.dart';
+import '../services/coin_service.dart';
 
 class MobileHomePage extends StatefulWidget {
   const MobileHomePage({super.key});
@@ -235,6 +237,13 @@ class _MobileHomePageState extends State<MobileHomePage> {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12),
+              child: MyCoinBlock(),
+            ),
+            const SizedBox(height: 12),
+            _communityCoins(),
           ],
         ),
       ),
@@ -253,5 +262,61 @@ class _MobileHomePageState extends State<MobileHomePage> {
     final h = rem.inHours;
     final m = rem.inMinutes % 60;
     _remaining = '${h}h ${m}m remaining';
+  }
+
+  Widget _communityCoins() {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: FirebaseFirestore.instance
+          .collection(FirestoreConstants.userCoins)
+          .where(FirestoreUserCoinFields.isActive, isEqualTo: true)
+          .limit(5)
+          .snapshots(),
+      builder: (context, snap) {
+        final docs = snap.data?.docs ?? const [];
+        if (docs.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Live Community Coins'),
+            const SizedBox(height: 8),
+            Column(
+              children: [
+                for (final doc in docs)
+                  _coinRow(
+                    ownerId:
+                        (doc.data()[FirestoreUserCoinFields.ownerId]
+                            as String?) ??
+                        doc.id,
+                    title:
+                        '${(doc.data()[FirestoreUserCoinFields.name] as String?) ?? '—'} • ${((doc.data()[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ?? 0.0).toStringAsFixed(3)}/h',
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _coinRow({required String ownerId, required String title}) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: Text(title)),
+          ElevatedButton(
+            onPressed: () async {
+              await CoinService.startCoinMining(ownerId);
+            },
+            child: const Text('Start Mining'),
+          ),
+        ],
+      ),
+    );
   }
 }

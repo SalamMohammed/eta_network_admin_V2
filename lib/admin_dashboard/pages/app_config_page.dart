@@ -13,6 +13,13 @@ class _AppConfigPageState extends State<AppConfigPage> {
   final baseRateCtrl = TextEditingController();
   final sessionHoursCtrl = TextEditingController();
   bool deviceSingleUser = false;
+  // User coin config
+  final minRateCtrl = TextEditingController();
+  final maxRateCtrl = TextEditingController();
+  final maxLinksCtrl = TextEditingController();
+  final maxDescCtrl = TextEditingController();
+  bool allowImageUpload = false;
+  bool allowUserRateEdit = true;
   final inviteeFixedCtrl = TextEditingController();
   final percentPerRefCtrl = TextEditingController();
   final maxRefCountCtrl = TextEditingController();
@@ -150,6 +157,24 @@ class _AppConfigPageState extends State<AppConfigPage> {
         }, SetOptions(merge: true));
   }
 
+  Future<void> _saveUserCoinConfig() async {
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.userCoin)
+        .set({
+          FirestoreAppConfigFields.minRatePerHour:
+              double.tryParse(minRateCtrl.text) ?? 0.01,
+          FirestoreAppConfigFields.maxRatePerHour:
+              double.tryParse(maxRateCtrl.text) ?? 10.0,
+          FirestoreAppConfigFields.maxSocialLinks:
+              int.tryParse(maxLinksCtrl.text) ?? 6,
+          FirestoreAppConfigFields.maxDescriptionLength:
+              int.tryParse(maxDescCtrl.text) ?? 500,
+          FirestoreAppConfigFields.allowImageUpload: allowImageUpload,
+          FirestoreAppConfigFields.allowUserRateEdit: allowUserRateEdit,
+        }, SetOptions(merge: true));
+  }
+
   Future<void> _saveReferrals() async {
     await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
@@ -274,6 +299,54 @@ class _AppConfigPageState extends State<AppConfigPage> {
                 ElevatedButton(
                   onPressed: _saveGeneral,
                   child: const Text('Save changes'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _panel(
+            title: 'User Coin Limits',
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    _field('Min rate/hour', minRateCtrl),
+                    const SizedBox(width: 12),
+                    _field('Max rate/hour', maxRateCtrl),
+                    const SizedBox(width: 12),
+                    _field('Max social links', maxLinksCtrl),
+                    const SizedBox(width: 12),
+                    _field('Max description length', maxDescCtrl),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: CheckboxListTile(
+                        value: allowImageUpload,
+                        onChanged: (v) =>
+                            setState(() => allowImageUpload = v ?? false),
+                        title: const Text('Allow image upload'),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: CheckboxListTile(
+                        value: allowUserRateEdit,
+                        onChanged: (v) =>
+                            setState(() => allowUserRateEdit = v ?? true),
+                        title: const Text('Allow user to edit rate'),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: _saveUserCoinConfig,
+                      child: const Text('Save'),
+                    ),
+                  ],
                 ),
               ],
             ),

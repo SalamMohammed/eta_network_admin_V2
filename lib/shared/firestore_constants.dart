@@ -6,6 +6,11 @@ class FirestoreConstants {
   static const String roles = 'roles';
   static const String profiles = 'profiles';
   static const String settings = 'settings';
+  static const String userCoins = 'user_coins';
+}
+
+class FirestoreUserSubCollections {
+  static const String coins = 'coins';
 }
 
 class FirestoreUserFields {
@@ -21,6 +26,7 @@ class FirestoreUserFields {
   static const String hourlyRate = 'hourlyRate';
   static const String lastMiningStart = 'lastMiningStart';
   static const String lastMiningEnd = 'lastMiningEnd';
+  static const String lastSyncedAt = 'lastSyncedAt';
   static const String streakDays = 'streakDays';
   static const String streakLastUpdatedDay = 'streakLastUpdatedDay';
   static const String country = 'country';
@@ -71,6 +77,12 @@ class FirestoreAppConfigFields {
   static const String maxReferralBonusRate = 'maxReferralBonusRate';
   static const String referralBonusStep = 'referralBonusStep';
   static const String deviceSingleUserEnforced = 'deviceSingleUserEnforced';
+  static const String minRatePerHour = 'minRatePerHour';
+  static const String maxRatePerHour = 'maxRatePerHour';
+  static const String maxSocialLinks = 'maxSocialLinks';
+  static const String maxDescriptionLength = 'maxDescriptionLength';
+  static const String allowImageUpload = 'allowImageUpload';
+  static const String allowUserRateEdit = 'allowUserRateEdit';
 }
 
 class FirestoreAppConfigDocs {
@@ -78,6 +90,7 @@ class FirestoreAppConfigDocs {
   static const String referrals = 'referrals';
   static const String streak = 'streak';
   static const String ranks = 'ranks';
+  static const String userCoin = 'user_coin';
 }
 
 class FirestoreReferralConfigFields {
@@ -97,4 +110,29 @@ class FirestoreStreakConfigFields {
 class FirestoreRankConfigFields {
   static const String rankRules = 'rankRules';
   static const String rankMultipliers = 'rankMultipliers';
+}
+
+class FirestoreUserCoinFields {
+  static const String ownerId = 'ownerId';
+  static const String name = 'name';
+  static const String symbol = 'symbol';
+  static const String imageUrl = 'imageUrl';
+  static const String description = 'description';
+  static const String socialLinks = 'socialLinks';
+  static const String baseRatePerHour = 'baseRatePerHour';
+  static const String createdAt = 'createdAt';
+  static const String updatedAt = 'updatedAt';
+  static const String isActive = 'isActive';
+}
+
+class FirestoreUserCoinMiningFields {
+  static const String ownerId = 'ownerId';
+  static const String name = 'name';
+  static const String symbol = 'symbol';
+  static const String imageUrl = 'imageUrl';
+  static const String hourlyRate = 'hourlyRate';
+  static const String totalPoints = 'totalPoints';
+  static const String lastMiningStart = 'lastMiningStart';
+  static const String lastMiningEnd = 'lastMiningEnd';
+  static const String lastSyncedAt = 'lastSyncedAt';
 }

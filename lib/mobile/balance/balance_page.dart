@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../shared/theme/colors.dart';
+import 'my_coin_block.dart';
 
 class BalancePage extends StatefulWidget {
   const BalancePage({super.key});
@@ -25,6 +26,10 @@ class _BalancePageState extends State<BalancePage>
       ),
       body: Column(
         children: [
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: MyCoinBlock(),
+          ),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
