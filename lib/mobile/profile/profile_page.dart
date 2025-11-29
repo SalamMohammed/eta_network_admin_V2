@@ -22,6 +22,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? invitedBy;
   int streakDays = 0;
   int referralCount = 0;
+  bool managerEnabled = false;
   final _referralCtrl = TextEditingController();
 
   @override
@@ -47,6 +48,8 @@ class _ProfilePageState extends State<ProfilePage> {
       referralLocked = (d[FirestoreUserFields.referralLocked] as bool?) ?? true;
       invitedBy = d[FirestoreUserFields.invitedBy] as String?;
       streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
+      managerEnabled =
+          (d[FirestoreUserFields.managerEnabled] as bool?) ?? false;
     });
     final countAgg = await FirebaseFirestore.instance
         .collection(FirestoreConstants.referrals)
@@ -139,6 +142,27 @@ class _ProfilePageState extends State<ProfilePage> {
             _section('Notifications', [
               _toggle('Enable notifications', true),
               _toggle('Streak reminders', true),
+            ]),
+            _section('Manager', [
+              Row(
+                children: [
+                  const Expanded(child: Text('Enable Manager (auto-mining)')),
+                  Switch(
+                    value: managerEnabled,
+                    onChanged: (v) async {
+                      setState(() => managerEnabled = v);
+                      await FirebaseFirestore.instance
+                          .collection(FirestoreConstants.users)
+                          .doc(uid)
+                          .set({
+                            FirestoreUserFields.managerEnabled: v,
+                            FirestoreUserFields.updatedAt:
+                                FieldValue.serverTimestamp(),
+                          }, SetOptions(merge: true));
+                    },
+                  ),
+                ],
+              ),
             ]),
             _section('Legal', [
               _button(context, 'FAQ'),

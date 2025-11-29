@@ -21,6 +21,7 @@ class Sidebar extends StatelessWidget {
       _NavItem('Notifications', Icons.notifications_rounded),
       _NavItem('Ads & Monetization', Icons.ads_click_rounded),
       _NavItem('Settings & Legal', Icons.settings_suggest_rounded),
+      _NavItem('Manager', Icons.auto_mode_rounded),
     ];
     return Container(
       color: AppColors.deepLayer,

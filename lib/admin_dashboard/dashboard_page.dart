@@ -9,6 +9,7 @@ import 'pages/referrals_ranks_page.dart';
 import 'pages/notifications_page.dart';
 import 'pages/ads_monetization_page.dart';
 import 'pages/settings_legal_page.dart';
+import 'pages/manager_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -79,6 +80,11 @@ class _DashboardPageState extends State<DashboardPage> {
                       selectedIcon: Icon(Icons.settings),
                       label: 'Settings',
                     ),
+                    NavigationDestination(
+                      icon: Icon(Icons.auto_mode_rounded),
+                      selectedIcon: Icon(Icons.auto_awesome_rounded),
+                      label: 'Manager',
+                    ),
                   ],
                 ),
         );
@@ -109,6 +115,8 @@ class _DashboardPageState extends State<DashboardPage> {
         return const AdsMonetizationPage();
       case 7:
         return const SettingsLegalPage();
+      case 8:
+        return const ManagerPage();
       default:
         return const OverviewPage();
     }

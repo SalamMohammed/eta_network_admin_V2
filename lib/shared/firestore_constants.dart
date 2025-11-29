@@ -33,6 +33,7 @@ class FirestoreUserFields {
   static const String deviceId = 'deviceId';
   static const String createdAt = 'createdAt';
   static const String updatedAt = 'updatedAt';
+  static const String managerEnabled = 'managerEnabled';
 }
 
 class FirestoreUserRoles {
@@ -91,6 +92,7 @@ class FirestoreAppConfigDocs {
   static const String streak = 'streak';
   static const String ranks = 'ranks';
   static const String userCoin = 'user_coin';
+  static const String manager = 'manager';
 }
 
 class FirestoreReferralConfigFields {
@@ -110,6 +112,13 @@ class FirestoreStreakConfigFields {
 class FirestoreRankConfigFields {
   static const String rankRules = 'rankRules';
   static const String rankMultipliers = 'rankMultipliers';
+}
+
+class FirestoreManagerConfigFields {
+  static const String enabledGlobally = 'enabledGlobally';
+  static const String enableEtaAuto = 'enableEtaAuto';
+  static const String enableUserCoinAuto = 'enableUserCoinAuto';
+  static const String maxCommunityCoinsManaged = 'maxCommunityCoinsManaged';
 }
 
 class FirestoreUserCoinFields {

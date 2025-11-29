@@ -35,6 +35,11 @@ class _MobileHomePageState extends State<MobileHomePage>
   int _sessionHours = 24;
   String? _deviceId;
   late final TabController _tab = TabController(length: 2, vsync: this);
+  bool _managerEnabled = false;
+  bool _managerEtaAuto = true;
+  bool _managerUserCoinAuto = true;
+  int _managerMaxCommunity = 0;
+  bool _managerGlobalEnabled = true;
 
   @override
   void initState() {
@@ -82,9 +87,45 @@ class _MobileHomePageState extends State<MobileHomePage>
           lastEnd != null && DateTime.now().isBefore(lastEnd!.toDate());
       progress = _computeProgress();
       _displayTotal = totalPoints;
+      _managerEnabled =
+          (d[FirestoreUserFields.managerEnabled] as bool?) ?? false;
     });
+    final managerCfg = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.manager)
+        .get();
+    final m = managerCfg.data() ?? {};
+    _managerGlobalEnabled =
+        (m[FirestoreManagerConfigFields.enabledGlobally] as bool?) ?? true;
+    _managerEtaAuto =
+        (m[FirestoreManagerConfigFields.enableEtaAuto] as bool?) ?? true;
+    _managerUserCoinAuto =
+        (m[FirestoreManagerConfigFields.enableUserCoinAuto] as bool?) ?? true;
+    _managerMaxCommunity =
+        (m[FirestoreManagerConfigFields.maxCommunityCoinsManaged] as num?)
+            ?.toInt() ??
+        0;
+    if (_managerEnabled &&
+        _managerGlobalEnabled &&
+        _managerEtaAuto &&
+        !miningActive) {
+      final devId = _deviceId ?? await DeviceId.get();
+      final res = await EarningsEngine.startMining(deviceId: devId);
+      setState(() {
+        hourlyRate =
+            (res[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+            hourlyRate;
+        lastStart = res[FirestoreUserFields.lastMiningStart] as Timestamp?;
+        lastEnd = res[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+        miningActive =
+            lastEnd != null && DateTime.now().isBefore(lastEnd!.toDate());
+        progress = _computeProgress();
+        _displayTotal = totalPoints;
+      });
+    }
     _updateRemaining();
     _startSimulationIfNeeded();
+    await _manageCommunityCoins();
   }
 
   void _startSimulationIfNeeded() {
@@ -109,7 +150,13 @@ class _MobileHomePageState extends State<MobileHomePage>
           progress = _computeProgress();
           _updateRemaining();
         });
-        EarningsEngine.syncEarnings().then((_) => _refresh());
+        EarningsEngine.syncEarnings().then((_) async {
+          if (_managerEnabled && _managerGlobalEnabled && _managerEtaAuto) {
+            final devId = _deviceId ?? await DeviceId.get();
+            await EarningsEngine.startMining(deviceId: devId);
+          }
+          await _refresh();
+        });
         return;
       }
       final elapsedSec = now.difference(anchor).inMilliseconds / 1000.0;
@@ -122,6 +169,49 @@ class _MobileHomePageState extends State<MobileHomePage>
         _updateRemaining();
       });
     });
+  }
+
+  Future<void> _manageCommunityCoins() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    if (!(_managerEnabled && _managerGlobalEnabled)) return;
+    final q = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .collection(FirestoreUserSubCollections.coins)
+        .get();
+    final now = DateTime.now();
+    int activeManaged = 0;
+    for (final d in q.docs) {
+      final data = d.data();
+      final ownerId =
+          (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
+      final end =
+          data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
+      final isActive = end != null && now.isBefore(end.toDate());
+      final isOwnCoin = ownerId == uid;
+      if (!isOwnCoin && isActive) activeManaged++;
+    }
+    for (final d in q.docs) {
+      final data = d.data();
+      final ownerId =
+          (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
+      final end =
+          data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
+      final isActive = end != null && now.isBefore(end.toDate());
+      final isOwnCoin = ownerId == uid;
+      if (isOwnCoin) {
+        if (_managerUserCoinAuto && !isActive) {
+          await CoinService.startCoinMining(ownerId);
+        }
+        continue;
+      }
+      if (_managerMaxCommunity <= 0) continue;
+      if (!isActive && activeManaged < _managerMaxCommunity) {
+        await CoinService.startCoinMining(ownerId);
+        activeManaged++;
+      }
+    }
   }
 
   double _computeProgress() {
