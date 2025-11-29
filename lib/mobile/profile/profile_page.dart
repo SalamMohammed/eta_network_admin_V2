@@ -148,6 +148,38 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () async {
+                final ok = await showDialog<bool>(
+                  context: context,
+                  barrierDismissible: true,
+                  builder: (ctx) {
+                    return AlertDialog(
+                      title: const Text('Delete account?'),
+                      content: const Text(
+                        'This will permanently delete your account, data, and sessions. This action cannot be undone.',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    );
+                  },
+                );
+                if (ok != true) return;
+                await _deleteAccount();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+              ),
+              child: const Text('Delete Account'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
                 await FirebaseAuth.instance.signOut();
                 if (context.mounted) {
                   Navigator.pushAndRemoveUntil(
@@ -166,6 +198,131 @@ class _ProfilePageState extends State<ProfilePage> {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _deleteAccount() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      final uidLocal = user?.uid;
+      if (uidLocal == null || uidLocal.isEmpty) return;
+
+      // Stop local activity: no-op here (handled by navigation), but ensure sign-out at end.
+
+      // Delete Firestore data (cascade)
+      final db = FirebaseFirestore.instance;
+      final users = db.collection(FirestoreConstants.users);
+      final referrals = db.collection(FirestoreConstants.referrals);
+      final points = db.collection(FirestoreConstants.pointLogs);
+      final userCoins = db.collection(FirestoreConstants.userCoins);
+
+      // Delete user subcollection coins
+      final coinsRef = users
+          .doc(uidLocal)
+          .collection(FirestoreUserSubCollections.coins);
+      final coinsSnap = await coinsRef.get();
+      final batch1 = db.batch();
+      for (final d in coinsSnap.docs) {
+        batch1.delete(d.reference);
+      }
+      await batch1.commit();
+
+      // Delete referrals where inviter or invitee is this user
+      final inviterQs = await referrals
+          .where(FirestoreReferralFields.inviterId, isEqualTo: uidLocal)
+          .get();
+      final inviteeQs = await referrals
+          .where(FirestoreReferralFields.inviteeId, isEqualTo: uidLocal)
+          .get();
+      final batch2 = db.batch();
+      for (final d in inviterQs.docs) {
+        batch2.delete(d.reference);
+      }
+      for (final d in inviteeQs.docs) {
+        batch2.delete(d.reference);
+      }
+      await batch2.commit();
+
+      // Delete point logs for this user
+      final pointsQs = await points
+          .where(FirestorePointLogFields.userId, isEqualTo: uidLocal)
+          .get();
+      final batch3 = db.batch();
+      for (final d in pointsQs.docs) {
+        batch3.delete(d.reference);
+      }
+      await batch3.commit();
+
+      // Delete owned user coin (if any)
+      final ownCoinRef = userCoins.doc(uidLocal);
+      final ownCoinSnap = await ownCoinRef.get();
+      if (ownCoinSnap.exists) {
+        await ownCoinRef.delete();
+      }
+
+      await users.doc(uidLocal).delete();
+
+      try {
+        await user!.delete();
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'requires-recent-login' && mounted) {
+          final pwd = await _promptPassword();
+          if (pwd != null && pwd.isNotEmpty) {
+            final u2 = FirebaseAuth.instance.currentUser;
+            final em = u2?.email ?? '';
+            if (em.isNotEmpty && u2 != null) {
+              final cred = EmailAuthProvider.credential(
+                email: em,
+                password: pwd,
+              );
+              await u2.reauthenticateWithCredential(cred);
+              await u2.delete();
+            }
+          }
+        }
+      }
+
+      // Final sign-out and redirect
+      await FirebaseAuth.instance.signOut();
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const AuthGate()),
+          (route) => false,
+        );
+      }
+    } catch (_) {
+      // Swallow errors to avoid leaking details; optionally show a toast/snackbar
+    }
+  }
+
+  Future<String?> _promptPassword() async {
+    final ctrl = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Confirm deletion'),
+          content: TextField(
+            controller: ctrl,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'Enter account password',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('Confirm'),
+            ),
+          ],
+        );
+      },
     );
   }
 

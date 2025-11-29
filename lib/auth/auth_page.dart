@@ -33,7 +33,13 @@ class _AuthPageState extends State<AuthPage> {
         await FirebaseFirestore.instance
             .collection(FirestoreConstants.users)
             .doc(cred.user!.uid)
-            .set({'email': cred.user!.email, 'createdAt': FieldValue.serverTimestamp()});
+            .set({
+              FirestoreUserFields.uid: cred.user!.uid,
+              FirestoreUserFields.email: cred.user!.email,
+              FirestoreUserFields.role: FirestoreUserRoles.free,
+              FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
+              FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
       } else {
         cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
