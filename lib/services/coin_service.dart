@@ -40,6 +40,41 @@ class CoinService {
     await ref.set(coin, SetOptions(merge: merge));
   }
 
+  static Future<void> addCoinForUser(String coinOwnerId) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || coinOwnerId.isEmpty) return;
+    final coinSnap = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.userCoins)
+        .doc(coinOwnerId)
+        .get();
+    final coin = coinSnap.data() ?? {};
+    final double rate =
+        (coin[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+        0.0;
+    final name = (coin[FirestoreUserCoinFields.name] as String?) ?? '';
+    final symbol = (coin[FirestoreUserCoinFields.symbol] as String?) ?? '';
+    final imageUrl = (coin[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
+
+    final ref = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .collection(FirestoreUserSubCollections.coins)
+        .doc(coinOwnerId);
+    final existing = await ref.get();
+    final data = existing.data() ?? {};
+    await ref.set({
+      FirestoreUserCoinMiningFields.ownerId: coinOwnerId,
+      FirestoreUserCoinMiningFields.name: name,
+      FirestoreUserCoinMiningFields.symbol: symbol,
+      FirestoreUserCoinMiningFields.imageUrl: imageUrl,
+      FirestoreUserCoinMiningFields.hourlyRate: rate,
+      FirestoreUserCoinMiningFields.totalPoints:
+          (data[FirestoreUserCoinMiningFields.totalPoints] as num?)
+              ?.toDouble() ??
+          0.0,
+    }, SetOptions(merge: true));
+  }
+
   static Future<Map<String, dynamic>> startCoinMining(
     String coinOwnerId,
   ) async {

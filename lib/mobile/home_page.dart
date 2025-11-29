@@ -18,7 +18,8 @@ class MobileHomePage extends StatefulWidget {
   State<MobileHomePage> createState() => _MobileHomePageState();
 }
 
-class _MobileHomePageState extends State<MobileHomePage> {
+class _MobileHomePageState extends State<MobileHomePage>
+    with SingleTickerProviderStateMixin {
   bool miningActive = false;
   double progress = 0.0;
   double hourlyRate = 0.0;
@@ -33,6 +34,7 @@ class _MobileHomePageState extends State<MobileHomePage> {
   String _remaining = '';
   int _sessionHours = 24;
   String? _deviceId;
+  late final TabController _tab = TabController(length: 2, vsync: this);
 
   @override
   void initState() {
@@ -135,6 +137,8 @@ class _MobileHomePageState extends State<MobileHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final double ringHeight = (size.height * 0.28).clamp(140.0, 220.0);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -143,109 +147,141 @@ class _MobileHomePageState extends State<MobileHomePage> {
         ),
         title: const Text('ETA Network'),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.primaryBackground,
-                borderRadius: BorderRadius.circular(24),
-              ),
+      body: Column(
+        children: [
+          Flexible(
+            fit: FlexFit.loose,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.zero,
               child: Column(
                 children: [
-                  const SizedBox(height: 8),
-                  Text(
-                    _displayTotal.toStringAsFixed(3),
-                    style: const TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const Text(
-                    'Total ETA',
-                    style: TextStyle(color: AppColors.secondaryAccent),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 220,
-                    child: ProgressRing(
-                      progress: progress,
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBackground,
+                        borderRadius: BorderRadius.circular(24),
+                      ),
                       child: Column(
-                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('${hourlyRate.toStringAsFixed(2)} ETA/hr'),
-                          const SizedBox(height: 6),
-                          Text(miningActive ? 'Mining Active' : 'Inactive'),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 8),
                           Text(
-                            _remaining.isNotEmpty
-                                ? _remaining
-                                : (miningActive ? '—' : 'Tap to start'),
+                            _displayTotal.toStringAsFixed(3),
+                            style: const TextStyle(
+                              fontSize: 36,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const Text(
+                            'Total ETA',
+                            style: TextStyle(color: AppColors.secondaryAccent),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: ringHeight,
+                            child: ProgressRing(
+                              progress: progress,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '${hourlyRate.toStringAsFixed(2)} ETA/hr',
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    miningActive ? 'Mining Active' : 'Inactive',
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _remaining.isNotEmpty
+                                        ? _remaining
+                                        : (miningActive ? '—' : 'Tap to start'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          GlowingButton(
+                            label: miningActive ? 'Mining…' : 'START EARNING',
+                            onPressed: miningActive
+                                ? null
+                                : () async {
+                                    final devId =
+                                        _deviceId ?? await DeviceId.get();
+                                    final res =
+                                        await EarningsEngine.startMining(
+                                          deviceId: devId,
+                                        );
+                                    setState(() {
+                                      hourlyRate =
+                                          (res['hourlyRate'] as num?)
+                                              ?.toDouble() ??
+                                          hourlyRate;
+                                      lastStart =
+                                          res['lastMiningStart'] as Timestamp?;
+                                      lastEnd =
+                                          res['lastMiningEnd'] as Timestamp?;
+                                      miningActive =
+                                          lastEnd != null &&
+                                          DateTime.now().isBefore(
+                                            lastEnd!.toDate(),
+                                          );
+                                      progress = _computeProgress();
+                                      _displayTotal = totalPoints;
+                                    });
+                                    _startSimulationIfNeeded();
+                                  },
                           ),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  GlowingButton(
-                    label: miningActive ? 'Mining…' : 'START EARNING',
-                    onPressed: miningActive
-                        ? null
-                        : () async {
-                            final devId = _deviceId ?? await DeviceId.get();
-                            final res = await EarningsEngine.startMining(
-                              deviceId: devId,
-                            );
-                            setState(() {
-                              hourlyRate =
-                                  (res['hourlyRate'] as num?)?.toDouble() ??
-                                  hourlyRate;
-                              lastStart = res['lastMiningStart'] as Timestamp?;
-                              lastEnd = res['lastMiningEnd'] as Timestamp?;
-                              miningActive =
-                                  lastEnd != null &&
-                                  DateTime.now().isBefore(lastEnd!.toDate());
-                              progress = _computeProgress();
-                              _displayTotal = totalPoints;
-                            });
-                            _startSimulationIfNeeded();
-                          },
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryBackground,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Text(
+                        'Streak Days: $streakDays',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
                   ),
+                  const SizedBox(height: 12),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: MyCoinBlock(),
+                  ),
+                  const SizedBox(height: 8),
                 ],
               ),
             ),
-            const SizedBox(height: 16),
-            Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBackground,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Text(
-                  'Streak Days: $streakDays',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
+          ),
+          TabBar(
+            controller: _tab,
+            isScrollable: true,
+            tabs: const [
+              Tab(text: 'Mined Coins'),
+              Tab(text: 'Live Coins'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tab,
+              children: [_minedCoinsTab(), _liveCoinsTab()],
             ),
-            const SizedBox(height: 16),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 12),
-              child: MyCoinBlock(),
-            ),
-            const SizedBox(height: 12),
-            _communityCoins(),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -264,44 +300,133 @@ class _MobileHomePageState extends State<MobileHomePage> {
     _remaining = '${h}h ${m}m remaining';
   }
 
-  Widget _communityCoins() {
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: FirebaseFirestore.instance
-          .collection(FirestoreConstants.userCoins)
-          .where(FirestoreUserCoinFields.isActive, isEqualTo: true)
-          .limit(5)
-          .snapshots(),
-      builder: (context, snap) {
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        final docs = (snap.data?.docs ?? const [])
-            .where(
-              (doc) =>
-                  (doc.data()[FirestoreUserCoinFields.ownerId] as String?) !=
-                  uid,
-            )
-            .toList();
-        if (docs.isEmpty) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Live Community Coins'),
-            const SizedBox(height: 8),
-            Column(
-              children: [
-                for (final doc in docs) _communityCoinCard(doc.data()),
-              ],
+  Widget _minedCoinsTab() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Mined Coins'),
+          const SizedBox(height: 8),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection(FirestoreConstants.users)
+                  .doc(uid)
+                  .collection(FirestoreUserSubCollections.coins)
+                  .snapshots(),
+              builder: (context, snap) {
+                final uid = FirebaseAuth.instance.currentUser?.uid;
+                var docs = snap.data?.docs ?? const [];
+                if (uid != null) {
+                  docs = docs
+                      .where(
+                        (d) =>
+                            (d.data()[FirestoreUserCoinMiningFields.ownerId]
+                                as String?) !=
+                            uid,
+                      )
+                      .toList();
+                }
+                if (docs.isEmpty) {
+                  return const Center(
+                    child: Text('No coins yet. Add from Live Coins.'),
+                  );
+                }
+                return ListView(
+                  children: [for (final d in docs) _minedCoinCard(d.data())],
+                );
+              },
             ),
-          ],
-        );
-      },
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _communityCoinCard(Map<String, dynamic> data) {
+  Widget _liveCoinsTab() {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Live Coins'),
+          const SizedBox(height: 8),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              stream: FirebaseFirestore.instance
+                  .collection(FirestoreConstants.userCoins)
+                  .where(FirestoreUserCoinFields.isActive, isEqualTo: true)
+                  .limit(20)
+                  .snapshots(),
+              builder: (context, snap) {
+                final uid = FirebaseAuth.instance.currentUser?.uid;
+                final docs = (snap.data?.docs ?? const [])
+                    .where(
+                      (doc) =>
+                          (doc.data()[FirestoreUserCoinFields.ownerId]
+                              as String?) !=
+                          uid,
+                    )
+                    .toList();
+                if (docs.isEmpty) {
+                  return const Center(child: Text('No live community coins'));
+                }
+                return ListView(
+                  children: [for (final doc in docs) _liveCoinCard(doc.data())],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _liveCoinCard(Map<String, dynamic> data) {
     final ownerId = (data[FirestoreUserCoinFields.ownerId] as String?) ?? '';
     final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
     final rate =
         (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+        0.0;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.primaryBackground,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              '$name • ${rate.toStringAsFixed(3)}/h',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          IconButton(
+            onPressed: ownerId.isEmpty
+                ? null
+                : () async {
+                    await CoinService.addCoinForUser(ownerId);
+                  },
+            icon: const Icon(Icons.add),
+            tooltip: 'Add coin',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _minedCoinCard(Map<String, dynamic> data) {
+    final ownerId =
+        (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
+    final name = (data[FirestoreUserCoinMiningFields.name] as String?) ?? '—';
+    final rate =
+        (data[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
         0.0;
     return Container(
       padding: const EdgeInsets.all(12),
@@ -315,12 +440,12 @@ class _MobileHomePageState extends State<MobileHomePage> {
         children: [
           Row(
             children: [
-              Expanded(child: Text('$name • ${rate.toStringAsFixed(3)}/h')),
-              ElevatedButton(
-                onPressed: () async {
-                  await CoinService.startCoinMining(ownerId);
-                },
-                child: const Text('Add & Start'),
+              Expanded(
+                child: Text(
+                  '$name • ${rate.toStringAsFixed(3)}/h',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
