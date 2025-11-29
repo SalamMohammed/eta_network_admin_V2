@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../shared/firestore_constants.dart';
 import 'rank_engine.dart';
@@ -157,6 +158,15 @@ class EarningsEngine {
       (afterRankData[FirestoreUserFields.rank] as String?) ?? '',
       ranksCfg,
     );
+    debugPrint(
+      'EarningsEngine: rate calc → baseRate=${baseRate.toStringAsFixed(6)}, sessionHours=$sessionHours',
+    );
+    debugPrint(
+      'EarningsEngine: streak → days=$newStreakDays, multiplier=${streakMultiplier.toStringAsFixed(6)}',
+    );
+    debugPrint(
+      'EarningsEngine: rank → name=${(afterRankData[FirestoreUserFields.rank] as String?) ?? ''}, multiplier=${rankMultiplier.toStringAsFixed(6)}',
+    );
     final agg = await FirebaseFirestore.instance
         .collection(FirestoreConstants.referrals)
         .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
@@ -164,9 +174,25 @@ class EarningsEngine {
         .count()
         .get();
     final int referralCount = agg.count ?? 0;
+    debugPrint('EarningsEngine: referrals → count=$referralCount');
     final double referralMultiplier = await _referralMultiplier(referralCount);
+    final double streakFrac = (streakMultiplier - 1.0).clamp(0.0, 1000.0);
+    final double rankFrac = (rankMultiplier - 1.0).clamp(0.0, 1000.0);
+    final double referralFrac = (referralMultiplier - 1.0).clamp(0.0, 1000.0);
+    final double streakBonus = baseRate * streakFrac;
+    final double rankBonus = baseRate * rankFrac;
+    final double referralBonus = baseRate * referralFrac;
+    debugPrint(
+      'EarningsEngine: referrals → multiplier=${referralMultiplier.toStringAsFixed(6)} (fraction ${(referralFrac * 100).toStringAsFixed(2)}%)',
+    );
+    debugPrint(
+      'EarningsEngine: additive breakdown → baseRate=${baseRate.toStringAsFixed(6)}, streakBonus=${streakBonus.toStringAsFixed(6)} (+${(streakFrac * 100).toStringAsFixed(2)}%), rankBonus=${rankBonus.toStringAsFixed(6)} (+${(rankFrac * 100).toStringAsFixed(2)}%), referralBonus=${referralBonus.toStringAsFixed(6)} (+${(referralFrac * 100).toStringAsFixed(2)}%)',
+    );
     final double hourlyRate =
-        baseRate * streakMultiplier * rankMultiplier * referralMultiplier;
+        baseRate + streakBonus + rankBonus + referralBonus;
+    debugPrint(
+      'EarningsEngine: final hourlyRate=${hourlyRate.toStringAsFixed(6)}',
+    );
     final DateTime start = now;
     final DateTime end = now.add(Duration(hours: sessionHours));
     await userRef.update({
@@ -348,11 +374,18 @@ class EarningsEngine {
     final table = streakCfg[FirestoreAppConfigFields.streakBonusTable];
     if (table is Map<String, dynamic>) {
       double m = 1.0;
+      int bestThreshold = 0;
       table.forEach((k, v) {
         final int threshold = int.tryParse(k) ?? 0;
         final double mult = (v as num?)?.toDouble() ?? 1.0;
-        if (streakDays >= threshold && mult > m) m = mult;
+        if (streakDays >= threshold && mult > m) {
+          m = mult;
+          bestThreshold = threshold;
+        }
       });
+      debugPrint(
+        'EarningsEngine: streak table → days=$streakDays, bestThreshold=$bestThreshold, multiplier=${m.toStringAsFixed(6)}',
+      );
       return m;
     }
     final int maxDays =
@@ -364,11 +397,18 @@ class EarningsEngine {
             ?.toDouble() ??
         2.0;
     if (streakDays <= 1) {
+      debugPrint(
+        'EarningsEngine: streak linear → days=$streakDays/$maxDays, maxMult=${maxMult.toStringAsFixed(6)}, multiplier=1.000000',
+      );
       return 1.0;
     }
     final int d = streakDays.clamp(1, maxDays);
     final double t = maxDays > 1 ? (d - 1) / (maxDays - 1) : 0.0;
-    return 1.0 + t * (maxMult - 1.0);
+    final double res = 1.0 + t * (maxMult - 1.0);
+    debugPrint(
+      'EarningsEngine: streak linear → days=$streakDays/$maxDays, maxMult=${maxMult.toStringAsFixed(6)}, multiplier=${res.toStringAsFixed(6)}',
+    );
+    return res;
   }
 
   static double _rankMultiplierByName(
@@ -376,11 +416,15 @@ class EarningsEngine {
     Map<String, dynamic> ranksCfg,
   ) {
     final mults = ranksCfg[FirestoreRankConfigFields.rankMultipliers];
+    double out = 1.0;
     if (mults is Map<String, dynamic>) {
       final v = mults[rank];
-      return (v as num?)?.toDouble() ?? 1.0;
+      out = (v as num?)?.toDouble() ?? 1.0;
     }
-    return 1.0;
+    debugPrint(
+      'EarningsEngine: rank table → rank=$rank, multiplier=${out.toStringAsFixed(6)}',
+    );
+    return out;
   }
 
   static Future<double> _referralMultiplier(int count) async {
@@ -389,7 +433,7 @@ class EarningsEngine {
         .doc(FirestoreAppConfigDocs.referrals)
         .get();
     final cfg = cfgSnap.data() ?? {};
-    final double percentPerReferral =
+    final double percentPerReferralRaw =
         (cfg[FirestoreReferralConfigFields.referrerPercentPerReferral] as num?)
             ?.toDouble() ??
         ((FirestoreAppConfigFields.referralBonusStep != '')
@@ -397,11 +441,19 @@ class EarningsEngine {
                       ?.toDouble() ??
                   0.0
             : 0.0);
+    final double percentPerReferral = percentPerReferralRaw / 100.0;
     final int maxCount =
         (cfg[FirestoreReferralConfigFields.referrerMaxCount] as num?)
             ?.toInt() ??
         100;
     final int effective = count.clamp(0, maxCount);
-    return 1.0 + (percentPerReferral * effective);
+    final double out = 1.0 + (percentPerReferral * effective);
+    debugPrint(
+      'EarningsEngine: referral config → percentRaw=${percentPerReferralRaw.toStringAsFixed(6)}, fraction=${percentPerReferral.toStringAsFixed(6)}, maxCount=$maxCount',
+    );
+    debugPrint(
+      'EarningsEngine: referral calc → effectiveCount=$effective, multiplier=${out.toStringAsFixed(6)}',
+    );
+    return out;
   }
 }
