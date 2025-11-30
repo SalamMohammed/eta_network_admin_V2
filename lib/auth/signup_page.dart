@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:math';
+import 'dart:typed_data';
 import '../shared/theme/colors.dart';
 import '../shared/firestore_constants.dart';
 import 'login_page.dart';
@@ -62,6 +64,15 @@ class _SignupPageState extends State<SignupPage> {
             FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
             FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
+
+      final b = Uint8List(0);
+      final r = FirebaseStorage.instance.ref().child('users/$uid/thumbnail');
+      await r.putData(b, SettableMetadata(contentType: 'image/png'));
+      final u = await r.getDownloadURL();
+      await FirebaseFirestore.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .set({FirestoreUserFields.thumbnailUrl: u}, SetOptions(merge: true));
 
       final providedCode = _referralController.text.trim();
       await ReferralEngine.processReferralOnSignup(

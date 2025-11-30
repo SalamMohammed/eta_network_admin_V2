@@ -5,6 +5,10 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../shared/firestore_constants.dart';
 import '../../shared/theme/colors.dart';
 import '../../services/coin_service.dart';
+import '../../shared/pick_image_io.dart'
+    if (dart.library.html) '../../shared/pick_image_web.dart'
+    as picker;
+import 'dart:typed_data';
 
 class MyCoinBlock extends StatelessWidget {
   const MyCoinBlock({super.key});
@@ -212,7 +216,6 @@ class CreateCoinDialog extends StatefulWidget {
 class _CreateCoinDialogState extends State<CreateCoinDialog> {
   final nameCtrl = TextEditingController();
   final symbolCtrl = TextEditingController();
-  final imageUrlCtrl = TextEditingController();
   final descCtrl = TextEditingController();
   final rateCtrl = TextEditingController();
   final List<_LinkRow> _rows = [];
@@ -222,6 +225,10 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
   double _minRate = 0.01;
   double _maxRate = 10.0;
   bool _submitting = false;
+  Uint8List? _thumbBytes;
+  String? _initialImageUrl;
+  String? _thumbContentType;
+  bool _isEditing = false;
 
   @override
   void initState() {
@@ -229,9 +236,10 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
     _loadConfig();
     final init = widget.initial;
     if (init != null) {
+      _isEditing = true;
       nameCtrl.text = (init[FirestoreUserCoinFields.name] as String?) ?? '';
       symbolCtrl.text = (init[FirestoreUserCoinFields.symbol] as String?) ?? '';
-      imageUrlCtrl.text =
+      _initialImageUrl =
           (init[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
       descCtrl.text =
           (init[FirestoreUserCoinFields.description] as String?) ?? '';
@@ -289,16 +297,26 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
               const SizedBox(height: 12),
               Row(
                 children: [
-                  CircleAvatar(radius: 28, child: const Icon(Icons.token)),
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundImage: _thumbBytes != null
+                        ? MemoryImage(_thumbBytes!)
+                        : (_initialImageUrl != null &&
+                              _initialImageUrl!.isNotEmpty)
+                        ? NetworkImage(_initialImageUrl!)
+                        : null,
+                    child:
+                        (_thumbBytes == null &&
+                            (_initialImageUrl == null ||
+                                _initialImageUrl!.isEmpty))
+                        ? const Icon(Icons.token)
+                        : null,
+                  ),
                   const SizedBox(width: 12),
                   if (_allowImageUpload)
-                    Expanded(
-                      child: TextField(
-                        controller: imageUrlCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Image URL',
-                        ),
-                      ),
+                    ElevatedButton(
+                      onPressed: _submitting ? null : _pickImage,
+                      child: const Text('Upload image'),
                     ),
                 ],
               ),
@@ -418,7 +436,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                 children: [
                   ElevatedButton(
                     onPressed: _submitting ? null : _submit,
-                    child: const Text('Create Coin'),
+                    child: Text(_isEditing ? 'Save' : 'Create Coin'),
                   ),
                   const SizedBox(width: 8),
                   TextButton(
@@ -465,38 +483,48 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
     }
 
     setState(() => _submitting = true);
-
-    // existence check
-    final existing = await CoinService.getUserCoin(uid);
-    if (existing.data() != null &&
-        (existing.data()![FirestoreUserCoinFields.isActive] == true)) {
-      setState(() => _submitting = false);
-      return;
-    }
+    print(
+      '[CreateCoinDialog] Submit start | isEditing=$_isEditing | name=$name | symbol=${symbolCtrl.text.trim()} | hasThumb=${_thumbBytes != null} | initialImageSet=${_initialImageUrl != null && _initialImageUrl!.isNotEmpty}',
+    );
 
     final now = FieldValue.serverTimestamp();
-    final coinDoc = {
+    final Map<String, dynamic> coinDoc = {
       FirestoreUserCoinFields.ownerId: uid,
       FirestoreUserCoinFields.name: name,
       FirestoreUserCoinFields.symbol: symbolCtrl.text.trim(),
-      FirestoreUserCoinFields.imageUrl: imageUrlCtrl.text.trim().isNotEmpty
-          ? imageUrlCtrl.text.trim()
-          : null,
       FirestoreUserCoinFields.description: desc,
       FirestoreUserCoinFields.socialLinks: links,
       FirestoreUserCoinFields.baseRatePerHour: rate,
-      FirestoreUserCoinFields.createdAt: now,
       FirestoreUserCoinFields.updatedAt: now,
-      FirestoreUserCoinFields.isActive: true,
     };
+    if (!_isEditing) {
+      coinDoc[FirestoreUserCoinFields.createdAt] = now;
+      coinDoc[FirestoreUserCoinFields.isActive] = true;
+    }
+    if (_thumbBytes == null &&
+        (_initialImageUrl != null && _initialImageUrl!.isNotEmpty)) {
+      coinDoc[FirestoreUserCoinFields.imageUrl] = _initialImageUrl!;
+    }
     await CoinService.createOrUpdateUserCoin(
       uid: uid,
       coin: coinDoc,
-      merge: false,
+      merge: _isEditing,
+      thumbnailBytes: _thumbBytes,
+      thumbnailContentType: _thumbContentType,
     );
+    print('[CreateCoinDialog] Submit end');
     if (mounted) {
       Navigator.of(context).pop();
     }
+  }
+
+  Future<void> _pickImage() async {
+    final picked = await picker.pickImage();
+    if (picked == null) return;
+    setState(() {
+      _thumbBytes = picked.bytes;
+      _thumbContentType = picked.contentType;
+    });
   }
 }
 

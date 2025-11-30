@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../../shared/theme/colors.dart';
 import '../../auth/auth_gate.dart';
 import '../../shared/firestore_constants.dart';
 import '../../services/referral_engine.dart';
 import '../../services/earnings_engine.dart';
+import '../../shared/pick_image_io.dart'
+    if (dart.library.html) '../../shared/pick_image_web.dart'
+    as picker;
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -23,6 +27,7 @@ class _ProfilePageState extends State<ProfilePage> {
   int streakDays = 0;
   int referralCount = 0;
   bool managerEnabled = false;
+  String? thumbnailUrl;
   final _referralCtrl = TextEditingController();
 
   @override
@@ -50,6 +55,7 @@ class _ProfilePageState extends State<ProfilePage> {
       streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
       managerEnabled =
           (d[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+      thumbnailUrl = (d[FirestoreUserFields.thumbnailUrl] as String?) ?? '';
     });
     final countAgg = await FirebaseFirestore.instance
         .collection(FirestoreConstants.referrals)
@@ -96,9 +102,19 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               child: Row(
                 children: [
-                  const CircleAvatar(
-                    radius: 28,
-                    backgroundColor: AppColors.secondaryAccent,
+                  GestureDetector(
+                    onTap: _uploadProfileImage,
+                    child: CircleAvatar(
+                      radius: 28,
+                      backgroundColor: AppColors.secondaryAccent,
+                      backgroundImage:
+                          (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
+                          ? NetworkImage(thumbnailUrl!)
+                          : null,
+                      child: (thumbnailUrl == null || thumbnailUrl!.isEmpty)
+                          ? const Icon(Icons.person)
+                          : null,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Column(
@@ -223,6 +239,29 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
     );
+  }
+
+  Future<void> _uploadProfileImage() async {
+    final u = FirebaseAuth.instance.currentUser;
+    final uidLocal = u?.uid;
+    if (uidLocal == null || uidLocal.isEmpty) return;
+    final picked = await picker.pickImage();
+    final bytes = picked?.bytes;
+    final ct = picked?.contentType;
+    if (bytes == null || bytes.isEmpty) return;
+    final r = FirebaseStorage.instance.ref().child('users/$uidLocal/thumbnail');
+    await r.putData(bytes, SettableMetadata(contentType: ct ?? 'image/png'));
+    final url = await r.getDownloadURL();
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uidLocal)
+        .set({
+          FirestoreUserFields.thumbnailUrl: url,
+          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+    setState(() {
+      thumbnailUrl = url;
+    });
   }
 
   Future<void> _deleteAccount() async {

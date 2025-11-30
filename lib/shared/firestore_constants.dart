@@ -37,6 +37,7 @@ class FirestoreUserFields {
   static const String managerEnabled = 'managerEnabled';
   static const String activeManagerId = 'activeManagerId';
   static const String managedCoinSelections = 'managedCoinSelections';
+  static const String thumbnailUrl = 'thumbnailUrl';
 }
 
 class FirestoreUserRoles {

@@ -77,6 +77,7 @@ class _MobileHomePageState extends State<MobileHomePage>
         .doc(uid)
         .get();
     final d = snap.data() ?? {};
+    if (!mounted) return;
     setState(() {
       totalPoints =
           (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
@@ -127,6 +128,7 @@ class _MobileHomePageState extends State<MobileHomePage>
         !miningActive) {
       final devId = _deviceId ?? await DeviceId.get();
       final res = await EarningsEngine.startMining(deviceId: devId);
+      if (!mounted) return;
       setState(() {
         hourlyRate =
             (res[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
@@ -147,6 +149,7 @@ class _MobileHomePageState extends State<MobileHomePage>
   void _startSimulationIfNeeded() {
     _simTimer?.cancel();
     if (!miningActive || lastEnd == null) {
+      if (!mounted) return;
       setState(() {
         _displayTotal = totalPoints;
       });
@@ -156,17 +159,24 @@ class _MobileHomePageState extends State<MobileHomePage>
     _simAnchor = DateTime.now();
     final end = lastEnd!.toDate();
     _simTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+      if (!mounted) {
+        _simTimer?.cancel();
+        return;
+      }
       final anchor = _simAnchor!;
       final now = DateTime.now();
       if (!now.isBefore(end)) {
         _simTimer?.cancel();
-        setState(() {
-          _displayTotal = _simBase;
-          miningActive = false;
-          progress = _computeProgress();
-          _updateRemaining();
-        });
+        if (mounted) {
+          setState(() {
+            _displayTotal = _simBase;
+            miningActive = false;
+            progress = _computeProgress();
+            _updateRemaining();
+          });
+        }
         EarningsEngine.syncEarnings().then((_) async {
+          if (!mounted) return;
           if (_managerEnabled && _managerGlobalEnabled && _managerEtaAuto) {
             final devId = _deviceId ?? await DeviceId.get();
             await EarningsEngine.startMining(deviceId: devId);
@@ -179,6 +189,7 @@ class _MobileHomePageState extends State<MobileHomePage>
       final remainingSec = end.difference(anchor).inSeconds.toDouble();
       final incPerSec = hourlyRate > 0.0 ? (hourlyRate / 3600.0) : 0.0;
       final inc = (elapsedSec * incPerSec).clamp(0.0, remainingSec * incPerSec);
+      if (!mounted) return;
       setState(() {
         _displayTotal = _simBase + inc;
         progress = _computeProgress();

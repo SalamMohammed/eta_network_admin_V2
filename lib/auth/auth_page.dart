@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../shared/theme/colors.dart';
 import '../shared/firestore_constants.dart';
 import '../entry/selector_page.dart';
+import 'dart:typed_data';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -40,6 +42,18 @@ class _AuthPageState extends State<AuthPage> {
               FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
               FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
+        final b = Uint8List(0);
+        final r = FirebaseStorage.instance.ref().child(
+          'users/${cred.user!.uid}/thumbnail',
+        );
+        await r.putData(b, SettableMetadata(contentType: 'image/png'));
+        final u = await r.getDownloadURL();
+        await FirebaseFirestore.instance
+            .collection(FirestoreConstants.users)
+            .doc(cred.user!.uid)
+            .set({
+              FirestoreUserFields.thumbnailUrl: u,
+            }, SetOptions(merge: true));
       } else {
         cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
@@ -74,7 +88,11 @@ class _AuthPageState extends State<AuthPage> {
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [AppColors.deepLayer, AppColors.primaryBackground], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          gradient: LinearGradient(
+            colors: [AppColors.deepLayer, AppColors.primaryBackground],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
         padding: const EdgeInsets.all(24),
         child: Center(
@@ -86,7 +104,13 @@ class _AuthPageState extends State<AuthPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(_isRegister ? 'Register' : 'Login', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                    Text(
+                      _isRegister ? 'Register' : 'Login',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     const SizedBox(height: 16),
                     TextField(
                       controller: _emailController,
@@ -119,7 +143,11 @@ class _AuthPageState extends State<AuthPage> {
                                 _isRegister = !_isRegister;
                               });
                             },
-                      child: Text(_isRegister ? 'Already have an account? Login' : 'No account? Register'),
+                      child: Text(
+                        _isRegister
+                            ? 'Already have an account? Login'
+                            : 'No account? Register',
+                      ),
                     ),
                   ],
                 ),

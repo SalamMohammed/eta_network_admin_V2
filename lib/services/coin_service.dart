@@ -1,6 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../shared/firestore_constants.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:typed_data';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class CoinService {
   static Future<DocumentSnapshot<Map<String, dynamic>>> getUserCoin(
@@ -33,11 +37,40 @@ class CoinService {
     required String uid,
     required Map<String, dynamic> coin,
     bool merge = false,
+    Uint8List? thumbnailBytes,
+    String? thumbnailContentType,
   }) async {
+    try {
+      print(
+        '[CoinService] Upload start | uid=$uid | bytes=${thumbnailBytes?.length ?? 0} | ct=${thumbnailContentType} | web=${kIsWeb} | apps=${Firebase.apps.length}',
+      );
+      if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
+        final r = FirebaseStorage.instance.ref().child(
+          'user_coins/$uid/thumbnail',
+        );
+        await r.putData(
+          thumbnailBytes,
+          SettableMetadata(contentType: thumbnailContentType ?? 'image/png'),
+        );
+        final u = await r.getDownloadURL();
+        coin[FirestoreUserCoinFields.imageUrl] = u;
+        print('[CoinService] Upload success | url=$u');
+      } else {
+        print('[CoinService] No thumbnail bytes provided, skipping upload');
+      }
+    } catch (e) {
+      print('[CoinService] Upload failed | error=$e');
+    }
     final ref = FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
         .doc(uid);
-    await ref.set(coin, SetOptions(merge: merge));
+    try {
+      await ref.set(coin, SetOptions(merge: merge));
+      print('[CoinService] Firestore set success | merge=$merge');
+    } catch (e) {
+      print('[CoinService] Firestore set failed | error=$e');
+      rethrow;
+    }
   }
 
   static Future<void> addCoinForUser(String coinOwnerId) async {

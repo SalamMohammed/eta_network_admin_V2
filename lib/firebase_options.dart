@@ -57,8 +57,10 @@ class DefaultFirebaseOptions {
     messagingSenderId: '899853959610',
     projectId: 'eta-network-31964',
     storageBucket: 'eta-network-31964.firebasestorage.app',
-    androidClientId: '899853959610-euk59ct1o7u65derouq8muiu8fh7si2m.apps.googleusercontent.com',
-    iosClientId: '899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com',
+    androidClientId:
+        '899853959610-euk59ct1o7u65derouq8muiu8fh7si2m.apps.googleusercontent.com',
+    iosClientId:
+        '899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com',
     iosBundleId: 'net.ApexSoft.EtaNetwork',
   );
 
@@ -81,5 +83,4 @@ class DefaultFirebaseOptions {
     storageBucket: 'eta-network-31964.firebasestorage.app',
     measurementId: 'G-048TGLLK3F',
   );
-
 }
