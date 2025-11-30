@@ -40,6 +40,8 @@ class _MobileHomePageState extends State<MobileHomePage>
   bool _managerUserCoinAuto = true;
   int _managerMaxCommunity = 0;
   bool _managerGlobalEnabled = true;
+  String? _activeManagerId;
+  List<String> _managedCoinSelections = const [];
 
   @override
   void initState() {
@@ -89,22 +91,36 @@ class _MobileHomePageState extends State<MobileHomePage>
       _displayTotal = totalPoints;
       _managerEnabled =
           (d[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+      _managedCoinSelections =
+          ((d[FirestoreUserFields.managedCoinSelections] as List?)
+              ?.cast<String>()) ??
+          const [];
     });
-    final managerCfg = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.appConfig)
-        .doc(FirestoreAppConfigDocs.manager)
-        .get();
-    final m = managerCfg.data() ?? {};
-    _managerGlobalEnabled =
-        (m[FirestoreManagerConfigFields.enabledGlobally] as bool?) ?? true;
-    _managerEtaAuto =
-        (m[FirestoreManagerConfigFields.enableEtaAuto] as bool?) ?? true;
-    _managerUserCoinAuto =
-        (m[FirestoreManagerConfigFields.enableUserCoinAuto] as bool?) ?? true;
-    _managerMaxCommunity =
-        (m[FirestoreManagerConfigFields.maxCommunityCoinsManaged] as num?)
-            ?.toInt() ??
-        0;
+    final activeId = (d[FirestoreUserFields.activeManagerId] as String?) ?? '';
+    if (activeId.isNotEmpty) {
+      final mgr = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.managers)
+          .doc(activeId)
+          .get();
+      final m = mgr.data() ?? {};
+      _managerGlobalEnabled =
+          (m[FirestoreManagerFields.globalCommunity] as bool?) ?? true;
+      _managerEtaAuto =
+          (m[FirestoreManagerFields.enableEtaAuto] as bool?) ?? true;
+      _managerUserCoinAuto =
+          (m[FirestoreManagerFields.enableUserCoinAuto] as bool?) ?? true;
+      _managerMaxCommunity =
+          (m[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
+              ?.toInt() ??
+          0;
+      _activeManagerId = activeId;
+    } else {
+      _managerGlobalEnabled = false;
+      _managerEtaAuto = false;
+      _managerUserCoinAuto = false;
+      _managerMaxCommunity = 0;
+      _activeManagerId = null;
+    }
     if (_managerEnabled &&
         _managerGlobalEnabled &&
         _managerEtaAuto &&
@@ -174,7 +190,31 @@ class _MobileHomePageState extends State<MobileHomePage>
   Future<void> _manageCommunityCoins() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    if (!(_managerEnabled && _managerGlobalEnabled)) return;
+    if (!_managerEnabled) return;
+
+    // Ensure own coin is mining when enabled
+    if (_managerUserCoinAuto) {
+      final ownRef = FirebaseFirestore.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .collection(FirestoreUserSubCollections.coins)
+          .doc(uid);
+      final ownSnap = await ownRef.get();
+      final ownData = ownSnap.data() ?? {};
+      final ownEnd =
+          ownData[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
+      final ownActive =
+          ownEnd != null && DateTime.now().isBefore(ownEnd.toDate());
+      if (!ownActive) {
+        await CoinService.startCoinMining(uid);
+      }
+    }
+
+    // Manage community coins when enabled and allowed
+    if (!(_managerUserCoinAuto &&
+        _managerGlobalEnabled &&
+        _managerMaxCommunity > 0))
+      return;
     final q = await FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
@@ -186,27 +226,26 @@ class _MobileHomePageState extends State<MobileHomePage>
       final data = d.data();
       final ownerId =
           (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
+      if (ownerId == uid) continue;
+      if (_managedCoinSelections.isNotEmpty &&
+          !_managedCoinSelections.contains(ownerId))
+        continue;
       final end =
           data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
       final isActive = end != null && now.isBefore(end.toDate());
-      final isOwnCoin = ownerId == uid;
-      if (!isOwnCoin && isActive) activeManaged++;
+      if (isActive) activeManaged++;
     }
     for (final d in q.docs) {
       final data = d.data();
       final ownerId =
           (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
+      if (ownerId == uid) continue;
+      if (_managedCoinSelections.isNotEmpty &&
+          !_managedCoinSelections.contains(ownerId))
+        continue;
       final end =
           data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
       final isActive = end != null && now.isBefore(end.toDate());
-      final isOwnCoin = ownerId == uid;
-      if (isOwnCoin) {
-        if (_managerUserCoinAuto && !isActive) {
-          await CoinService.startCoinMining(ownerId);
-        }
-        continue;
-      }
-      if (_managerMaxCommunity <= 0) continue;
       if (!isActive && activeManaged < _managerMaxCommunity) {
         await CoinService.startCoinMining(ownerId);
         activeManaged++;
@@ -236,6 +275,10 @@ class _MobileHomePageState extends State<MobileHomePage>
           onPressed: () => Navigator.maybePop(context),
         ),
         title: const Text('ETA Network'),
+        actions: [
+          TextButton(onPressed: _openManagerSelector, child: const Text('VIP')),
+          TextButton(onPressed: _openCoinSelector, child: const Text('Coins')),
+        ],
       ),
       body: Column(
         children: [
@@ -306,13 +349,17 @@ class _MobileHomePageState extends State<MobileHomePage>
                                         );
                                     setState(() {
                                       hourlyRate =
-                                          (res['hourlyRate'] as num?)
+                                          (res[FirestoreUserFields.hourlyRate]
+                                                  as num?)
                                               ?.toDouble() ??
                                           hourlyRate;
                                       lastStart =
-                                          res['lastMiningStart'] as Timestamp?;
+                                          res[FirestoreUserFields
+                                                  .lastMiningStart]
+                                              as Timestamp?;
                                       lastEnd =
-                                          res['lastMiningEnd'] as Timestamp?;
+                                          res[FirestoreUserFields.lastMiningEnd]
+                                              as Timestamp?;
                                       miningActive =
                                           lastEnd != null &&
                                           DateTime.now().isBefore(
@@ -373,6 +420,81 @@ class _MobileHomePageState extends State<MobileHomePage>
           ),
         ],
       ),
+    );
+  }
+
+  Future<void> _openManagerSelector() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return _ManagerSelectDialog(
+          currentId: _activeManagerId,
+          onSelected: (id) async {
+            await FirebaseFirestore.instance
+                .collection(FirestoreConstants.users)
+                .doc(uid)
+                .set({
+                  FirestoreUserFields.activeManagerId: id,
+                  FirestoreUserFields.managerEnabled: (id != null),
+                  FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+            if (id != null) {
+              final mgr = await FirebaseFirestore.instance
+                  .collection(FirestoreConstants.managers)
+                  .doc(id)
+                  .get();
+              final m = mgr.data() ?? {};
+              final max =
+                  (m[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
+                      ?.toInt() ??
+                  0;
+              final userRef = FirebaseFirestore.instance
+                  .collection(FirestoreConstants.users)
+                  .doc(uid);
+              final userSnap = await userRef.get();
+              final d = userSnap.data() ?? {};
+              final sel =
+                  ((d[FirestoreUserFields.managedCoinSelections] as List?)
+                      ?.cast<String>()) ??
+                  const [];
+              if (max >= 0 && sel.length > max) {
+                final trimmed = sel.take(max).toList();
+                await userRef.set({
+                  FirestoreUserFields.managedCoinSelections: trimmed,
+                  FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+              }
+            }
+            await _refresh();
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openCoinSelector() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return _CoinSelectDialog(
+          current: _managedCoinSelections,
+          maxCount: _managerMaxCommunity,
+          onSelected: (ids) async {
+            await FirebaseFirestore.instance
+                .collection(FirestoreConstants.users)
+                .doc(uid)
+                .set({
+                  FirestoreUserFields.managedCoinSelections: ids,
+                  FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+                }, SetOptions(merge: true));
+            await _refresh();
+          },
+        );
+      },
     );
   }
 
@@ -542,6 +664,227 @@ class _MobileHomePageState extends State<MobileHomePage>
           const SizedBox(height: 8),
           CoinMiningControls(coinOwnerId: ownerId),
         ],
+      ),
+    );
+  }
+}
+
+class _ManagerSelectDialog extends StatefulWidget {
+  final String? currentId;
+  final Future<void> Function(String? id) onSelected;
+  const _ManagerSelectDialog({
+    required this.currentId,
+    required this.onSelected,
+  });
+  @override
+  State<_ManagerSelectDialog> createState() => _ManagerSelectDialogState();
+}
+
+class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> managers = const [];
+  String? selectedId;
+
+  @override
+  void initState() {
+    super.initState();
+    selectedId = widget.currentId;
+    _load();
+  }
+
+  Future<void> _load() async {
+    final qs = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.managers)
+        .where(FirestoreManagerFields.isActive, isEqualTo: true)
+        .get();
+    managers = qs.docs;
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Select Manager',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            if (managers.isEmpty) const Text('No managers available'),
+            for (final doc in managers)
+              ListTile(
+                leading: CircleAvatar(
+                  child: const Icon(Icons.auto_mode_rounded),
+                  backgroundImage:
+                      (doc.data()[FirestoreManagerFields.thumbnailUrl]
+                                  as String?)
+                              ?.isNotEmpty ==
+                          true
+                      ? NetworkImage(
+                          doc.data()[FirestoreManagerFields.thumbnailUrl]
+                              as String,
+                        )
+                      : null,
+                ),
+                title: Text(
+                  (doc.data()[FirestoreManagerFields.name] as String?) ?? '—',
+                ),
+                trailing: Radio<String>(
+                  value: doc.id,
+                  groupValue: selectedId,
+                  onChanged: (v) => setState(() => selectedId = v),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: () async {
+                    await widget.onSelected(selectedId);
+                    if (mounted) Navigator.pop(context);
+                  },
+                  child: const Text('Confirm'),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () async {
+                    await widget.onSelected(null);
+                    if (mounted) Navigator.pop(context);
+                  },
+                  child: const Text('None'),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CoinSelectDialog extends StatefulWidget {
+  final List<String> current;
+  final int maxCount;
+  final Future<void> Function(List<String> ids) onSelected;
+  const _CoinSelectDialog({
+    required this.current,
+    required this.maxCount,
+    required this.onSelected,
+  });
+  @override
+  State<_CoinSelectDialog> createState() => _CoinSelectDialogState();
+}
+
+class _CoinSelectDialogState extends State<_CoinSelectDialog> {
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> coins = const [];
+  late List<String> selectedIds = [...widget.current];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final qs = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .collection(FirestoreUserSubCollections.coins)
+        .get();
+    coins = qs.docs
+        .where(
+          (d) =>
+              (d.data()[FirestoreUserCoinMiningFields.ownerId] as String?) !=
+              uid,
+        )
+        .toList();
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int max = widget.maxCount;
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Select Coins (${selectedIds.length}/$max)',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            if (coins.isEmpty) const Text('No mined coins to select'),
+            for (final doc in coins)
+              CheckboxListTile(
+                value: selectedIds.contains(
+                  (doc.data()[FirestoreUserCoinMiningFields.ownerId]
+                          as String?) ??
+                      '',
+                ),
+                onChanged: (v) {
+                  final ownerId =
+                      (doc.data()[FirestoreUserCoinMiningFields.ownerId]
+                          as String?) ??
+                      '';
+                  if (ownerId.isEmpty) return;
+                  setState(() {
+                    if (v == true) {
+                      if (selectedIds.length < max) {
+                        if (!selectedIds.contains(ownerId))
+                          selectedIds.add(ownerId);
+                      }
+                    } else {
+                      selectedIds.remove(ownerId);
+                    }
+                  });
+                },
+                title: Text(
+                  (doc.data()[FirestoreUserCoinMiningFields.name] as String?) ??
+                      '—',
+                ),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                ElevatedButton(
+                  onPressed: () async {
+                    await widget.onSelected(selectedIds);
+                    if (mounted) Navigator.pop(context);
+                  },
+                  child: const Text('Confirm'),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: () async {
+                    await widget.onSelected(const []);
+                    if (mounted) Navigator.pop(context);
+                  },
+                  child: const Text('Clear'),
+                ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -7,6 +7,7 @@ class FirestoreConstants {
   static const String profiles = 'profiles';
   static const String settings = 'settings';
   static const String userCoins = 'user_coins';
+  static const String managers = 'managers';
 }
 
 class FirestoreUserSubCollections {
@@ -34,6 +35,8 @@ class FirestoreUserFields {
   static const String createdAt = 'createdAt';
   static const String updatedAt = 'updatedAt';
   static const String managerEnabled = 'managerEnabled';
+  static const String activeManagerId = 'activeManagerId';
+  static const String managedCoinSelections = 'managedCoinSelections';
 }
 
 class FirestoreUserRoles {
@@ -119,6 +122,18 @@ class FirestoreManagerConfigFields {
   static const String enableEtaAuto = 'enableEtaAuto';
   static const String enableUserCoinAuto = 'enableUserCoinAuto';
   static const String maxCommunityCoinsManaged = 'maxCommunityCoinsManaged';
+}
+
+class FirestoreManagerFields {
+  static const String name = 'name';
+  static const String thumbnailUrl = 'thumbnailUrl';
+  static const String enableEtaAuto = 'enableEtaAuto';
+  static const String enableUserCoinAuto = 'enableUserCoinAuto';
+  static const String globalCommunity = 'globalCommunity';
+  static const String maxCommunityCoinsManaged = 'maxCommunityCoinsManaged';
+  static const String isActive = 'isActive';
+  static const String createdAt = 'createdAt';
+  static const String updatedAt = 'updatedAt';
 }
 
 class FirestoreUserCoinFields {
