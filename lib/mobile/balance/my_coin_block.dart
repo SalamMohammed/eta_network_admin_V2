@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../shared/firestore_constants.dart';
 import '../../shared/theme/colors.dart';
 import '../../services/coin_service.dart';
@@ -151,7 +152,7 @@ class _CoinCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               for (final l in links)
-                _LinkChip(
+                _LinkButton(
                   type: (l['type'] as String?) ?? 'other',
                   url: (l['url'] as String?) ?? '',
                 ),
@@ -168,40 +169,83 @@ class _CoinCard extends StatelessWidget {
   }
 }
 
-class _LinkChip extends StatelessWidget {
+class _LinkButton extends StatelessWidget {
   final String type;
   final String url;
-  const _LinkChip({required this.type, required this.url});
+  const _LinkButton({required this.type, required this.url});
+
   @override
   Widget build(BuildContext context) {
+    // If you have uploaded assets, use Image.asset
+    // For now we keep using Icons until you upload them.
+    // Once uploaded to assets/social_icons/facebook.png, etc:
+    //
+    // String? assetName;
+    // switch (type.toLowerCase()) {
+    //   case 'facebook': assetName = 'assets/social_icons/facebook.png'; break;
+    //   // ...
+    // }
+    // if (assetName != null) return IconButton(icon: Image.asset(assetName), ...);
+
     IconData icon;
-    switch (type) {
+    Color? color;
+    switch (type.toLowerCase()) {
       case 'website':
-        icon = Icons.public;
+        icon = Icons.language;
         break;
       case 'youtube':
-        icon = Icons.ondemand_video;
+        icon = Icons.play_circle_fill;
+        color = Colors.red;
         break;
       case 'facebook':
         icon = Icons.facebook;
+        color = Colors.blue;
         break;
       case 'twitter':
       case 'x':
-        icon = Icons.alternate_email;
+        // X logo is unique, using a close match or custom if available
+        // For standard icons, we can use close or alternate_email
+        icon = Icons.close;
         break;
       case 'instagram':
-        icon = Icons.camera_alt_outlined;
+        icon = Icons.camera_alt;
+        color = Colors.purpleAccent;
         break;
       case 'telegram':
-        icon = Icons.send_outlined;
+        icon = Icons.send;
+        color = Colors.lightBlue;
         break;
       default:
         icon = Icons.link;
     }
-    return ActionChip(
-      label: Text(type),
-      avatar: Icon(icon, size: 18),
-      onPressed: url.isNotEmpty ? () {} : null,
+
+    return IconButton(
+      icon: Icon(icon, color: color),
+      tooltip: type,
+      onPressed: () async {
+        if (url.isEmpty) return;
+        var uri = Uri.tryParse(url);
+        if (uri == null) return;
+        if (!uri.hasScheme) {
+          uri = Uri.tryParse('https://$url');
+        }
+        print('LinkButton: Trying to launch $uri');
+        try {
+          if (uri != null && await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } else {
+            // fallback if parsed but canLaunchUrl returns false (some devices need this)
+            print(
+              'LinkButton: canLaunchUrl returned false, trying force launch',
+            );
+            if (uri != null) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          }
+        } catch (e) {
+          print('LinkButton: Launch error: $e');
+        }
+      },
     );
   }
 }
@@ -349,7 +393,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                     child: TextField(
                       controller: rateCtrl,
                       decoration: InputDecoration(
-                        labelText: 'Base mining rate (coins/hour)',
+                        labelText: 'Mining rate (coins/hour)',
                         helperText: 'Allowed range: $_minRate – $_maxRate',
                       ),
                     ),
