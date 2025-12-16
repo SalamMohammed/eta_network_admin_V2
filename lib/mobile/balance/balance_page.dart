@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../shared/theme/colors.dart';
+import '../../shared/firestore_constants.dart';
 import 'my_coin_block.dart';
 
 class BalancePage extends StatefulWidget {
@@ -27,19 +30,46 @@ class _BalancePageState extends State<BalancePage>
       body: Column(
         children: [
           const Padding(padding: EdgeInsets.all(12), child: MyCoinBlock()),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.primaryBackground,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Column(
-              children: const [
-                Text('12,456'),
-                SizedBox(height: 4),
-                Text('Lifetime points'),
-              ],
-            ),
+          Builder(
+            builder: (context) {
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              if (uid == null) {
+                return const SizedBox.shrink();
+              }
+              return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                stream: FirebaseFirestore.instance
+                    .collection(FirestoreConstants.users)
+                    .doc(uid)
+                    .snapshots(),
+                builder: (context, snap) {
+                  final d = snap.data?.data() ?? {};
+                  final total =
+                      (d[FirestoreUserFields.totalPoints] as num?)
+                          ?.toDouble() ??
+                      0.0;
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBackground,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          total.toStringAsFixed(3),
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text('ETA total'),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
           ),
           const SizedBox(height: 8),
           TabBar(
