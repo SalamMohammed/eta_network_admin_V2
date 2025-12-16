@@ -10,6 +10,7 @@ import '../shared/firestore_constants.dart';
 import '../shared/device_id.dart';
 import 'balance/my_coin_block.dart';
 import '../services/coin_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MobileHomePage extends StatefulWidget {
   const MobileHomePage({super.key});
@@ -611,35 +612,57 @@ class _MobileHomePageState extends State<MobileHomePage>
   Widget _liveCoinCard(Map<String, dynamic> data) {
     final ownerId = (data[FirestoreUserCoinFields.ownerId] as String?) ?? '';
     final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
+    final imageUrl = (data[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
     final rate =
         (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
         0.0;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.primaryBackground,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              '$name • ${rate.toStringAsFixed(3)}/h',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+    return GestureDetector(
+      onTap: () => _showCoinDetailsDialog(context, data),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.primaryBackground,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: Colors.white10,
+                shape: BoxShape.circle,
+                image: imageUrl.isNotEmpty
+                    ? DecorationImage(
+                        image: NetworkImage(imageUrl),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
+              ),
+              child: imageUrl.isEmpty
+                  ? const Icon(Icons.monetization_on, color: Colors.white54)
+                  : null,
             ),
-          ),
-          IconButton(
-            onPressed: ownerId.isEmpty
-                ? null
-                : () async {
-                    await CoinService.addCoinForUser(ownerId);
-                  },
-            icon: const Icon(Icons.add),
-            tooltip: 'Add coin',
-          ),
-        ],
+            Expanded(
+              child: Text(
+                '$name • ${rate.toStringAsFixed(3)}/h',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            IconButton(
+              onPressed: ownerId.isEmpty
+                  ? null
+                  : () async {
+                      await CoinService.addCoinForUser(ownerId);
+                    },
+              icon: const Icon(Icons.add),
+              tooltip: 'Add coin',
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -648,33 +671,219 @@ class _MobileHomePageState extends State<MobileHomePage>
     final ownerId =
         (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
     final name = (data[FirestoreUserCoinMiningFields.name] as String?) ?? '—';
+    final imageUrl =
+        (data[FirestoreUserCoinMiningFields.imageUrl] as String?) ?? '';
     final rate =
         (data[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
         0.0;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppColors.primaryBackground,
-        borderRadius: BorderRadius.circular(12),
+    final links =
+        (data[FirestoreUserCoinMiningFields.socialLinks] as List<dynamic>?) ??
+        const [];
+    return GestureDetector(
+      onTap: () => _showCoinDetailsDialog(context, data),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppColors.primaryBackground,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    shape: BoxShape.circle,
+                    image: imageUrl.isNotEmpty
+                        ? DecorationImage(
+                            image: NetworkImage(imageUrl),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                  ),
+                  child: imageUrl.isEmpty
+                      ? const Icon(Icons.monetization_on, color: Colors.white54)
+                      : null,
+                ),
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          '$name • ${rate.toStringAsFixed(3)}/h',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final l in links)
+                            _LinkButton(
+                              type: (l['type'] as String?) ?? 'other',
+                              url: (l['url'] as String?) ?? '',
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            CoinMiningControls(coinOwnerId: ownerId),
+          ],
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    );
+  }
+
+  void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
+    final ownerId = (data['ownerId'] as String?) ?? '';
+    final name = (data['name'] as String?) ?? '—';
+    final symbol = (data['symbol'] as String?) ?? '';
+    final imageUrl = (data['imageUrl'] as String?) ?? '';
+    final description =
+        (data['description'] as String?) ?? 'No description available.';
+    final rate =
+        (data[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
+        (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+        0.0;
+    final total =
+        (data[FirestoreUserCoinMiningFields.totalPoints] as num?)?.toDouble() ??
+        0.0;
+    final links = (data['socialLinks'] as List<dynamic>?) ?? const [];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Expanded(
-                child: Text(
-                  '$name • ${rate.toStringAsFixed(3)}/h',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white10,
+                  image: imageUrl.isNotEmpty
+                      ? DecorationImage(
+                          image: NetworkImage(imageUrl),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
+                ),
+                child: imageUrl.isEmpty
+                    ? const Icon(
+                        Icons.monetization_on,
+                        size: 40,
+                        color: Colors.white54,
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                '$name ($symbol)',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              if (ownerId.isNotEmpty)
+                FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                  future: FirebaseFirestore.instance
+                      .collection(FirestoreConstants.users)
+                      .doc(ownerId)
+                      .get(),
+                  builder: (context, snapshot) {
+                    if (!snapshot.hasData) return const SizedBox.shrink();
+                    final u = snapshot.data!.data();
+                    final username =
+                        (u?[FirestoreUserFields.username] as String?) ??
+                        'Unknown';
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Created by @$username',
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 13,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              const SizedBox(height: 8),
+              Text(
+                '${rate.toStringAsFixed(3)}/h${total > 0 ? ' • Total: ${total.toStringAsFixed(3)}' : ''}',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 24),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Description',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      description,
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ],
+                ),
+              ),
+              if (links.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                const Text(
+                  'Links',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    for (final l in links)
+                      _LinkButton(
+                        type: (l['type'] as String?) ?? 'other',
+                        url: (l['url'] as String?) ?? '',
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Close'),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          CoinMiningControls(coinOwnerId: ownerId),
-        ],
+        ),
       ),
     );
   }
@@ -896,6 +1105,64 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _LinkButton extends StatelessWidget {
+  final String type;
+  final String url;
+  const _LinkButton({required this.type, required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    IconData icon;
+    Color? color;
+    switch (type.toLowerCase()) {
+      case 'website':
+        icon = Icons.language;
+        break;
+      case 'youtube':
+        icon = Icons.play_circle_fill;
+        color = Colors.red;
+        break;
+      case 'facebook':
+        icon = Icons.facebook;
+        color = Colors.blue;
+        break;
+      case 'twitter':
+      case 'x':
+        icon = Icons.close;
+        break;
+      case 'instagram':
+        icon = Icons.camera_alt;
+        color = Colors.purpleAccent;
+        break;
+      case 'telegram':
+        icon = Icons.send;
+        color = Colors.lightBlue;
+        break;
+      default:
+        icon = Icons.link;
+    }
+
+    return Container(
+      width: 28,
+      height: 28,
+      margin: const EdgeInsets.symmetric(horizontal: 2),
+      child: IconButton(
+        padding: EdgeInsets.zero,
+        iconSize: 16,
+        icon: Icon(icon, color: color ?? Colors.white70),
+        tooltip: type,
+        onPressed: () async {
+          if (url.isEmpty) return;
+          final uri = Uri.tryParse(url);
+          if (uri != null && await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        },
       ),
     );
   }

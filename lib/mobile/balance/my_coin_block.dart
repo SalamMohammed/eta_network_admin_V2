@@ -143,8 +143,8 @@ class _CoinCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Text(desc.length > 160 ? '${desc.substring(0, 160)}…' : desc),
-          const SizedBox(height: 8),
+          // Text(desc.length > 160 ? '${desc.substring(0, 160)}…' : desc),
+          // const SizedBox(height: 8),
           Text('Base rate: ${rate.toStringAsFixed(3)} coins/hour'),
           const SizedBox(height: 8),
           Wrap(

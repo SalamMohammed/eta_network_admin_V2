@@ -155,9 +155,11 @@ class FirestoreUserCoinMiningFields {
   static const String name = 'name';
   static const String symbol = 'symbol';
   static const String imageUrl = 'imageUrl';
+  static const String description = 'description';
   static const String hourlyRate = 'hourlyRate';
   static const String totalPoints = 'totalPoints';
   static const String lastMiningStart = 'lastMiningStart';
   static const String lastMiningEnd = 'lastMiningEnd';
   static const String lastSyncedAt = 'lastSyncedAt';
+  static const String socialLinks = 'socialLinks';
 }

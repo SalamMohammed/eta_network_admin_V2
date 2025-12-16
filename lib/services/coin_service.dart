@@ -87,6 +87,10 @@ class CoinService {
     final name = (coin[FirestoreUserCoinFields.name] as String?) ?? '';
     final symbol = (coin[FirestoreUserCoinFields.symbol] as String?) ?? '';
     final imageUrl = (coin[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
+    final description =
+        (coin[FirestoreUserCoinFields.description] as String?) ?? '';
+    final links =
+        (coin[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ?? [];
 
     final ref = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
@@ -100,6 +104,8 @@ class CoinService {
       FirestoreUserCoinMiningFields.name: name,
       FirestoreUserCoinMiningFields.symbol: symbol,
       FirestoreUserCoinMiningFields.imageUrl: imageUrl,
+      FirestoreUserCoinMiningFields.description: description,
+      FirestoreUserCoinMiningFields.socialLinks: links,
       FirestoreUserCoinMiningFields.hourlyRate: rate,
       FirestoreUserCoinMiningFields.totalPoints:
           (data[FirestoreUserCoinMiningFields.totalPoints] as num?)
@@ -134,6 +140,10 @@ class CoinService {
     final name = (coin[FirestoreUserCoinFields.name] as String?) ?? '';
     final symbol = (coin[FirestoreUserCoinFields.symbol] as String?) ?? '';
     final imageUrl = (coin[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
+    final description =
+        (coin[FirestoreUserCoinFields.description] as String?) ?? '';
+    final links =
+        (coin[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ?? [];
 
     final ref = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
@@ -153,6 +163,8 @@ class CoinService {
       FirestoreUserCoinMiningFields.name: name,
       FirestoreUserCoinMiningFields.symbol: symbol,
       FirestoreUserCoinMiningFields.imageUrl: imageUrl,
+      FirestoreUserCoinMiningFields.description: description,
+      FirestoreUserCoinMiningFields.socialLinks: links,
       FirestoreUserCoinMiningFields.hourlyRate: rate,
       FirestoreUserCoinMiningFields.lastMiningStart: Timestamp.fromDate(now),
       FirestoreUserCoinMiningFields.lastMiningEnd: end,
