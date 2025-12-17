@@ -206,6 +206,8 @@ class _MobileHomePageState extends State<MobileHomePage>
     if (uid == null) return;
     if (!_managerEnabled) return;
 
+    final devId = _deviceId ?? await DeviceId.get();
+
     // Ensure own coin is mining when enabled
     if (_managerUserCoinAuto) {
       final ownRef = FirebaseFirestore.instance
@@ -220,15 +222,20 @@ class _MobileHomePageState extends State<MobileHomePage>
       final ownActive =
           ownEnd != null && DateTime.now().isBefore(ownEnd.toDate());
       if (!ownActive) {
-        await CoinService.startCoinMining(uid);
+        try {
+          await CoinService.startCoinMining(uid, deviceId: devId);
+        } catch (e) {
+          debugPrint('Manager own coin start failed: $e');
+        }
       }
     }
 
     // Manage community coins when enabled and allowed
     if (!(_managerUserCoinAuto &&
         _managerGlobalEnabled &&
-        _managerMaxCommunity > 0))
+        _managerMaxCommunity > 0)) {
       return;
+    }
     final q = await FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
@@ -240,10 +247,13 @@ class _MobileHomePageState extends State<MobileHomePage>
       final data = d.data();
       final ownerId =
           (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
-      if (ownerId == uid) continue;
-      if (_managedCoinSelections.isNotEmpty &&
-          !_managedCoinSelections.contains(ownerId))
+      if (ownerId == uid) {
         continue;
+      }
+      if (_managedCoinSelections.isNotEmpty &&
+          !_managedCoinSelections.contains(ownerId)) {
+        continue;
+      }
       final end =
           data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
       final isActive = end != null && now.isBefore(end.toDate());
@@ -253,22 +263,31 @@ class _MobileHomePageState extends State<MobileHomePage>
       final data = d.data();
       final ownerId =
           (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
-      if (ownerId == uid) continue;
-      if (_managedCoinSelections.isNotEmpty &&
-          !_managedCoinSelections.contains(ownerId))
+      if (ownerId == uid) {
         continue;
+      }
+      if (_managedCoinSelections.isNotEmpty &&
+          !_managedCoinSelections.contains(ownerId)) {
+        continue;
+      }
       final end =
           data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
       final isActive = end != null && now.isBefore(end.toDate());
       if (!isActive && activeManaged < _managerMaxCommunity) {
-        await CoinService.startCoinMining(ownerId);
-        activeManaged++;
+        try {
+          await CoinService.startCoinMining(ownerId, deviceId: devId);
+          activeManaged++;
+        } catch (e) {
+          debugPrint('Manager community coin start failed: $e');
+        }
       }
     }
   }
 
   double _computeProgress() {
-    if (lastEnd == null) return 0.0;
+    if (lastEnd == null) {
+      return 0.0;
+    }
     final end = lastEnd!.toDate();
     final now = DateTime.now();
     final totalSec = (_sessionHours * 3600).toDouble();
@@ -386,15 +405,15 @@ class _MobileHomePageState extends State<MobileHomePage>
                                       });
                                       _startSimulationIfNeeded();
                                     } catch (e) {
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Start failed: $e'),
-                                          ),
-                                        );
-                                      }
+                                      if (!mounted) return;
+                                      // ignore: use_build_context_synchronously
+                                      ScaffoldMessenger.of(
+                                        context, // ignore: use_build_context_synchronously
+                                      ).showSnackBar(
+                                        SnackBar(
+                                          content: Text('Start failed: $e'),
+                                        ),
+                                      );
                                     }
                                   },
                           ),
@@ -1088,6 +1107,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
+                  // ignore: deprecated_member_use
                   color: Colors.white.withOpacity(0.05),
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -1192,7 +1212,6 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
             for (final doc in managers)
               ListTile(
                 leading: CircleAvatar(
-                  child: const Icon(Icons.auto_mode_rounded),
                   backgroundImage:
                       (doc.data()[FirestoreManagerFields.thumbnailUrl]
                                   as String?)
@@ -1203,6 +1222,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                               as String,
                         )
                       : null,
+                  child: const Icon(Icons.auto_mode_rounded),
                 ),
                 title: Text(
                   (doc.data()[FirestoreManagerFields.name] as String?) ?? '—',
@@ -1219,7 +1239,9 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                 ElevatedButton(
                   onPressed: () async {
                     await widget.onSelected(selectedId);
-                    if (mounted) Navigator.pop(context);
+                    if (!context.mounted) return;
+                    // ignore: use_build_context_synchronously
+                    Navigator.pop(context);
                   },
                   child: const Text('Confirm'),
                 ),
@@ -1227,7 +1249,9 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                 TextButton(
                   onPressed: () async {
                     await widget.onSelected(null);
-                    if (mounted) Navigator.pop(context);
+                    if (!context.mounted) return;
+                    // ignore: use_build_context_synchronously
+                    Navigator.pop(context);
                   },
                   child: const Text('None'),
                 ),
@@ -1318,8 +1342,9 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
                   setState(() {
                     if (v == true) {
                       if (selectedIds.length < max) {
-                        if (!selectedIds.contains(ownerId))
+                        if (!selectedIds.contains(ownerId)) {
                           selectedIds.add(ownerId);
+                        }
                       }
                     } else {
                       selectedIds.remove(ownerId);
@@ -1338,7 +1363,9 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
                 ElevatedButton(
                   onPressed: () async {
                     await widget.onSelected(selectedIds);
-                    if (mounted) Navigator.pop(context);
+                    if (!context.mounted) return;
+                    // ignore: use_build_context_synchronously
+                    Navigator.pop(context);
                   },
                   child: const Text('Confirm'),
                 ),
@@ -1346,7 +1373,9 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
                 TextButton(
                   onPressed: () async {
                     await widget.onSelected(const []);
-                    if (mounted) Navigator.pop(context);
+                    if (!mounted) return;
+                    // ignore: use_build_context_synchronously
+                    Navigator.pop(context);
                   },
                   child: const Text('Clear'),
                 ),

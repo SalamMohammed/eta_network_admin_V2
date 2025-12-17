@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../shared/firestore_constants.dart';
+import '../shared/constants.dart';
 import 'rank_engine.dart';
 
 class EarningsEngine {
@@ -117,7 +118,7 @@ class EarningsEngine {
     final bool enforceSingleDevice =
         (cfg[FirestoreAppConfigFields.deviceSingleUserEnforced] as bool?) ??
         false;
-    if (enforceSingleDevice) {
+    if (!kIsDev && enforceSingleDevice) {
       final String dev = deviceId ?? '';
       if (dev.isNotEmpty) {
         final qs = await FirebaseFirestore.instance

@@ -4,7 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:typed_data';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import '../shared/constants.dart';
 
 class CoinService {
   static Future<DocumentSnapshot<Map<String, dynamic>>> getUserCoin(
@@ -41,8 +42,8 @@ class CoinService {
     String? thumbnailContentType,
   }) async {
     try {
-      print(
-        '[CoinService] Upload start | uid=$uid | bytes=${thumbnailBytes?.length ?? 0} | ct=${thumbnailContentType} | web=${kIsWeb} | apps=${Firebase.apps.length}',
+      debugPrint(
+        '[CoinService] Upload start | uid=$uid | bytes=${thumbnailBytes?.length ?? 0} | ct=$thumbnailContentType | web=$kIsWeb | apps=${Firebase.apps.length}',
       );
       if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
         final r = FirebaseStorage.instance.ref().child(
@@ -54,21 +55,23 @@ class CoinService {
         );
         final u = await r.getDownloadURL();
         coin[FirestoreUserCoinFields.imageUrl] = u;
-        print('[CoinService] Upload success | url=$u');
+        debugPrint('[CoinService] Upload success | url=$u');
       } else {
-        print('[CoinService] No thumbnail bytes provided, skipping upload');
+        debugPrint(
+          '[CoinService] No thumbnail bytes provided, skipping upload',
+        );
       }
     } catch (e) {
-      print('[CoinService] Upload failed | error=$e');
+      debugPrint('[CoinService] Upload failed | error=$e');
     }
     final ref = FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
         .doc(uid);
     try {
       await ref.set(coin, SetOptions(merge: merge));
-      print('[CoinService] Firestore set success | merge=$merge');
+      debugPrint('[CoinService] Firestore set success | merge=$merge');
     } catch (e) {
-      print('[CoinService] Firestore set failed | error=$e');
+      debugPrint('[CoinService] Firestore set failed | error=$e');
       rethrow;
     }
   }
@@ -131,16 +134,37 @@ class CoinService {
   }
 
   static Future<Map<String, dynamic>> startCoinMining(
-    String coinOwnerId,
-  ) async {
+    String coinOwnerId, {
+    String? deviceId,
+  }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
-    final now = DateTime.now();
+
     final general = await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.general)
         .get();
     final g = general.data() ?? {};
+
+    final bool enforceSingleDevice =
+        (g[FirestoreAppConfigFields.deviceSingleUserEnforced] as bool?) ??
+        false;
+
+    if (!kIsDev && enforceSingleDevice) {
+      final String dev = deviceId ?? '';
+      if (dev.isNotEmpty) {
+        final qs = await FirebaseFirestore.instance
+            .collection(FirestoreConstants.users)
+            .where(FirestoreUserFields.deviceId, isEqualTo: dev)
+            .limit(1)
+            .get();
+        if (qs.docs.isNotEmpty && qs.docs.first.id != uid) {
+          throw Exception('Device already bound to another account');
+        }
+      }
+    }
+
+    final now = DateTime.now();
     final int hours =
         (g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
         24;

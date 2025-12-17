@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../shared/firestore_constants.dart';
 import '../../shared/theme/colors.dart';
 import '../../services/coin_service.dart';
+import '../../shared/device_id.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
@@ -687,8 +688,20 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
           onPressed: active
               ? null
               : () async {
-                  await CoinService.startCoinMining(widget.coinOwnerId);
-                  setState(() {});
+                  try {
+                    final devId = await DeviceId.get();
+                    await CoinService.startCoinMining(
+                      widget.coinOwnerId,
+                      deviceId: devId,
+                    );
+                    if (mounted) setState(() {});
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Start failed: $e')),
+                      );
+                    }
+                  }
                 },
           child: const Text('Start Mining'),
         ),
