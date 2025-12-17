@@ -204,6 +204,7 @@ class EarningsEngine {
       FirestoreUserFields.deviceId: deviceId,
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       FirestoreUserFields.streakDays: newStreakDays,
+      FirestoreUserFields.totalSessions: FieldValue.increment(1),
     });
     // First-session referral activation: if configured, activate and award bonuses once.
     final refCfgSnap = await FirebaseFirestore.instance

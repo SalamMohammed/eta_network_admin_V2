@@ -39,6 +39,7 @@ class _AuthPageState extends State<AuthPage> {
               FirestoreUserFields.uid: cred.user!.uid,
               FirestoreUserFields.email: cred.user!.email,
               FirestoreUserFields.role: FirestoreUserRoles.free,
+              FirestoreUserFields.totalSessions: 0,
               FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
               FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));

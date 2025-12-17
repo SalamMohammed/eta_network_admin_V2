@@ -59,6 +59,7 @@ class _SignupPageState extends State<SignupPage> {
             FirestoreUserFields.lastMiningStart: null,
             FirestoreUserFields.lastMiningEnd: null,
             FirestoreUserFields.streakDays: 0,
+            FirestoreUserFields.totalSessions: 0,
             FirestoreUserFields.country: null,
             FirestoreUserFields.deviceId: null,
             FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),

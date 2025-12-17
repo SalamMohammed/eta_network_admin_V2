@@ -57,6 +57,8 @@ class ReferralEngine {
       FirestoreReferralFields.inviteeId: uid,
       FirestoreReferralFields.timestamp: FieldValue.serverTimestamp(),
       FirestoreReferralFields.isActive: true,
+      if (inviteeUsername != null)
+        FirestoreReferralFields.inviteeUsername: inviteeUsername,
     });
 
     final points = FirebaseFirestore.instance.collection(

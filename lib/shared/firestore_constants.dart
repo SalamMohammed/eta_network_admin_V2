@@ -24,6 +24,7 @@ class FirestoreUserFields {
   static const String role = 'role';
   static const String rank = 'rank';
   static const String totalPoints = 'totalPoints';
+  static const String totalSessions = 'totalSessions';
   static const String hourlyRate = 'hourlyRate';
   static const String lastMiningStart = 'lastMiningStart';
   static const String lastMiningEnd = 'lastMiningEnd';
@@ -72,6 +73,7 @@ class FirestoreReferralFields {
   static const String inviteeId = 'inviteeId';
   static const String timestamp = 'timestamp';
   static const String isActive = 'isActive';
+  static const String inviteeUsername = 'inviteeUsername';
 }
 
 class FirestoreAppConfigFields {

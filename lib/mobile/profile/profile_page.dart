@@ -26,6 +26,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? invitedBy;
   int streakDays = 0;
   int referralCount = 0;
+  int totalSessions = 0;
   bool managerEnabled = false;
   String? thumbnailUrl;
   final _referralCtrl = TextEditingController();
@@ -56,6 +57,8 @@ class _ProfilePageState extends State<ProfilePage> {
       managerEnabled =
           (d[FirestoreUserFields.managerEnabled] as bool?) ?? false;
       thumbnailUrl = (d[FirestoreUserFields.thumbnailUrl] as String?) ?? '';
+      totalSessions =
+          (d[FirestoreUserFields.totalSessions] as num?)?.toInt() ?? 0;
     });
     final countAgg = await FirebaseFirestore.instance
         .collection(FirestoreConstants.referrals)
@@ -63,6 +66,7 @@ class _ProfilePageState extends State<ProfilePage> {
         .where(FirestoreReferralFields.isActive, isEqualTo: true)
         .count()
         .get();
+
     setState(() {
       referralCount = countAgg.count ?? 0;
     });
@@ -134,14 +138,11 @@ class _ProfilePageState extends State<ProfilePage> {
             _section('Account Info', [
               _kv('Username', username.isNotEmpty ? username : '—'),
               _kv('Email', email.isNotEmpty ? email : '—'),
-              _kv('UID', uid.isNotEmpty ? uid : '—'),
-              _kv('Device ID', 'device-xyz'),
-              _kv('Timezone', 'UTC+1'),
             ]),
             _section('Performance', [
               _kv('StreakDays', '$streakDays'),
               _kv('Referral count', '$referralCount'),
-              _kv('Total mining sessions', '142'),
+              _kv('Total mining sessions', '$totalSessions'),
             ]),
             if (!referralLocked && (invitedBy == null || invitedBy!.isEmpty))
               _section('Add Referral Code', [
