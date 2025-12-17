@@ -5,12 +5,12 @@ import 'widgets/glowing_button.dart';
 import 'widgets/progress_ring.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../services/earnings_engine.dart';
 import '../shared/firestore_constants.dart';
 import '../shared/device_id.dart';
 import 'balance/my_coin_block.dart';
 import '../services/coin_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/mining_state_service.dart';
 
 class MobileHomePage extends StatefulWidget {
   const MobileHomePage({super.key});
@@ -21,195 +21,49 @@ class MobileHomePage extends StatefulWidget {
 
 class _MobileHomePageState extends State<MobileHomePage>
     with SingleTickerProviderStateMixin {
-  bool miningActive = false;
-  double progress = 0.0;
-  double hourlyRate = 0.0;
-  int streakDays = 0;
-  double totalPoints = 0.0;
-  Timestamp? lastStart;
-  Timestamp? lastEnd;
-  Timer? _simTimer;
-  double _simBase = 0.0;
-  DateTime? _simAnchor;
-  double _displayTotal = 0.0;
-  String _remaining = '';
-  int _sessionHours = 24;
-  String? _deviceId;
+  final _miningService = MiningStateService();
   late final TabController _tab = TabController(length: 2, vsync: this);
-  bool _managerEnabled = false;
-  bool _managerEtaAuto = true;
-  bool _managerUserCoinAuto = true;
-  int _managerMaxCommunity = 0;
-  bool _managerGlobalEnabled = true;
-  String? _activeManagerId;
-  List<String> _managedCoinSelections = const [];
   String _minedSort = 'popular';
   String _liveSort = 'popular';
 
   @override
   void initState() {
     super.initState();
-    _refresh();
-    _ensureDeviceId();
+    _miningService.addListener(_handleServiceUpdate);
+    _miningService.init().then((_) {
+      if (mounted) _manageCommunityCoins();
+    });
   }
 
   @override
   void dispose() {
-    _simTimer?.cancel();
+    _miningService.removeListener(_handleServiceUpdate);
+    _tab.dispose();
     super.dispose();
   }
 
-  Future<void> _ensureDeviceId() async {
-    _deviceId = await DeviceId.get();
+  void _handleServiceUpdate() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _refresh() async {
-    await EarningsEngine.syncEarnings();
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    final general = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.appConfig)
-        .doc(FirestoreAppConfigDocs.general)
-        .get();
-    final g = general.data() ?? {};
-    _sessionHours =
-        ((g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
-        24);
-    final snap = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid)
-        .get();
-    final d = snap.data() ?? {};
-    if (!mounted) return;
-    setState(() {
-      totalPoints =
-          (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
-      hourlyRate =
-          (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
-      streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
-      lastStart = d[FirestoreUserFields.lastMiningStart] as Timestamp?;
-      lastEnd = d[FirestoreUserFields.lastMiningEnd] as Timestamp?;
-      miningActive =
-          lastEnd != null && DateTime.now().isBefore(lastEnd!.toDate());
-      progress = _computeProgress();
-      _displayTotal = totalPoints;
-      _managerEnabled =
-          (d[FirestoreUserFields.managerEnabled] as bool?) ?? false;
-      _managedCoinSelections =
-          ((d[FirestoreUserFields.managedCoinSelections] as List?)
-              ?.cast<String>()) ??
-          const [];
-    });
-    final activeId = (d[FirestoreUserFields.activeManagerId] as String?) ?? '';
-    if (activeId.isNotEmpty) {
-      final mgr = await FirebaseFirestore.instance
-          .collection(FirestoreConstants.managers)
-          .doc(activeId)
-          .get();
-      final m = mgr.data() ?? {};
-      _managerGlobalEnabled =
-          (m[FirestoreManagerFields.globalCommunity] as bool?) ?? true;
-      _managerEtaAuto =
-          (m[FirestoreManagerFields.enableEtaAuto] as bool?) ?? true;
-      _managerUserCoinAuto =
-          (m[FirestoreManagerFields.enableUserCoinAuto] as bool?) ?? true;
-      _managerMaxCommunity =
-          (m[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
-              ?.toInt() ??
-          0;
-      _activeManagerId = activeId;
-    } else {
-      _managerGlobalEnabled = false;
-      _managerEtaAuto = false;
-      _managerUserCoinAuto = false;
-      _managerMaxCommunity = 0;
-      _activeManagerId = null;
+    await _miningService.refresh();
+    if (mounted) {
+      await _manageCommunityCoins();
     }
-    if (_managerEnabled &&
-        _managerGlobalEnabled &&
-        _managerEtaAuto &&
-        !miningActive) {
-      final devId = _deviceId ?? await DeviceId.get();
-      final res = await EarningsEngine.startMining(deviceId: devId);
-      if (!mounted) return;
-      setState(() {
-        hourlyRate =
-            (res[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
-            hourlyRate;
-        lastStart = res[FirestoreUserFields.lastMiningStart] as Timestamp?;
-        lastEnd = res[FirestoreUserFields.lastMiningEnd] as Timestamp?;
-        miningActive =
-            lastEnd != null && DateTime.now().isBefore(lastEnd!.toDate());
-        progress = _computeProgress();
-        _displayTotal = totalPoints;
-      });
-    }
-    _updateRemaining();
-    _startSimulationIfNeeded();
-    await _manageCommunityCoins();
-  }
-
-  void _startSimulationIfNeeded() {
-    _simTimer?.cancel();
-    if (!miningActive || lastEnd == null) {
-      if (!mounted) return;
-      setState(() {
-        _displayTotal = totalPoints;
-      });
-      return;
-    }
-    _simBase = totalPoints;
-    _simAnchor = DateTime.now();
-    final end = lastEnd!.toDate();
-    _simTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
-      if (!mounted) {
-        _simTimer?.cancel();
-        return;
-      }
-      final anchor = _simAnchor!;
-      final now = DateTime.now();
-      if (!now.isBefore(end)) {
-        _simTimer?.cancel();
-        if (mounted) {
-          setState(() {
-            _displayTotal = _simBase;
-            miningActive = false;
-            progress = _computeProgress();
-            _updateRemaining();
-          });
-        }
-        EarningsEngine.syncEarnings().then((_) async {
-          if (!mounted) return;
-          if (_managerEnabled && _managerGlobalEnabled && _managerEtaAuto) {
-            final devId = _deviceId ?? await DeviceId.get();
-            await EarningsEngine.startMining(deviceId: devId);
-          }
-          await _refresh();
-        });
-        return;
-      }
-      final elapsedSec = now.difference(anchor).inMilliseconds / 1000.0;
-      final remainingSec = end.difference(anchor).inSeconds.toDouble();
-      final incPerSec = hourlyRate > 0.0 ? (hourlyRate / 3600.0) : 0.0;
-      final inc = (elapsedSec * incPerSec).clamp(0.0, remainingSec * incPerSec);
-      if (!mounted) return;
-      setState(() {
-        _displayTotal = _simBase + inc;
-        progress = _computeProgress();
-        _updateRemaining();
-      });
-    });
   }
 
   Future<void> _manageCommunityCoins() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    if (!_managerEnabled) return;
+    if (!_miningService.managerEnabled) return;
 
-    final devId = _deviceId ?? await DeviceId.get();
+    final devId = await DeviceId.get();
 
     // Ensure own coin is mining when enabled
-    if (_managerUserCoinAuto) {
+    if (_miningService.managerUserCoinAuto) {
       final ownRef = FirebaseFirestore.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
@@ -231,9 +85,9 @@ class _MobileHomePageState extends State<MobileHomePage>
     }
 
     // Manage community coins when enabled and allowed
-    if (!(_managerUserCoinAuto &&
-        _managerGlobalEnabled &&
-        _managerMaxCommunity > 0)) {
+    if (!(_miningService.managerUserCoinAuto &&
+        _miningService.managerGlobalEnabled &&
+        _miningService.managerMaxCommunity > 0)) {
       return;
     }
     final q = await FirebaseFirestore.instance
@@ -250,8 +104,8 @@ class _MobileHomePageState extends State<MobileHomePage>
       if (ownerId == uid) {
         continue;
       }
-      if (_managedCoinSelections.isNotEmpty &&
-          !_managedCoinSelections.contains(ownerId)) {
+      if (_miningService.managedCoinSelections.isNotEmpty &&
+          !_miningService.managedCoinSelections.contains(ownerId)) {
         continue;
       }
       final end =
@@ -266,14 +120,14 @@ class _MobileHomePageState extends State<MobileHomePage>
       if (ownerId == uid) {
         continue;
       }
-      if (_managedCoinSelections.isNotEmpty &&
-          !_managedCoinSelections.contains(ownerId)) {
+      if (_miningService.managedCoinSelections.isNotEmpty &&
+          !_miningService.managedCoinSelections.contains(ownerId)) {
         continue;
       }
       final end =
           data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
       final isActive = end != null && now.isBefore(end.toDate());
-      if (!isActive && activeManaged < _managerMaxCommunity) {
+      if (!isActive && activeManaged < _miningService.managerMaxCommunity) {
         try {
           await CoinService.startCoinMining(ownerId, deviceId: devId);
           activeManaged++;
@@ -285,12 +139,12 @@ class _MobileHomePageState extends State<MobileHomePage>
   }
 
   double _computeProgress() {
-    if (lastEnd == null) {
+    if (_miningService.lastEnd == null) {
       return 0.0;
     }
-    final end = lastEnd!.toDate();
+    final end = _miningService.lastEnd!.toDate();
     final now = DateTime.now();
-    final totalSec = (_sessionHours * 3600).toDouble();
+    final totalSec = (_miningService.sessionHours * 3600).toDouble();
     final remainingSec = end.difference(now).inSeconds.toDouble();
     final doneSec = (totalSec - remainingSec).clamp(0.0, totalSec);
     final p = totalSec > 0 ? (doneSec / totalSec) : 0.0;
@@ -301,6 +155,24 @@ class _MobileHomePageState extends State<MobileHomePage>
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final double ringHeight = (size.height * 0.28).clamp(140.0, 220.0);
+
+    final progress = _computeProgress();
+    final miningActive = _miningService.miningActive;
+    final hourlyRate = _miningService.hourlyRate;
+    final displayTotal = _miningService.displayTotal;
+    final streakDays = _miningService.streakDays;
+
+    String remainingText = '';
+    if (miningActive && _miningService.lastEnd != null) {
+      final end = _miningService.lastEnd!.toDate();
+      final now = DateTime.now();
+      Duration rem = end.difference(now);
+      if (rem.isNegative) rem = Duration.zero;
+      final h = rem.inHours;
+      final m = rem.inMinutes % 60;
+      remainingText = '${h}h ${m}m remaining';
+    }
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -333,7 +205,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                         children: [
                           const SizedBox(height: 8),
                           Text(
-                            _displayTotal.toStringAsFixed(3),
+                            displayTotal.toStringAsFixed(3),
                             style: const TextStyle(
                               fontSize: 36,
                               fontWeight: FontWeight.w800,
@@ -360,8 +232,8 @@ class _MobileHomePageState extends State<MobileHomePage>
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    _remaining.isNotEmpty
-                                        ? _remaining
+                                    remainingText.isNotEmpty
+                                        ? remainingText
                                         : (miningActive ? '—' : 'Tap to start'),
                                   ),
                                 ],
@@ -375,35 +247,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                                 ? null
                                 : () async {
                                     try {
-                                      final devId =
-                                          _deviceId ?? await DeviceId.get();
-                                      final res =
-                                          await EarningsEngine.startMining(
-                                            deviceId: devId,
-                                          );
-                                      setState(() {
-                                        hourlyRate =
-                                            (res[FirestoreUserFields.hourlyRate]
-                                                    as num?)
-                                                ?.toDouble() ??
-                                            hourlyRate;
-                                        lastStart =
-                                            res[FirestoreUserFields
-                                                    .lastMiningStart]
-                                                as Timestamp?;
-                                        lastEnd =
-                                            res[FirestoreUserFields
-                                                    .lastMiningEnd]
-                                                as Timestamp?;
-                                        miningActive =
-                                            lastEnd != null &&
-                                            DateTime.now().isBefore(
-                                              lastEnd!.toDate(),
-                                            );
-                                        progress = _computeProgress();
-                                        _displayTotal = totalPoints;
-                                      });
-                                      _startSimulationIfNeeded();
+                                      await _miningService.startMining();
                                     } catch (e) {
                                       if (!mounted) return;
                                       // ignore: use_build_context_synchronously
@@ -476,7 +320,7 @@ class _MobileHomePageState extends State<MobileHomePage>
       context: context,
       builder: (ctx) {
         return _ManagerSelectDialog(
-          currentId: _activeManagerId,
+          currentId: _miningService.activeManagerId,
           onSelected: (id) async {
             await FirebaseFirestore.instance
                 .collection(FirestoreConstants.users)
@@ -527,8 +371,8 @@ class _MobileHomePageState extends State<MobileHomePage>
       context: context,
       builder: (ctx) {
         return _CoinSelectDialog(
-          current: _managedCoinSelections,
-          maxCount: _managerMaxCommunity,
+          current: _miningService.managedCoinSelections,
+          maxCount: _miningService.managerMaxCommunity,
           onSelected: (ids) async {
             await FirebaseFirestore.instance
                 .collection(FirestoreConstants.users)
@@ -544,19 +388,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     );
   }
 
-  void _updateRemaining() {
-    if (!miningActive || lastEnd == null) {
-      _remaining = '';
-      return;
-    }
-    final end = lastEnd!.toDate();
-    final now = DateTime.now();
-    Duration rem = end.difference(now);
-    if (rem.isNegative) rem = Duration.zero;
-    final h = rem.inHours;
-    final m = rem.inMinutes % 60;
-    _remaining = '${h}h ${m}m remaining';
-  }
+  // _updateRemaining is removed as it is now inline in build
 
   Widget _minedCoinsTab() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -581,7 +413,6 @@ class _MobileHomePageState extends State<MobileHomePage>
                     value: 'name_za',
                     child: Text('Names Z–A'),
                   ),
-                  const PopupMenuItem(value: 'random', child: Text('Random')),
                   const PopupMenuItem(
                     value: 'old_new',
                     child: Text('Old → New'),
@@ -824,9 +655,6 @@ class _MobileHomePageState extends State<MobileHomePage>
           final vb = tb?.millisecondsSinceEpoch ?? 0;
           return vb.compareTo(va);
         });
-        break;
-      case 'random':
-        l.shuffle();
         break;
       case 'popular':
       default:

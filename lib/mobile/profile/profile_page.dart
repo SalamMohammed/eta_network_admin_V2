@@ -7,6 +7,7 @@ import '../../auth/auth_gate.dart';
 import '../../shared/firestore_constants.dart';
 import '../../services/referral_engine.dart';
 import '../../services/earnings_engine.dart';
+import '../../services/mining_state_service.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
@@ -221,6 +222,7 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             ElevatedButton(
               onPressed: () async {
+                MiningStateService().reset();
                 await FirebaseAuth.instance.signOut();
                 if (context.mounted) {
                   Navigator.pushAndRemoveUntil(
@@ -347,6 +349,7 @@ class _ProfilePageState extends State<ProfilePage> {
       }
 
       // Final sign-out and redirect
+      MiningStateService().reset();
       await FirebaseAuth.instance.signOut();
       if (mounted) {
         Navigator.pushAndRemoveUntil(

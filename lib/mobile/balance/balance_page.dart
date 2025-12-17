@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../shared/theme/colors.dart';
-import '../../shared/firestore_constants.dart';
+import '../../services/mining_state_service.dart';
 import 'my_coin_block.dart';
 
 class BalancePage extends StatefulWidget {
@@ -15,7 +14,29 @@ class BalancePage extends StatefulWidget {
 class _BalancePageState extends State<BalancePage>
     with SingleTickerProviderStateMixin {
   late final TabController _tab = TabController(length: 2, vsync: this);
+  final _miningService = MiningStateService();
   String filter = 'All';
+
+  @override
+  void initState() {
+    super.initState();
+    _miningService.addListener(_handleServiceUpdate);
+    // Ensure service is initialized if we came straight here
+    _miningService.init();
+  }
+
+  @override
+  void dispose() {
+    _miningService.removeListener(_handleServiceUpdate);
+    _tab.dispose();
+    super.dispose();
+  }
+
+  void _handleServiceUpdate() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -36,38 +57,28 @@ class _BalancePageState extends State<BalancePage>
               if (uid == null) {
                 return const SizedBox.shrink();
               }
-              return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                stream: FirebaseFirestore.instance
-                    .collection(FirestoreConstants.users)
-                    .doc(uid)
-                    .snapshots(),
-                builder: (context, snap) {
-                  final d = snap.data?.data() ?? {};
-                  final total =
-                      (d[FirestoreUserFields.totalPoints] as num?)
-                          ?.toDouble() ??
-                      0.0;
-                  return Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryBackground,
-                      borderRadius: BorderRadius.circular(16),
+
+              final total = _miningService.displayTotal;
+
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryBackground,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Column(
+                  children: [
+                    Text(
+                      total.toStringAsFixed(3),
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
-                    child: Column(
-                      children: [
-                        Text(
-                          total.toStringAsFixed(3),
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text('ETA total'),
-                      ],
-                    ),
-                  );
-                },
+                    const SizedBox(height: 4),
+                    const Text('ETA total'),
+                  ],
+                ),
               );
             },
           ),
