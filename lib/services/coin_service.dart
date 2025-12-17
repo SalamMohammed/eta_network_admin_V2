@@ -112,6 +112,22 @@ class CoinService {
               ?.toDouble() ??
           0.0,
     }, SetOptions(merge: true));
+    if (!existing.exists) {
+      await FirebaseFirestore.instance
+          .collection(FirestoreConstants.userCoins)
+          .doc(coinOwnerId)
+          .update({
+            FirestoreUserCoinFields.minersCount: FieldValue.increment(1),
+          })
+          .catchError((_) async {
+            await FirebaseFirestore.instance
+                .collection(FirestoreConstants.userCoins)
+                .doc(coinOwnerId)
+                .set({
+                  FirestoreUserCoinFields.minersCount: FieldValue.increment(1),
+                }, SetOptions(merge: true));
+          });
+    }
   }
 
   static Future<Map<String, dynamic>> startCoinMining(

@@ -148,6 +148,7 @@ class FirestoreUserCoinFields {
   static const String createdAt = 'createdAt';
   static const String updatedAt = 'updatedAt';
   static const String isActive = 'isActive';
+  static const String minersCount = 'minersCount';
 }
 
 class FirestoreUserCoinMiningFields {

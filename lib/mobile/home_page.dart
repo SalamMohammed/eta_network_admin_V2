@@ -43,6 +43,8 @@ class _MobileHomePageState extends State<MobileHomePage>
   bool _managerGlobalEnabled = true;
   String? _activeManagerId;
   List<String> _managedCoinSelections = const [];
+  String _minedSort = 'popular';
+  String _liveSort = 'popular';
 
   @override
   void initState() {
@@ -353,34 +355,47 @@ class _MobileHomePageState extends State<MobileHomePage>
                             onPressed: miningActive
                                 ? null
                                 : () async {
-                                    final devId =
-                                        _deviceId ?? await DeviceId.get();
-                                    final res =
-                                        await EarningsEngine.startMining(
-                                          deviceId: devId,
-                                        );
-                                    setState(() {
-                                      hourlyRate =
-                                          (res[FirestoreUserFields.hourlyRate]
-                                                  as num?)
-                                              ?.toDouble() ??
-                                          hourlyRate;
-                                      lastStart =
-                                          res[FirestoreUserFields
-                                                  .lastMiningStart]
-                                              as Timestamp?;
-                                      lastEnd =
-                                          res[FirestoreUserFields.lastMiningEnd]
-                                              as Timestamp?;
-                                      miningActive =
-                                          lastEnd != null &&
-                                          DateTime.now().isBefore(
-                                            lastEnd!.toDate(),
+                                    try {
+                                      final devId =
+                                          _deviceId ?? await DeviceId.get();
+                                      final res =
+                                          await EarningsEngine.startMining(
+                                            deviceId: devId,
                                           );
-                                      progress = _computeProgress();
-                                      _displayTotal = totalPoints;
-                                    });
-                                    _startSimulationIfNeeded();
+                                      setState(() {
+                                        hourlyRate =
+                                            (res[FirestoreUserFields.hourlyRate]
+                                                    as num?)
+                                                ?.toDouble() ??
+                                            hourlyRate;
+                                        lastStart =
+                                            res[FirestoreUserFields
+                                                    .lastMiningStart]
+                                                as Timestamp?;
+                                        lastEnd =
+                                            res[FirestoreUserFields
+                                                    .lastMiningEnd]
+                                                as Timestamp?;
+                                        miningActive =
+                                            lastEnd != null &&
+                                            DateTime.now().isBefore(
+                                              lastEnd!.toDate(),
+                                            );
+                                        progress = _computeProgress();
+                                        _displayTotal = totalPoints;
+                                      });
+                                      _startSimulationIfNeeded();
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Start failed: $e'),
+                                          ),
+                                        );
+                                      }
+                                    }
                                   },
                           ),
                         ],
@@ -532,7 +547,35 @@ class _MobileHomePageState extends State<MobileHomePage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Mined Coins'),
+          Row(
+            children: [
+              const Expanded(child: Text('Mined Coins')),
+              PopupMenuButton<String>(
+                onSelected: (v) => setState(() => _minedSort = v),
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'popular', child: Text('Popular')),
+                  const PopupMenuItem(
+                    value: 'name_az',
+                    child: Text('Names A–Z'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'name_za',
+                    child: Text('Names Z–A'),
+                  ),
+                  const PopupMenuItem(value: 'random', child: Text('Random')),
+                  const PopupMenuItem(
+                    value: 'old_new',
+                    child: Text('Old → New'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'new_old',
+                    child: Text('New → Old'),
+                  ),
+                ],
+                child: const Icon(Icons.filter_list),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -554,6 +597,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                       )
                       .toList();
                 }
+                docs = _sortMinedDocs(docs);
                 if (docs.isEmpty) {
                   return const Center(
                     child: Text('No coins yet. Add from Live Coins.'),
@@ -576,7 +620,35 @@ class _MobileHomePageState extends State<MobileHomePage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Live Coins'),
+          Row(
+            children: [
+              const Expanded(child: Text('Live Coins')),
+              PopupMenuButton<String>(
+                onSelected: (v) => setState(() => _liveSort = v),
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'popular', child: Text('Popular')),
+                  const PopupMenuItem(
+                    value: 'name_az',
+                    child: Text('Names A–Z'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'name_za',
+                    child: Text('Names Z–A'),
+                  ),
+                  const PopupMenuItem(value: 'random', child: Text('Random')),
+                  const PopupMenuItem(
+                    value: 'old_new',
+                    child: Text('Old → New'),
+                  ),
+                  const PopupMenuItem(
+                    value: 'new_old',
+                    child: Text('New → Old'),
+                  ),
+                ],
+                child: const Icon(Icons.filter_list),
+              ),
+            ],
+          ),
           const SizedBox(height: 8),
           Expanded(
             child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -587,7 +659,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                   .snapshots(),
               builder: (context, snap) {
                 final uid = FirebaseAuth.instance.currentUser?.uid;
-                final docs = (snap.data?.docs ?? const [])
+                var docs = (snap.data?.docs ?? const [])
                     .where(
                       (doc) =>
                           (doc.data()[FirestoreUserCoinFields.ownerId]
@@ -595,6 +667,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                           uid,
                     )
                     .toList();
+                docs = _sortLiveDocs(docs);
                 if (docs.isEmpty) {
                   return const Center(child: Text('No live community coins'));
                 }
@@ -607,6 +680,166 @@ class _MobileHomePageState extends State<MobileHomePage>
         ],
       ),
     );
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _sortMinedDocs(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final l = [...docs];
+    int cmp(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
+    switch (_minedSort) {
+      case 'name_az':
+        l.sort(
+          (a, b) => cmp(
+            (a.data()[FirestoreUserCoinMiningFields.name] as String?) ?? '',
+            (b.data()[FirestoreUserCoinMiningFields.name] as String?) ?? '',
+          ),
+        );
+        break;
+      case 'name_za':
+        l.sort(
+          (a, b) => cmp(
+            (b.data()[FirestoreUserCoinMiningFields.name] as String?) ?? '',
+            (a.data()[FirestoreUserCoinMiningFields.name] as String?) ?? '',
+          ),
+        );
+        break;
+      case 'old_new':
+        l.sort((a, b) {
+          final ta =
+              (a.data()[FirestoreUserCoinMiningFields.lastMiningStart]
+                  as Timestamp?) ??
+              (a.data()[FirestoreUserCoinMiningFields.lastSyncedAt]
+                  as Timestamp?);
+          final tb =
+              (b.data()[FirestoreUserCoinMiningFields.lastMiningStart]
+                  as Timestamp?) ??
+              (b.data()[FirestoreUserCoinMiningFields.lastSyncedAt]
+                  as Timestamp?);
+          final va = ta?.millisecondsSinceEpoch ?? 0;
+          final vb = tb?.millisecondsSinceEpoch ?? 0;
+          return va.compareTo(vb);
+        });
+        break;
+      case 'new_old':
+        l.sort((a, b) {
+          final ta =
+              (a.data()[FirestoreUserCoinMiningFields.lastMiningStart]
+                  as Timestamp?) ??
+              (a.data()[FirestoreUserCoinMiningFields.lastSyncedAt]
+                  as Timestamp?);
+          final tb =
+              (b.data()[FirestoreUserCoinMiningFields.lastMiningStart]
+                  as Timestamp?) ??
+              (b.data()[FirestoreUserCoinMiningFields.lastSyncedAt]
+                  as Timestamp?);
+          final va = ta?.millisecondsSinceEpoch ?? 0;
+          final vb = tb?.millisecondsSinceEpoch ?? 0;
+          return vb.compareTo(va);
+        });
+        break;
+      case 'random':
+        l.shuffle();
+        break;
+      case 'popular':
+      default:
+        l.sort((a, b) {
+          final pa =
+              (a.data()[FirestoreUserCoinMiningFields.totalPoints] as num?)
+                  ?.toDouble() ??
+              0.0;
+          final pb =
+              (b.data()[FirestoreUserCoinMiningFields.totalPoints] as num?)
+                  ?.toDouble() ??
+              0.0;
+          return pb.compareTo(pa);
+        });
+    }
+    return l;
+  }
+
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> _sortLiveDocs(
+    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  ) {
+    final l = [...docs];
+    int cmp(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
+    switch (_liveSort) {
+      case 'name_az':
+        l.sort(
+          (a, b) => cmp(
+            (a.data()[FirestoreUserCoinFields.name] as String?) ?? '',
+            (b.data()[FirestoreUserCoinFields.name] as String?) ?? '',
+          ),
+        );
+        break;
+      case 'name_za':
+        l.sort(
+          (a, b) => cmp(
+            (b.data()[FirestoreUserCoinFields.name] as String?) ?? '',
+            (a.data()[FirestoreUserCoinFields.name] as String?) ?? '',
+          ),
+        );
+        break;
+      case 'old_new':
+        l.sort((a, b) {
+          final ta =
+              (a.data()[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
+              (a.data()[FirestoreUserCoinFields.updatedAt] as Timestamp?);
+          final tb =
+              (b.data()[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
+              (b.data()[FirestoreUserCoinFields.updatedAt] as Timestamp?);
+          final va = ta?.millisecondsSinceEpoch ?? 0;
+          final vb = tb?.millisecondsSinceEpoch ?? 0;
+          return va.compareTo(vb);
+        });
+        break;
+      case 'new_old':
+        l.sort((a, b) {
+          final ta =
+              (a.data()[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
+              (a.data()[FirestoreUserCoinFields.updatedAt] as Timestamp?);
+          final tb =
+              (b.data()[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
+              (b.data()[FirestoreUserCoinFields.updatedAt] as Timestamp?);
+          final va = ta?.millisecondsSinceEpoch ?? 0;
+          final vb = tb?.millisecondsSinceEpoch ?? 0;
+          return vb.compareTo(va);
+        });
+        break;
+      case 'random':
+        l.shuffle();
+        break;
+      case 'popular':
+      default:
+        l.sort((a, b) {
+          final ma =
+              (a.data()[FirestoreUserCoinFields.minersCount] as num?)
+                  ?.toInt() ??
+              0;
+          final mb =
+              (b.data()[FirestoreUserCoinFields.minersCount] as num?)
+                  ?.toInt() ??
+              0;
+          if (mb != ma) return mb.compareTo(ma);
+          final la =
+              ((a.data()[FirestoreUserCoinFields.socialLinks] as List?) ?? [])
+                  .length;
+          final lb =
+              ((b.data()[FirestoreUserCoinFields.socialLinks] as List?) ?? [])
+                  .length;
+          if (lb != la) return lb.compareTo(la);
+          final ra =
+              (a.data()[FirestoreUserCoinFields.baseRatePerHour] as num?)
+                  ?.toDouble() ??
+              0.0;
+          final rb =
+              (b.data()[FirestoreUserCoinFields.baseRatePerHour] as num?)
+                  ?.toDouble() ??
+              0.0;
+          return rb.compareTo(ra);
+        });
+    }
+    return l;
   }
 
   Widget _liveCoinCard(Map<String, dynamic> data) {
