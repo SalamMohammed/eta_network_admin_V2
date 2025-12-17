@@ -616,6 +616,9 @@ class _MobileHomePageState extends State<MobileHomePage>
     final rate =
         (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
         0.0;
+    final links =
+        (data[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ??
+        const [];
     return GestureDetector(
       onTap: () => _showCoinDetailsDialog(context, data),
       child: Container(
@@ -646,10 +649,28 @@ class _MobileHomePageState extends State<MobileHomePage>
                   : null,
             ),
             Expanded(
-              child: Text(
-                '$name • ${rate.toStringAsFixed(3)}/h',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      '$name • ${rate.toStringAsFixed(3)}/h',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (links.isNotEmpty)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final l in links)
+                          _LinkButton(
+                            type: (l['type'] as String?) ?? 'other',
+                            url: (l['url'] as String?) ?? '',
+                          ),
+                      ],
+                    ),
+                ],
               ),
             ),
             IconButton(
@@ -738,7 +759,7 @@ class _MobileHomePageState extends State<MobileHomePage>
               ],
             ),
             const SizedBox(height: 8),
-            CoinMiningControls(coinOwnerId: ownerId),
+            CoinMiningControls(coinOwnerId: ownerId, miningData: data),
           ],
         ),
       ),

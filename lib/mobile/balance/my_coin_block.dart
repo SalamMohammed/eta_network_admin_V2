@@ -581,7 +581,12 @@ class _LinkRow {
 
 class CoinMiningControls extends StatefulWidget {
   final String coinOwnerId;
-  const CoinMiningControls({super.key, required this.coinOwnerId});
+  final Map<String, dynamic>? miningData;
+  const CoinMiningControls({
+    super.key,
+    required this.coinOwnerId,
+    this.miningData,
+  });
   @override
   State<CoinMiningControls> createState() => _CoinMiningControlsState();
 }
@@ -603,6 +608,11 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.miningData != null) {
+      _processData(widget.miningData!);
+      return _buildUI();
+    }
+
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || widget.coinOwnerId.isEmpty) {
       return const SizedBox.shrink();
@@ -616,58 +626,73 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
       stream: ref.snapshots(),
       builder: (context, snap) {
         final d = snap.data?.data();
-        final total =
-            (d?[FirestoreUserCoinMiningFields.totalPoints] as num?)
-                ?.toDouble() ??
-            0.0;
-        final end =
-            d?[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
-        final rate =
-            (d?[FirestoreUserCoinMiningFields.hourlyRate] as num?)
-                ?.toDouble() ??
-            0.0;
-        final synced =
-            d?[FirestoreUserCoinMiningFields.lastSyncedAt] as Timestamp?;
-        final start =
-            d?[FirestoreUserCoinMiningFields.lastMiningStart] as Timestamp?;
-        final active = end != null && DateTime.now().isBefore(end.toDate());
-        _rate = rate;
-        _end = end;
-        _start = synced ?? start;
-        _totalBase = total;
-        if (active) {
-          if (_timer == null) {
-            _startTimer(base: total);
-          }
-        } else {
-          _timer?.cancel();
-          _display = total;
-          _timer = null;
+        if (d != null) {
+          _processData(d);
         }
-        final remaining = _formatRemaining(end);
-        return Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Mined: ${_display.toStringAsFixed(3)}'),
-                  Text(active ? 'Active • $remaining' : 'Inactive'),
-                ],
-              ),
-            ),
-            ElevatedButton(
-              onPressed: active
-                  ? null
-                  : () async {
-                      await CoinService.startCoinMining(widget.coinOwnerId);
-                      setState(() {});
-                    },
-              child: const Text('Start Mining'),
-            ),
-          ],
-        );
+        return _buildUI();
       },
+    );
+  }
+
+  void _processData(Map<String, dynamic> d) {
+    final total =
+        (d[FirestoreUserCoinMiningFields.totalPoints] as num?)?.toDouble() ??
+        0.0;
+    final end = d[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
+    final rate =
+        (d[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
+        0.0;
+    final synced = d[FirestoreUserCoinMiningFields.lastSyncedAt] as Timestamp?;
+    final start =
+        d[FirestoreUserCoinMiningFields.lastMiningStart] as Timestamp?;
+    final active = end != null && DateTime.now().isBefore(end.toDate());
+    _rate = rate;
+    _end = end;
+    _start = synced ?? start;
+    _totalBase = total;
+
+    // Only update timer state if needed to avoid build side-effects issues
+    if (active) {
+      if (_timer == null) {
+        _startTimer(base: total);
+      }
+    } else {
+      if (_timer != null) {
+        _timer?.cancel();
+        _timer = null;
+        // Update display to final total when stopping
+        _display = total;
+      } else {
+        // If no timer and inactive, ensure display is correct
+        _display = total;
+      }
+    }
+  }
+
+  Widget _buildUI() {
+    final active = _timer != null; // or use _end check
+    final remaining = _formatRemaining(_end);
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Mined: ${_display.toStringAsFixed(3)}'),
+              Text(active ? 'Active • $remaining' : 'Inactive'),
+            ],
+          ),
+        ),
+        ElevatedButton(
+          onPressed: active
+              ? null
+              : () async {
+                  await CoinService.startCoinMining(widget.coinOwnerId);
+                  setState(() {});
+                },
+          child: const Text('Start Mining'),
+        ),
+      ],
     );
   }
 
@@ -681,8 +706,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
       final now = DateTime.now();
       if (!now.isBefore(end)) {
         _timer?.cancel();
+        _timer = null; // Ensure null is set
         await CoinService.syncCoinEarnings(widget.coinOwnerId);
-        setState(() {});
+        if (mounted) setState(() {});
         return;
       }
       final elapsedSec = now.difference(start).inSeconds.toDouble();
@@ -692,11 +718,11 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
         totalSessionSec * (_rate / 3600.0),
       );
       _display = _totalBase + inc;
-      if (_lastSync == null || now.difference(_lastSync!).inSeconds >= 30) {
+      if (_lastSync == null || now.difference(_lastSync!).inSeconds >= 60) {
         _lastSync = now;
         await CoinService.syncCoinEarnings(widget.coinOwnerId);
       }
-      setState(() {});
+      if (mounted) setState(() {});
     });
   }
 
