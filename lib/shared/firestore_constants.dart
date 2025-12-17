@@ -99,6 +99,16 @@ class FirestoreAppConfigDocs {
   static const String ranks = 'ranks';
   static const String userCoin = 'user_coin';
   static const String manager = 'manager';
+  static const String legal = 'legal';
+}
+
+class FirestoreLegalFields {
+  static const String appName = 'appName';
+  static const String tagline = 'tagline';
+  static const String about = 'about';
+  static const String faq = 'faq';
+  static const String whitePaper = 'whitePaper';
+  static const String contactUs = 'contactUs';
 }
 
 class FirestoreReferralConfigFields {

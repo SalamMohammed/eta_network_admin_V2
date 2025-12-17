@@ -11,6 +11,7 @@ import '../../services/mining_state_service.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
+import 'legal_content_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -28,7 +29,6 @@ class _ProfilePageState extends State<ProfilePage> {
   int streakDays = 0;
   int referralCount = 0;
   int totalSessions = 0;
-  bool managerEnabled = false;
   String? thumbnailUrl;
   final _referralCtrl = TextEditingController();
 
@@ -55,8 +55,6 @@ class _ProfilePageState extends State<ProfilePage> {
       referralLocked = (d[FirestoreUserFields.referralLocked] as bool?) ?? true;
       invitedBy = d[FirestoreUserFields.invitedBy] as String?;
       streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
-      managerEnabled =
-          (d[FirestoreUserFields.managerEnabled] as bool?) ?? false;
       thumbnailUrl = (d[FirestoreUserFields.thumbnailUrl] as String?) ?? '';
       totalSessions =
           (d[FirestoreUserFields.totalSessions] as num?)?.toInt() ?? 0;
@@ -161,31 +159,26 @@ class _ProfilePageState extends State<ProfilePage> {
               _toggle('Enable notifications', true),
               _toggle('Streak reminders', true),
             ]),
-            _section('Manager', [
-              Row(
-                children: [
-                  const Expanded(child: Text('Enable Manager (auto-mining)')),
-                  Switch(
-                    value: managerEnabled,
-                    onChanged: (v) async {
-                      setState(() => managerEnabled = v);
-                      await FirebaseFirestore.instance
-                          .collection(FirestoreConstants.users)
-                          .doc(uid)
-                          .set({
-                            FirestoreUserFields.managerEnabled: v,
-                            FirestoreUserFields.updatedAt:
-                                FieldValue.serverTimestamp(),
-                          }, SetOptions(merge: true));
-                    },
-                  ),
-                ],
-              ),
-            ]),
             _section('Legal', [
-              _button(context, 'FAQ'),
-              _button(context, 'Disclaimer'),
-              _button(context, 'Terms & Privacy'),
+              _button(
+                context,
+                'FAQ',
+                () => _openLegal(context, 'FAQ', [FirestoreLegalFields.faq]),
+              ),
+              _button(
+                context,
+                'White Paper',
+                () => _openLegal(context, 'White Paper', [
+                  FirestoreLegalFields.whitePaper,
+                ]),
+              ),
+              _button(
+                context,
+                'Contact Us',
+                () => _openLegal(context, 'Contact Us', [
+                  FirestoreLegalFields.contactUs,
+                ]),
+              ),
             ]),
             const SizedBox(height: 12),
             ElevatedButton(
@@ -431,10 +424,19 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _button(BuildContext context, String label) {
+  Widget _button(BuildContext context, String label, VoidCallback onTap) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: ElevatedButton(onPressed: () {}, child: Text(label)),
+      child: ElevatedButton(onPressed: onTap, child: Text(label)),
+    );
+  }
+
+  void _openLegal(BuildContext context, String title, List<String> keys) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LegalContentPage(title: title, fieldKeys: keys),
+      ),
     );
   }
 }
