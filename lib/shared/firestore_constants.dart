@@ -38,8 +38,17 @@ class FirestoreUserFields {
   static const String managerEnabled = 'managerEnabled';
   static const String activeManagerId = 'activeManagerId';
   static const String managedCoinSelections = 'managedCoinSelections';
+  static const String subscription = 'subscription';
   static const String thumbnailUrl = 'thumbnailUrl';
   static const String fcmToken = 'fcmToken';
+}
+
+class FirestoreUserSubscriptionFields {
+  static const String status = 'status';
+  static const String planId = 'planId';
+  static const String provider = 'provider';
+  static const String expiresAt = 'expiresAt';
+  static const String autoRenew = 'autoRenew';
 }
 
 class FirestoreUserRoles {
@@ -91,6 +100,9 @@ class FirestoreAppConfigFields {
   static const String maxDescriptionLength = 'maxDescriptionLength';
   static const String allowImageUpload = 'allowImageUpload';
   static const String allowUserRateEdit = 'allowUserRateEdit';
+  static const String revenueCatApiKey = 'revenueCatApiKey';
+  static const String enableSubscriptions = 'enableSubscriptions';
+  static const String sandboxMode = 'sandboxMode';
 }
 
 class FirestoreAppConfigDocs {
@@ -145,6 +157,7 @@ class FirestoreManagerFields {
   static const String enableUserCoinAuto = 'enableUserCoinAuto';
   static const String globalCommunity = 'globalCommunity';
   static const String maxCommunityCoinsManaged = 'maxCommunityCoinsManaged';
+  static const String storeProductId = 'storeProductId';
   static const String isActive = 'isActive';
   static const String createdAt = 'createdAt';
   static const String updatedAt = 'updatedAt';

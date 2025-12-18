@@ -11,6 +11,8 @@ import 'balance/my_coin_block.dart';
 import '../services/coin_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/mining_state_service.dart';
+import '../services/subscription_service.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 
 class MobileHomePage extends StatefulWidget {
   const MobileHomePage({super.key});
@@ -1018,22 +1020,57 @@ class _ManagerSelectDialog extends StatefulWidget {
 
 class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
   List<QueryDocumentSnapshot<Map<String, dynamic>>> managers = const [];
-  String? selectedId;
+  Offerings? offerings;
+  String? currentPlanId;
+  bool loading = true;
 
   @override
   void initState() {
     super.initState();
-    selectedId = widget.currentId;
     _load();
   }
 
   Future<void> _load() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
+    // Load Managers
     final qs = await FirebaseFirestore.instance
         .collection(FirestoreConstants.managers)
         .where(FirestoreManagerFields.isActive, isEqualTo: true)
         .get();
-    managers = qs.docs;
-    setState(() {});
+
+    // Load Offerings
+    final offs = await SubscriptionService().getOfferings();
+
+    // Load Current Subscription
+    String? planId;
+    if (uid != null) {
+      final userDoc = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .get();
+      final sub =
+          userDoc.data()?[FirestoreUserFields.subscription]
+              as Map<String, dynamic>?;
+      if (sub != null &&
+          sub[FirestoreUserSubscriptionFields.status] == 'active') {
+        // Check expiry
+        final exp =
+            sub[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
+        if (exp == null || DateTime.now().isBefore(exp.toDate())) {
+          planId = sub[FirestoreUserSubscriptionFields.planId] as String?;
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        managers = qs.docs;
+        offerings = offs;
+        currentPlanId = planId;
+        loading = false;
+      });
+    }
   }
 
   @override
@@ -1041,69 +1078,120 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     return Dialog(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const Text(
-              'Select Manager',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            if (managers.isEmpty) const Text('No managers available'),
-            for (final doc in managers)
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundImage:
-                      (doc.data()[FirestoreManagerFields.thumbnailUrl]
-                                  as String?)
-                              ?.isNotEmpty ==
-                          true
-                      ? NetworkImage(
-                          doc.data()[FirestoreManagerFields.thumbnailUrl]
-                              as String,
-                        )
-                      : null,
-                  child: const Icon(Icons.auto_mode_rounded),
-                ),
-                title: Text(
-                  (doc.data()[FirestoreManagerFields.name] as String?) ?? '—',
-                ),
-                trailing: Radio<String>(
-                  value: doc.id,
-                  groupValue: selectedId,
-                  onChanged: (v) => setState(() => selectedId = v),
-                ),
+        child: loading
+            ? const SizedBox(
+                height: 100,
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text(
+                    'Select Manager Plan',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 8),
+                  if (managers.isEmpty) const Text('No managers available'),
+                  for (final doc in managers) _buildManagerRow(doc),
+                  const SizedBox(height: 16),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                ],
               ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                ElevatedButton(
-                  onPressed: () async {
-                    await widget.onSelected(selectedId);
-                    if (!context.mounted) return;
-                    // ignore: use_build_context_synchronously
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Confirm'),
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: () async {
-                    await widget.onSelected(null);
-                    if (!context.mounted) return;
-                    // ignore: use_build_context_synchronously
-                    Navigator.pop(context);
-                  },
-                  child: const Text('None'),
-                ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-              ],
+      ),
+    );
+  }
+
+  Widget _buildManagerRow(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data();
+    final name = (data[FirestoreManagerFields.name] as String?) ?? '—';
+    final thumb = (data[FirestoreManagerFields.thumbnailUrl] as String?) ?? '';
+    final storeProductId =
+        (data[FirestoreManagerFields.storeProductId] as String?) ?? '';
+
+    final bool isCurrent = widget.currentId == doc.id;
+    final bool isSubscribed =
+        currentPlanId != null && currentPlanId == storeProductId;
+
+    // Find package
+    Package? pkg;
+    if (offerings != null &&
+        offerings!.current != null &&
+        storeProductId.isNotEmpty) {
+      // Look in current offering's available packages
+      try {
+        pkg = offerings!.current!.availablePackages.firstWhere(
+          (p) => p.storeProduct.identifier == storeProductId,
+        );
+      } catch (_) {}
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundImage: thumb.isNotEmpty ? NetworkImage(thumb) : null,
+              child: thumb.isEmpty ? const Icon(Icons.auto_mode_rounded) : null,
             ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  if (isSubscribed)
+                    const Text(
+                      'Active',
+                      style: TextStyle(color: Colors.green, fontSize: 12),
+                    )
+                  else if (pkg != null)
+                    Text(
+                      pkg.storeProduct.priceString,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                ],
+              ),
+            ),
+            if (isSubscribed)
+              // If subscribed, user can select it as active manager (if not already)
+              ElevatedButton(
+                onPressed: isCurrent
+                    ? null
+                    : () async {
+                        await widget.onSelected(doc.id);
+                        if (mounted) Navigator.pop(context);
+                      },
+                child: isCurrent
+                    ? const Icon(Icons.check)
+                    : const Text('Select'),
+              )
+            else if (pkg != null)
+              ElevatedButton(
+                onPressed: () async {
+                  final success = await SubscriptionService().purchasePackage(
+                    pkg!,
+                  );
+                  if (success) {
+                    // Refresh state to show active
+                    await _load();
+                    // Auto-select
+                    await widget.onSelected(doc.id);
+                    if (mounted) Navigator.pop(context);
+                  }
+                },
+                child: const Text('Buy'),
+              )
+            else
+              const Text('Unavailable', style: TextStyle(color: Colors.grey)),
           ],
         ),
       ),

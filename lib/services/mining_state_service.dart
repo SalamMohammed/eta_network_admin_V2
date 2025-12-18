@@ -6,6 +6,7 @@ import '../shared/firestore_constants.dart';
 import 'earnings_engine.dart';
 import '../shared/device_id.dart';
 import 'notification_service.dart';
+import 'subscription_service.dart';
 
 class MiningStateService extends ChangeNotifier {
   static final MiningStateService _instance = MiningStateService._internal();
@@ -61,6 +62,7 @@ class MiningStateService extends ChangeNotifier {
   Future<void> init() async {
     if (_initialized) return;
     _deviceId = await DeviceId.get();
+    await SubscriptionService().init();
     await _refresh();
     _startSimulationIfNeeded();
     _initialized = true;
@@ -124,7 +126,19 @@ class MiningStateService extends ChangeNotifier {
     }
 
     // Manager Data
-    _managerEnabled = (d[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+    final sub = d[FirestoreUserFields.subscription] as Map<String, dynamic>?;
+    final subStatus = sub?[FirestoreUserSubscriptionFields.status] as String?;
+    final subExpires =
+        sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
+
+    bool isSubActive = subStatus == 'active';
+    if (isSubActive && subExpires != null) {
+      if (DateTime.now().isAfter(subExpires.toDate())) {
+        isSubActive = false;
+      }
+    }
+    _managerEnabled = isSubActive;
+
     _managedCoinSelections =
         ((d[FirestoreUserFields.managedCoinSelections] as List?)
             ?.cast<String>()) ??

@@ -47,6 +47,7 @@ dependencies:
   firebase_messaging: ^16.0.4
   timezone: ^0.9.4 # Required for scheduled notifications
   flutter_timezone: ^3.0.1 # To get local timezone
+  purchases_flutter: ^9.10.1
 
 dev_dependencies:
   flutter_test:

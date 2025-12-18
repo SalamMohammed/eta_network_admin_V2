@@ -62,8 +62,14 @@ class _SignupPageState extends State<SignupPage> {
             FirestoreUserFields.totalSessions: 0,
             FirestoreUserFields.country: null,
             FirestoreUserFields.deviceId: null,
+            FirestoreUserFields.managerEnabled: false,
+            FirestoreUserFields.activeManagerId: null,
             FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
             FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+            FirestoreUserFields.subscription: {
+              FirestoreUserSubscriptionFields.status: 'expired',
+              FirestoreUserSubscriptionFields.autoRenew: false,
+            },
           }, SetOptions(merge: true));
 
       final b = Uint8List(0);

@@ -13,6 +13,10 @@ class _AppConfigPageState extends State<AppConfigPage> {
   final baseRateCtrl = TextEditingController();
   final sessionHoursCtrl = TextEditingController();
   bool deviceSingleUser = false;
+  // Subscription config
+  final revenueCatApiKeyCtrl = TextEditingController();
+  bool enableSubscriptions = false;
+  bool sandboxMode = false;
   // User coin config
   final minRateCtrl = TextEditingController();
   final maxRateCtrl = TextEditingController();
@@ -56,6 +60,11 @@ class _AppConfigPageState extends State<AppConfigPage> {
     deviceSingleUser =
         ((g[FirestoreAppConfigFields.deviceSingleUserEnforced] as bool?) ??
         false);
+    revenueCatApiKeyCtrl.text =
+        (g[FirestoreAppConfigFields.revenueCatApiKey] as String?) ?? '';
+    enableSubscriptions =
+        ((g[FirestoreAppConfigFields.enableSubscriptions] as bool?) ?? false);
+    sandboxMode = ((g[FirestoreAppConfigFields.sandboxMode] as bool?) ?? false);
 
     final referrals = await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
@@ -154,6 +163,10 @@ class _AppConfigPageState extends State<AppConfigPage> {
           FirestoreAppConfigFields.sessionDurationHours:
               int.tryParse(sessionHoursCtrl.text) ?? 24,
           FirestoreAppConfigFields.deviceSingleUserEnforced: deviceSingleUser,
+          FirestoreAppConfigFields.revenueCatApiKey: revenueCatApiKeyCtrl.text
+              .trim(),
+          FirestoreAppConfigFields.enableSubscriptions: enableSubscriptions,
+          FirestoreAppConfigFields.sandboxMode: sandboxMode,
         }, SetOptions(merge: true));
   }
 
@@ -299,6 +312,48 @@ class _AppConfigPageState extends State<AppConfigPage> {
                 ElevatedButton(
                   onPressed: _saveGeneral,
                   child: const Text('Save changes'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _panel(
+            title: 'Subscription Settings',
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    _field('RevenueCat API Key', revenueCatApiKeyCtrl),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: CheckboxListTile(
+                        value: enableSubscriptions,
+                        onChanged: (v) =>
+                            setState(() => enableSubscriptions = v ?? false),
+                        title: const Text('Enable Subscriptions'),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: CheckboxListTile(
+                        value: sandboxMode,
+                        onChanged: (v) =>
+                            setState(() => sandboxMode = v ?? false),
+                        title: const Text('Sandbox Mode'),
+                        controlAffinity: ListTileControlAffinity.leading,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: _saveGeneral,
+                      child: const Text('Save General'),
+                    ),
+                  ],
                 ),
               ],
             ),
