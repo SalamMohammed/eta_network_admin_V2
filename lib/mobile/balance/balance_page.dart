@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../shared/theme/colors.dart';
 import '../../services/mining_state_service.dart';
@@ -16,6 +17,8 @@ class _BalancePageState extends State<BalancePage>
   late final TabController _tab = TabController(length: 2, vsync: this);
   final _miningService = MiningStateService();
   String filter = 'All';
+  DateTime? _lastUiUpdate;
+  Timer? _debounceTimer;
 
   @override
   void initState() {
@@ -29,13 +32,25 @@ class _BalancePageState extends State<BalancePage>
   void dispose() {
     _miningService.removeListener(_handleServiceUpdate);
     _tab.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
   void _handleServiceUpdate() {
-    if (mounted) {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final last = _lastUiUpdate;
+    if (last == null || now.difference(last) >= const Duration(seconds: 1)) {
+      _lastUiUpdate = now;
       setState(() {});
+      return;
     }
+    _debounceTimer ??= Timer(const Duration(seconds: 1), () {
+      if (!mounted) return;
+      _lastUiUpdate = DateTime.now();
+      _debounceTimer = null;
+      setState(() {});
+    });
   }
 
   @override

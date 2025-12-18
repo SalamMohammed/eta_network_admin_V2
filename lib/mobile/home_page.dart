@@ -25,6 +25,8 @@ class _MobileHomePageState extends State<MobileHomePage>
   late final TabController _tab = TabController(length: 2, vsync: this);
   String _minedSort = 'popular';
   String _liveSort = 'popular';
+  DateTime? _lastUiUpdate;
+  Timer? _debounceTimer;
 
   @override
   void initState() {
@@ -39,13 +41,25 @@ class _MobileHomePageState extends State<MobileHomePage>
   void dispose() {
     _miningService.removeListener(_handleServiceUpdate);
     _tab.dispose();
+    _debounceTimer?.cancel();
     super.dispose();
   }
 
   void _handleServiceUpdate() {
-    if (mounted) {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final last = _lastUiUpdate;
+    if (last == null || now.difference(last) >= const Duration(seconds: 1)) {
+      _lastUiUpdate = now;
       setState(() {});
+      return;
     }
+    _debounceTimer ??= Timer(const Duration(seconds: 1), () {
+      if (!mounted) return;
+      _lastUiUpdate = DateTime.now();
+      _debounceTimer = null;
+      setState(() {});
+    });
   }
 
   Future<void> _refresh() async {

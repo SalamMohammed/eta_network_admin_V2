@@ -37,6 +37,9 @@ class MiningStateService extends ChangeNotifier {
   Timer? _simTimer;
   String? _deviceId;
   bool _initialized = false;
+  DateTime? _lastUiNotify;
+  double _lastNotifiedDisplay = -1;
+  static const Duration _minUiNotifyInterval = Duration(seconds: 1);
 
   // Getters
   double get totalPoints => _totalPoints;
@@ -195,7 +198,7 @@ class MiningStateService extends ChangeNotifier {
       _displayTotal = _totalPoints;
 
       _startSimulationIfNeeded();
-      notifyListeners();
+      _maybeNotify(force: true);
     } catch (e) {
       debugPrint('Mining start failed: $e');
       rethrow;
@@ -210,7 +213,7 @@ class MiningStateService extends ChangeNotifier {
       _simTimer?.cancel();
       _simTimer = null;
       _displayTotal = _totalPoints;
-      notifyListeners();
+      _maybeNotify(force: true);
       return;
     }
 
@@ -228,7 +231,7 @@ class MiningStateService extends ChangeNotifier {
     _simAnchor = DateTime.now();
     final end = _lastEnd!.toDate();
 
-    _simTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+    _simTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
       final anchor = _simAnchor!;
       final now = DateTime.now();
 
@@ -237,10 +240,10 @@ class MiningStateService extends ChangeNotifier {
         _simTimer = null;
         _miningActive = false;
         _displayTotal = _simBase; // Revert to base or fetch new?
-        notifyListeners();
+        _maybeNotify(force: true);
 
         // Auto-refresh when session ends
-        _refresh().then((_) => notifyListeners());
+        _refresh().then((_) => _maybeNotify(force: true));
         return;
       }
 
@@ -250,7 +253,7 @@ class MiningStateService extends ChangeNotifier {
       final inc = (elapsedSec * incPerSec).clamp(0.0, remainingSec * incPerSec);
 
       _displayTotal = _simBase + inc;
-      notifyListeners();
+      _maybeNotify(force: false);
     });
   }
 
@@ -268,7 +271,20 @@ class MiningStateService extends ChangeNotifier {
       _simBase = newTotal;
       _simAnchor = DateTime.now();
     }
-    notifyListeners();
+    _maybeNotify(force: true);
+  }
+
+  void _maybeNotify({required bool force}) {
+    final now = DateTime.now();
+    final last = _lastUiNotify;
+    final delta = (_displayTotal - _lastNotifiedDisplay).abs();
+    final timeOk = last == null || now.difference(last) >= _minUiNotifyInterval;
+    final valueOk = delta >= 0.01;
+    if (force || valueOk || timeOk) {
+      _lastUiNotify = now;
+      _lastNotifiedDisplay = _displayTotal;
+      notifyListeners();
+    }
   }
 
   /// Resets the service state to default values.

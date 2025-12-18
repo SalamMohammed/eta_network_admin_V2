@@ -712,7 +712,7 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
   void _startTimer({required double base}) {
     _timer?.cancel();
     _display = base;
-    _timer = Timer.periodic(const Duration(milliseconds: 200), (_) async {
+    _timer = Timer.periodic(const Duration(milliseconds: 1000), (_) async {
       final end = _end?.toDate();
       final start = _start?.toDate();
       if (end == null || start == null) return;
@@ -730,12 +730,20 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
         0.0,
         totalSessionSec * (_rate / 3600.0),
       );
+
+      final oldDisplay = _display;
       _display = _totalBase + inc;
+
       if (_lastSync == null || now.difference(_lastSync!).inSeconds >= 60) {
         _lastSync = now;
         await CoinService.syncCoinEarnings(widget.coinOwnerId);
       }
-      if (mounted) setState(() {});
+
+      // Only rebuild if the displayed value (3 decimal places) actually changes
+      if (mounted &&
+          (_display.toStringAsFixed(3) != oldDisplay.toStringAsFixed(3))) {
+        setState(() {});
+      }
     });
   }
 

@@ -8,9 +8,6 @@ import '../../shared/firestore_constants.dart';
 import '../../services/referral_engine.dart';
 import '../../services/earnings_engine.dart';
 import '../../services/mining_state_service.dart';
-import '../../services/notification_service.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/services.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
@@ -161,48 +158,6 @@ class _ProfilePageState extends State<ProfilePage> {
             _section('Notifications', [
               _toggle('Enable notifications', true),
               _toggle('Streak reminders', true),
-            ]),
-            _section('Notification Tests', [
-              ElevatedButton(
-                onPressed: () async {
-                  await NotificationService().showTestLocalNow();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Local notification triggered'),
-                      ),
-                    );
-                  }
-                },
-                child: const Text('Test Local Notification'),
-              ),
-              ElevatedButton(
-                onPressed: () async {
-                  final token = await NotificationService().getFcmToken();
-                  if (token != null && token.isNotEmpty) {
-                    await Clipboard.setData(ClipboardData(text: token));
-                    await FirebaseMessaging.instance.subscribeToTopic('debug');
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'FCM token copied. Subscribed to topic "debug".',
-                          ),
-                        ),
-                      );
-                    }
-                  } else {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('FCM token not available'),
-                        ),
-                      );
-                    }
-                  }
-                },
-                child: const Text('Test Firebase Notification'),
-              ),
             ]),
             _section('Legal', [
               _button(
