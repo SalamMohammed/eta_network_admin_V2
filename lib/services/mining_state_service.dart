@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../shared/firestore_constants.dart';
 import 'earnings_engine.dart';
 import '../shared/device_id.dart';
+import 'notification_service.dart';
 
 class MiningStateService extends ChangeNotifier {
   static final MiningStateService _instance = MiningStateService._internal();
@@ -103,6 +104,17 @@ class MiningStateService extends ChangeNotifier {
     final now = DateTime.now();
     _miningActive = _lastEnd != null && now.isBefore(_lastEnd!.toDate());
 
+    if (_lastEnd != null) {
+      final end = _lastEnd!.toDate();
+      final ns = NotificationService();
+      await ns.cancelAll();
+      await ns.scheduleMiningFinished(end);
+      await ns.scheduleStreakReminder(end);
+    } else {
+      final ns = NotificationService();
+      await ns.cancelAll();
+    }
+
     // Initialize display total if not already simulating
     if (!_miningActive || _simTimer == null) {
       _displayTotal = _totalPoints;
@@ -164,6 +176,17 @@ class MiningStateService extends ChangeNotifier {
 
       final now = DateTime.now();
       _miningActive = _lastEnd != null && now.isBefore(_lastEnd!.toDate());
+
+      // Schedule notifications
+      if (_lastEnd != null) {
+        final end = _lastEnd!.toDate();
+        final ns = NotificationService();
+        // We assume NotificationService is initialized in main.dart
+        ns.cancelAll().then((_) {
+          ns.scheduleMiningFinished(end);
+          ns.scheduleStreakReminder(end);
+        });
+      }
 
       // Reset simulation base to current total when starting new session
       _totalPoints =
