@@ -93,7 +93,6 @@ class _CoinCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
     final symbol = (data[FirestoreUserCoinFields.symbol] as String?) ?? '';
-    final desc = (data[FirestoreUserCoinFields.description] as String?) ?? '';
     final rate =
         (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
         0.0;
@@ -230,13 +229,13 @@ class _LinkButton extends StatelessWidget {
         if (!uri.hasScheme) {
           uri = Uri.tryParse('https://$url');
         }
-        print('LinkButton: Trying to launch $uri');
+        debugPrint('LinkButton: Trying to launch $uri');
         try {
           if (uri != null && await canLaunchUrl(uri)) {
             await launchUrl(uri, mode: LaunchMode.externalApplication);
           } else {
             // fallback if parsed but canLaunchUrl returns false (some devices need this)
-            print(
+            debugPrint(
               'LinkButton: canLaunchUrl returned false, trying force launch',
             );
             if (uri != null) {
@@ -244,7 +243,7 @@ class _LinkButton extends StatelessWidget {
             }
           }
         } catch (e) {
-          print('LinkButton: Launch error: $e');
+          debugPrint('LinkButton: Launch error: $e');
         }
       },
     );
@@ -528,7 +527,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
     }
 
     setState(() => _submitting = true);
-    print(
+    debugPrint(
       '[CreateCoinDialog] Submit start | isEditing=$_isEditing | name=$name | symbol=${symbolCtrl.text.trim()} | hasThumb=${_thumbBytes != null} | initialImageSet=${_initialImageUrl != null && _initialImageUrl!.isNotEmpty}',
     );
 
@@ -557,7 +556,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
       thumbnailBytes: _thumbBytes,
       thumbnailContentType: _thumbContentType,
     );
-    print('[CreateCoinDialog] Submit end');
+    debugPrint('[CreateCoinDialog] Submit end');
     if (mounted) {
       Navigator.of(context).pop();
     }

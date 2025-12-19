@@ -87,7 +87,9 @@ class SubscriptionService {
   Future<bool> purchasePackage(Package package) async {
     if (!_initialized) return false;
     try {
-      final purchaseResult = await Purchases.purchasePackage(package);
+      final purchaseResult = await Purchases.purchase(
+        PurchaseParams.package(package),
+      );
       await _handleCustomerInfoUpdate(purchaseResult.customerInfo);
       return true;
     } catch (e) {

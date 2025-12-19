@@ -3,8 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'shared/theme/app_theme.dart';
 import 'auth/auth_gate.dart';
-import 'package:flutter/foundation.dart'
-    show kIsWeb, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'services/notification_service.dart';
 
 Future<void> main() async {

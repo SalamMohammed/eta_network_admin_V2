@@ -30,6 +30,7 @@ class MiningStateService extends ChangeNotifier {
   int _managerMaxCommunity = 0;
   String? _activeManagerId;
   List<String> _managedCoinSelections = const [];
+  Timestamp? _subscriptionExpiresAt;
 
   // Simulation state
   double _displayTotal = 0.0;
@@ -58,6 +59,7 @@ class MiningStateService extends ChangeNotifier {
   Timestamp? get lastEnd => _lastEnd;
   Timestamp? get lastStart => _lastStart;
   int get streakDays => _streakDays;
+  Timestamp? get subscriptionExpiresAt => _subscriptionExpiresAt;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -130,6 +132,7 @@ class MiningStateService extends ChangeNotifier {
     final subStatus = sub?[FirestoreUserSubscriptionFields.status] as String?;
     final subExpires =
         sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
+    _subscriptionExpiresAt = subExpires;
 
     bool isSubActive = subStatus == 'active';
     if (isSubActive && subExpires != null) {
@@ -174,14 +177,17 @@ class MiningStateService extends ChangeNotifier {
         _managerGlobalEnabled &&
         _managerEtaAuto &&
         !_miningActive) {
-      await startMining();
+      await startMining(maxEnd: _subscriptionExpiresAt?.toDate());
     }
   }
 
-  Future<void> startMining() async {
+  Future<void> startMining({DateTime? maxEnd}) async {
     final devId = _deviceId ?? await DeviceId.get();
     try {
-      final res = await EarningsEngine.startMining(deviceId: devId);
+      final res = await EarningsEngine.startMining(
+        deviceId: devId,
+        maxEnd: maxEnd,
+      );
 
       _hourlyRate =
           (res[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
@@ -323,6 +329,7 @@ class MiningStateService extends ChangeNotifier {
     _managerMaxCommunity = 0;
     _activeManagerId = null;
     _managedCoinSelections = const [];
+    _subscriptionExpiresAt = null;
     notifyListeners();
   }
 

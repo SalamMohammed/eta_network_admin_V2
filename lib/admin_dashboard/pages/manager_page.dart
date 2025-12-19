@@ -122,27 +122,7 @@ class _ManagerPageState extends State<ManagerPage> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'ETA: ' +
-                        (((legacyManagerCfg?[FirestoreManagerConfigFields
-                                        .enableEtaAuto]
-                                    as bool?) ??
-                                true)
-                            ? 'on'
-                            : 'off') +
-                        ' • Coin: ' +
-                        (((legacyManagerCfg?[FirestoreManagerConfigFields
-                                        .enableUserCoinAuto]
-                                    as bool?) ??
-                                true)
-                            ? 'on'
-                            : 'off') +
-                        ' • Max community: ' +
-                        (((legacyManagerCfg?[FirestoreManagerConfigFields
-                                            .maxCommunityCoinsManaged]
-                                        as num?)
-                                    ?.toInt() ??
-                                0)
-                            .toString()),
+                    'ETA: ${(((legacyManagerCfg?[FirestoreManagerConfigFields.enableEtaAuto] as bool?) ?? true) ? 'on' : 'off')} • Coin: ${(((legacyManagerCfg?[FirestoreManagerConfigFields.enableUserCoinAuto] as bool?) ?? true) ? 'on' : 'off')} • Max community: ${((legacyManagerCfg?[FirestoreManagerConfigFields.maxCommunityCoinsManaged] as num?)?.toInt() ?? 0)}',
                   ),
                   const SizedBox(height: 8),
                   Row(

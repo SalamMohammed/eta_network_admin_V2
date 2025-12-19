@@ -77,6 +77,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     if (!_miningService.managerEnabled) return;
 
     final devId = await DeviceId.get();
+    final subEnd = _miningService.subscriptionExpiresAt?.toDate();
 
     // Ensure own coin is mining when enabled
     if (_miningService.managerUserCoinAuto) {
@@ -93,7 +94,11 @@ class _MobileHomePageState extends State<MobileHomePage>
           ownEnd != null && DateTime.now().isBefore(ownEnd.toDate());
       if (!ownActive) {
         try {
-          await CoinService.startCoinMining(uid, deviceId: devId);
+          await CoinService.startCoinMining(
+            uid,
+            deviceId: devId,
+            maxEnd: subEnd,
+          );
         } catch (e) {
           debugPrint('Manager own coin start failed: $e');
         }
@@ -145,7 +150,11 @@ class _MobileHomePageState extends State<MobileHomePage>
       final isActive = end != null && now.isBefore(end.toDate());
       if (!isActive && activeManaged < _miningService.managerMaxCommunity) {
         try {
-          await CoinService.startCoinMining(ownerId, deviceId: devId);
+          await CoinService.startCoinMining(
+            ownerId,
+            deviceId: devId,
+            maxEnd: subEnd,
+          );
           activeManaged++;
         } catch (e) {
           debugPrint('Manager community coin start failed: $e');

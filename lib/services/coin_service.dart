@@ -136,6 +136,7 @@ class CoinService {
   static Future<Map<String, dynamic>> startCoinMining(
     String coinOwnerId, {
     String? deviceId,
+    DateTime? maxEnd,
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
@@ -168,7 +169,11 @@ class CoinService {
     final int hours =
         (g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
         24;
-    final end = Timestamp.fromDate(now.add(Duration(hours: hours)));
+    DateTime endDt = now.add(Duration(hours: hours));
+    if (maxEnd != null && maxEnd.isAfter(now) && maxEnd.isBefore(endDt)) {
+      endDt = maxEnd;
+    }
+    final end = Timestamp.fromDate(endDt);
     final coinSnap = await FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
         .doc(coinOwnerId)

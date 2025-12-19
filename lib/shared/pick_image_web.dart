@@ -1,6 +1,5 @@
-import 'dart:async';
-import 'dart:html' as html;
 import 'dart:typed_data';
+import 'package:file_picker/file_picker.dart';
 
 class PickedImage {
   final Uint8List bytes;
@@ -9,33 +8,33 @@ class PickedImage {
 }
 
 Future<PickedImage?> pickImage() async {
-  final input = html.FileUploadInputElement()..accept = 'image/*';
-  final completer = Completer<PickedImage?>();
-  input.onChange.listen((_) async {
-    final file = input.files?.first;
-    if (file == null) {
-      completer.complete(null);
-      return;
+  final res = await FilePicker.platform.pickFiles(
+    type: FileType.image,
+    withData: true,
+    withReadStream: true,
+  );
+  final f = res?.files.first;
+  Uint8List? b = f?.bytes;
+  if ((b == null || b.isEmpty) && f?.readStream != null) {
+    final chunks = <int>[];
+    await for (final chunk in f!.readStream!) {
+      chunks.addAll(chunk);
     }
-    final reader = html.FileReader();
-    reader.readAsArrayBuffer(file);
-    reader.onLoadEnd.listen((_) {
-      final res = reader.result;
-      Uint8List? bytes;
-      if (res is ByteBuffer) {
-        bytes = Uint8List.view(res);
-      } else if (res is List<int>) {
-        bytes = Uint8List.fromList(res);
-      }
-      if (bytes == null || bytes.isEmpty) {
-        completer.complete(null);
-        return;
-      }
-      final type = file.type;
-      completer.complete(PickedImage(bytes, type.isNotEmpty ? type : null));
-    });
-    reader.onError.listen((_) => completer.complete(null));
-  });
-  input.click();
-  return completer.future;
+    b = Uint8List.fromList(chunks);
+  }
+  if (b == null || b.isEmpty) return null;
+  String? ct;
+  if (f != null) {
+    final name = f.name.toLowerCase();
+    if (name.endsWith('.png')) {
+      ct = 'image/png';
+    } else if (name.endsWith('.jpg') || name.endsWith('.jpeg')) {
+      ct = 'image/jpeg';
+    } else if (name.endsWith('.gif')) {
+      ct = 'image/gif';
+    } else {
+      ct = 'application/octet-stream';
+    }
+  }
+  return PickedImage(b, ct);
 }

@@ -80,7 +80,10 @@ class EarningsEngine {
     };
   }
 
-  static Future<Map<String, dynamic>> startMining({String? deviceId}) async {
+  static Future<Map<String, dynamic>> startMining({
+    String? deviceId,
+    DateTime? maxEnd,
+  }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
     await syncEarnings();
@@ -195,7 +198,10 @@ class EarningsEngine {
       'EarningsEngine: final hourlyRate=${hourlyRate.toStringAsFixed(6)}',
     );
     final DateTime start = now;
-    final DateTime end = now.add(Duration(hours: sessionHours));
+    DateTime end = now.add(Duration(hours: sessionHours));
+    if (maxEnd != null && maxEnd.isAfter(start) && maxEnd.isBefore(end)) {
+      end = maxEnd;
+    }
     await userRef.update({
       FirestoreUserFields.hourlyRate: hourlyRate,
       FirestoreUserFields.lastMiningStart: Timestamp.fromDate(start),
