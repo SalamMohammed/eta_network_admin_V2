@@ -210,6 +210,8 @@ class _ManagerRow extends StatelessWidget {
         (data[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
             ?.toInt() ??
         0;
+    final storeId =
+        (data[FirestoreManagerFields.storeProductId] as String?) ?? '';
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -222,7 +224,7 @@ class _ManagerRow extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              '$name • ETA:${eta ? 'on' : 'off'} • Coin:${coin ? 'on' : 'off'} • Global:${global ? 'yes' : 'no'} • Max:$maxCoins',
+              '$name • ETA:${eta ? 'on' : 'off'} • Coin:${coin ? 'on' : 'off'} • Global:${global ? 'yes' : 'no'} • Max:$maxCoins${storeId.isNotEmpty ? ' • ID:$storeId' : ''}',
             ),
           ),
           IconButton(
@@ -244,6 +246,7 @@ class _CreateManagerDialog extends StatefulWidget {
 class _CreateManagerDialogState extends State<_CreateManagerDialog> {
   final nameCtrl = TextEditingController();
   final thumbCtrl = TextEditingController();
+  final storeProductIdCtrl = TextEditingController();
   bool eta = true;
   bool coin = true;
   bool global = true;
@@ -272,6 +275,14 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
               TextField(
                 controller: thumbCtrl,
                 decoration: const InputDecoration(labelText: 'Thumbnail URL'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: storeProductIdCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'RevenueCat Product ID (optional)',
+                  hintText: 'e.g. manager_monthly',
+                ),
               ),
               const SizedBox(height: 8),
               CheckboxListTile(
@@ -329,6 +340,10 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
         .add({
           FirestoreManagerFields.name: name,
           FirestoreManagerFields.thumbnailUrl: thumbCtrl.text.trim(),
+          FirestoreManagerFields.storeProductId:
+              storeProductIdCtrl.text.trim().isEmpty
+              ? null
+              : storeProductIdCtrl.text.trim(),
           FirestoreManagerFields.enableEtaAuto: eta,
           FirestoreManagerFields.enableUserCoinAuto: coin,
           FirestoreManagerFields.globalCommunity: global,

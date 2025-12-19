@@ -16,7 +16,7 @@ class Sidebar extends StatelessWidget {
       _NavItem('Overview', Icons.dashboard_rounded),
       _NavItem('Users', Icons.people_alt_rounded),
       _NavItem('User Detail', Icons.person_rounded),
-      _NavItem('Points & Rates', Icons.speed_rounded),
+      _NavItem('App Config (Points)', Icons.speed_rounded),
       _NavItem('Referrals & Ranks', Icons.workspace_premium_rounded),
       _NavItem('Notifications', Icons.notifications_rounded),
       _NavItem('Ads & Monetization', Icons.ads_click_rounded),

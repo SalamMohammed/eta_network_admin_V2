@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 import '../../shared/theme/colors.dart';
 import '../../shared/firestore_constants.dart';
 
@@ -15,6 +16,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
   bool deviceSingleUser = false;
   // Subscription config
   final revenueCatApiKeyCtrl = TextEditingController();
+  final revenueCatWebhookAuthCtrl = TextEditingController();
   bool enableSubscriptions = false;
   bool sandboxMode = false;
   // User coin config
@@ -62,6 +64,8 @@ class _AppConfigPageState extends State<AppConfigPage> {
         false);
     revenueCatApiKeyCtrl.text =
         (g[FirestoreAppConfigFields.revenueCatApiKey] as String?) ?? '';
+    revenueCatWebhookAuthCtrl.text =
+        (g[FirestoreAppConfigFields.revenueCatWebhookAuth] as String?) ?? '';
     enableSubscriptions =
         ((g[FirestoreAppConfigFields.enableSubscriptions] as bool?) ?? false);
     sandboxMode = ((g[FirestoreAppConfigFields.sandboxMode] as bool?) ?? false);
@@ -153,6 +157,76 @@ class _AppConfigPageState extends State<AppConfigPage> {
     setState(() {});
   }
 
+  Future<void> _testApiKey(String apiKey) async {
+    if (apiKey.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter an API Key')),
+        );
+      }
+      return;
+    }
+
+    // Determine platform hint
+    String platform = 'android'; // Default
+    if (apiKey.startsWith('appl_')) {
+      platform = 'ios';
+    } else if (apiKey.startsWith('rcb_')) {
+      platform = 'web'; // Stripe
+    }
+
+    try {
+      // We use a dummy user ID to check if the key is authorized.
+      // 404 means user not found (Authorized), 401 means Unauthorized (Invalid Key).
+      final uri = Uri.parse(
+        'https://api.revenuecat.com/v1/subscribers/app_config_test_user',
+      );
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+          'X-Platform': platform,
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200 || response.statusCode == 404) {
+        // 200: User exists, 404: User doesn't exist but request was authorized
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Connection Successful: Valid API Key'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else if (response.statusCode == 401) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Connection Failed: Invalid API Key (401)'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Connection Error: Code ${response.statusCode}'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error testing connection: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _saveGeneral() async {
     await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
@@ -165,6 +239,8 @@ class _AppConfigPageState extends State<AppConfigPage> {
           FirestoreAppConfigFields.deviceSingleUserEnforced: deviceSingleUser,
           FirestoreAppConfigFields.revenueCatApiKey: revenueCatApiKeyCtrl.text
               .trim(),
+          FirestoreAppConfigFields.revenueCatWebhookAuth:
+              revenueCatWebhookAuthCtrl.text.trim(),
           FirestoreAppConfigFields.enableSubscriptions: enableSubscriptions,
           FirestoreAppConfigFields.sandboxMode: sandboxMode,
         }, SetOptions(merge: true));
@@ -322,8 +398,30 @@ class _AppConfigPageState extends State<AppConfigPage> {
             child: Column(
               children: [
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     _field('RevenueCat API Key', revenueCatApiKeyCtrl),
+                    const SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      onPressed: () =>
+                          _testApiKey(revenueCatApiKeyCtrl.text.trim()),
+                      icon: const Icon(Icons.check_circle_outline),
+                      label: const Text('Test Connection'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: revenueCatWebhookAuthCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Webhook Authorization Token',
+                        ),
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),

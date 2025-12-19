@@ -101,6 +101,7 @@ class FirestoreAppConfigFields {
   static const String allowImageUpload = 'allowImageUpload';
   static const String allowUserRateEdit = 'allowUserRateEdit';
   static const String revenueCatApiKey = 'revenueCatApiKey';
+  static const String revenueCatWebhookAuth = 'revenueCatWebhookAuth';
   static const String enableSubscriptions = 'enableSubscriptions';
   static const String sandboxMode = 'sandboxMode';
 }

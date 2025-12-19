@@ -7,13 +7,15 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // Set global options (e.g., region)
-setGlobalOptions({ region: "us-central1" });
+setGlobalOptions({ region: "us-central1", invoker: "public" });
 
 // Firestore Constants (matching client-side)
 const USERS_COLLECTION = 'users';
 const MANAGERS_COLLECTION = 'managers';
 const APP_CONFIG_COLLECTION = 'app_config';
+const APP_CONFIG_GENERAL_DOC = 'general';
 const SUBSCRIPTION_FIELD = 'subscription';
+const WEBHOOK_AUTH_FIELD = 'revenueCatWebhookAuth';
 
 // Subscription Fields
 const SUB_STATUS = 'status';
@@ -26,8 +28,46 @@ const SUB_AUTO_RENEW = 'autoRenew';
 const USER_MANAGER_ENABLED = 'managerEnabled';
 const USER_ACTIVE_MANAGER_ID = 'activeManagerId';
 
+let cachedWebhookAuth = null;
+let cachedWebhookAuthFetchedAtMs = 0;
+const WEBHOOK_AUTH_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function getWebhookAuthToken() {
+  const now = Date.now();
+  if (
+    cachedWebhookAuthFetchedAtMs &&
+    now - cachedWebhookAuthFetchedAtMs < WEBHOOK_AUTH_CACHE_TTL_MS
+  ) {
+    return cachedWebhookAuth;
+  }
+
+  const doc = await db.collection(APP_CONFIG_COLLECTION).doc(APP_CONFIG_GENERAL_DOC).get();
+  const data = doc.data() || {};
+  const token = typeof data[WEBHOOK_AUTH_FIELD] === 'string' ? data[WEBHOOK_AUTH_FIELD].trim() : '';
+  cachedWebhookAuth = token || null;
+  cachedWebhookAuthFetchedAtMs = now;
+  return cachedWebhookAuth;
+}
+
 exports.handleRevenueCatWebhook = onRequest(async (req, res) => {
   try {
+    if (req.method !== 'POST') {
+      res.status(405).send('Method Not Allowed');
+      return;
+    }
+
+    const expectedToken = await getWebhookAuthToken();
+    if (expectedToken) {
+      const rawAuthHeader = (req.get('Authorization') || '').trim();
+      const providedToken = rawAuthHeader.toLowerCase().startsWith('bearer ')
+        ? rawAuthHeader.substring('bearer '.length).trim()
+        : rawAuthHeader;
+      if (!providedToken || providedToken !== expectedToken) {
+        res.status(401).send('Unauthorized');
+        return;
+      }
+    }
+
     const event = req.body && req.body.event;
     if (!event) {
       console.error('No event found in body');
@@ -68,7 +108,7 @@ exports.handleRevenueCatWebhook = onRequest(async (req, res) => {
       // But for simplicity, we just flag autoRenew = false. Status remains active until actual expiry.
       // However, if we don't have the current status, we might assume active if not expired.
       autoRenew = false;
-    } else if (type === 'Uncancellation') {
+    } else if (type === 'UNCANCELLATION') {
         autoRenew = true;
     }
 
@@ -96,22 +136,26 @@ exports.handleRevenueCatWebhook = onRequest(async (req, res) => {
         updateData[`${SUBSCRIPTION_FIELD}.${SUB_STATUS}`] = status;
     }
 
-    await userRef.update(updateData);
+    await userRef.set(updateData, { merge: true });
 
     // If active, ensure manager is linked
     if (status === 'active' && product_id) {
        await syncManagerFromPlan(app_user_id, product_id);
     } else if (status === 'expired') {
         // Disable manager access
-        await userRef.update({
-            [USER_MANAGER_ENABLED]: false
-        });
+        await userRef.set(
+          {
+            [USER_MANAGER_ENABLED]: false,
+            [USER_ACTIVE_MANAGER_ID]: null,
+          },
+          { merge: true },
+        );
     }
 
-    res.status(200).send('Processed');
+    res.status(200).json({ ok: true });
   } catch (error) {
     console.error('Error processing webhook:', error);
-    res.status(500).send('Internal Server Error');
+    res.status(500).json({ ok: false });
   }
 });
 
@@ -123,10 +167,13 @@ async function syncManagerFromPlan(uid, planId) {
 
     if (!managersSnapshot.empty) {
         const managerId = managersSnapshot.docs[0].id;
-        await db.collection(USERS_COLLECTION).doc(uid).update({
+        await db.collection(USERS_COLLECTION).doc(uid).set(
+          {
             [USER_ACTIVE_MANAGER_ID]: managerId,
-            [USER_MANAGER_ENABLED]: true
-        });
+            [USER_MANAGER_ENABLED]: true,
+          },
+          { merge: true },
+        );
     }
 }
 
