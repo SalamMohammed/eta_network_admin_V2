@@ -45,7 +45,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc',
-    appId: '1:899853959610:android:3e70022c18d0a8dbb31d83',
+    appId: '1:899853959610:android:c96465f4edc69c11b31d83',
     messagingSenderId: '899853959610',
     projectId: 'eta-network-31964',
     storageBucket: 'eta-network-31964.firebasestorage.app',
@@ -61,7 +61,7 @@ class DefaultFirebaseOptions {
         '899853959610-euk59ct1o7u65derouq8muiu8fh7si2m.apps.googleusercontent.com',
     iosClientId:
         '899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com',
-    iosBundleId: 'net.ApexSoft.EtaNetwork',
+    iosBundleId: 'net.etanetwork.app',
   );
 
   static const FirebaseOptions web = FirebaseOptions(

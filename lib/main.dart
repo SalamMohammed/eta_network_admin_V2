@@ -24,7 +24,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Eta Network admin',
+      title: 'ETA Network',
       theme: AppTheme.dark,
       home: const AuthGate(),
     );

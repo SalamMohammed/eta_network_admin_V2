@@ -16,7 +16,7 @@
       "android": {
         "default": {
           "projectId": "eta-network-31964",
-          "appId": "1:899853959610:android:3e70022c18d0a8dbb31d83",
+          "appId": "1:899853959610:android:c96465f4edc69c11b31d83",
           "fileOutput": "android/app/google-services.json"
         }
       },
@@ -24,7 +24,7 @@
         "lib/firebase_options.dart": {
           "projectId": "eta-network-31964",
           "configurations": {
-            "android": "1:899853959610:android:3e70022c18d0a8dbb31d83",
+            "android": "1:899853959610:android:c96465f4edc69c11b31d83",
             "ios": "1:899853959610:ios:0abf91e974ce1c92b31d83",
             "web": "1:899853959610:web:344ca8ceca463376b31d83",
             "windows": "1:899853959610:web:99cae1604971329cb31d83"

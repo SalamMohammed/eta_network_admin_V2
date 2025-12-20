@@ -40,6 +40,42 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:899853959610:android:c96465f4edc69c11b31d83",
+        "android_client_info": {
+          "package_name": "net.etanetwork.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "899853959610-th8ebstq66aeo174cq6r2gv0bcu5pq1b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "net.ApexSoft.EtaNetwork"
+              }
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"
