@@ -79,7 +79,6 @@ class _MobileHomePageState extends State<MobileHomePage>
     if (!_miningService.managerEnabled) return;
 
     final devId = await DeviceId.get();
-    final subEnd = _miningService.subscriptionExpiresAt?.toDate();
 
     // Ensure own coin is mining when enabled
     if (_miningService.managerUserCoinAuto) {
@@ -96,11 +95,7 @@ class _MobileHomePageState extends State<MobileHomePage>
           ownEnd != null && DateTime.now().isBefore(ownEnd.toDate());
       if (!ownActive) {
         try {
-          await CoinService.startCoinMining(
-            uid,
-            deviceId: devId,
-            maxEnd: subEnd,
-          );
+          await CoinService.startCoinMining(uid, deviceId: devId);
         } catch (e) {
           debugPrint('Manager own coin start failed: $e');
         }
@@ -152,11 +147,7 @@ class _MobileHomePageState extends State<MobileHomePage>
       final isActive = end != null && now.isBefore(end.toDate());
       if (!isActive && activeManaged < _miningService.managerMaxCommunity) {
         try {
-          await CoinService.startCoinMining(
-            ownerId,
-            deviceId: devId,
-            maxEnd: subEnd,
-          );
+          await CoinService.startCoinMining(ownerId, deviceId: devId);
           activeManaged++;
         } catch (e) {
           debugPrint('Manager community coin start failed: $e');
@@ -1057,21 +1048,9 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     // Load Current Subscription
     String? planId;
     if (uid != null) {
-      final userDoc = await FirebaseFirestore.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .get();
-      final sub =
-          userDoc.data()?[FirestoreUserFields.subscription]
-              as Map<String, dynamic>?;
-      if (sub != null &&
-          sub[FirestoreUserSubscriptionFields.status] == 'active') {
-        // Check expiry
-        final exp =
-            sub[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
-        if (exp == null || DateTime.now().isBefore(exp.toDate())) {
-          planId = sub[FirestoreUserSubscriptionFields.planId] as String?;
-        }
+      final info = await SubscriptionService().refreshCustomerInfo();
+      if (info != null) {
+        planId = _activePlanIdFromCustomerInfo(info);
       }
     }
 
@@ -1083,6 +1062,36 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
         loading = false;
       });
     }
+  }
+
+  String? _activePlanIdFromCustomerInfo(CustomerInfo info) {
+    final now = DateTime.now();
+    final activeEntitlements = info.entitlements.active.values.toList();
+    if (activeEntitlements.isNotEmpty) {
+      activeEntitlements.sort((a, b) {
+        final da = DateTime.tryParse(a.expirationDate ?? '');
+        final db = DateTime.tryParse(b.expirationDate ?? '');
+        if (da == null && db == null) return 0;
+        if (da == null) return -1;
+        if (db == null) return 1;
+        return db.compareTo(da);
+      });
+      return activeEntitlements.first.productIdentifier;
+    }
+
+    DateTime? bestExp;
+    String? bestId;
+    for (final subId in info.activeSubscriptions) {
+      final expStr = info.allExpirationDates[subId];
+      final exp = DateTime.tryParse(expStr ?? '');
+      if (exp == null) continue;
+      if (!exp.isAfter(now)) continue;
+      if (bestExp == null || exp.isAfter(bestExp)) {
+        bestExp = exp;
+        bestId = subId;
+      }
+    }
+    return bestId;
   }
 
   @override

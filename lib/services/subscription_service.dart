@@ -87,16 +87,39 @@ class SubscriptionService {
     }
   }
 
+  Future<CustomerInfo?> refreshCustomerInfo() async {
+    if (!_initialized) return null;
+    try {
+      final fresh = await Purchases.getCustomerInfo();
+      await _handleCustomerInfoUpdate(fresh);
+      return fresh;
+    } catch (e) {
+      debugPrint('SubscriptionService refreshCustomerInfo failed: $e');
+      return null;
+    }
+  }
+
   /// Purchase a package
   Future<bool> purchasePackage(Package package) async {
     if (!_initialized) return false;
     try {
       await Purchases.purchase(PurchaseParams.package(package));
-      final fresh = await Purchases.getCustomerInfo();
-      await _handleCustomerInfoUpdate(fresh);
+      await refreshCustomerInfo();
       return true;
     } catch (e) {
       debugPrint('SubscriptionService purchase failed: $e');
+      final fresh = await refreshCustomerInfo();
+      final productId = package.storeProduct.identifier;
+      if (fresh != null && _isProductActive(fresh, productId)) {
+        return true;
+      }
+      try {
+        await Purchases.restorePurchases();
+        final afterRestore = await refreshCustomerInfo();
+        if (afterRestore != null && _isProductActive(afterRestore, productId)) {
+          return true;
+        }
+      } catch (_) {}
       return false;
     }
   }
@@ -106,13 +129,37 @@ class SubscriptionService {
     if (!_initialized) return false;
     try {
       await Purchases.restorePurchases();
-      final fresh = await Purchases.getCustomerInfo();
-      await _handleCustomerInfoUpdate(fresh);
+      await refreshCustomerInfo();
       return true;
     } catch (e) {
       debugPrint('SubscriptionService restore failed: $e');
       return false;
     }
+  }
+
+  bool _isProductActive(CustomerInfo info, String productId) {
+    final now = DateTime.now();
+
+    for (final ent in info.entitlements.active.values) {
+      if (ent.productIdentifier != productId) continue;
+      final exp = DateTime.tryParse(ent.expirationDate ?? '');
+      return exp == null ? true : exp.isAfter(now);
+    }
+
+    if (info.activeSubscriptions.contains(productId)) {
+      final expStr = info.allExpirationDates[productId];
+      final exp = DateTime.tryParse(expStr ?? '');
+      return exp == null ? true : exp.isAfter(now);
+    }
+
+    final latestExp = DateTime.tryParse(info.latestExpirationDate ?? '');
+    if (latestExp == null || !latestExp.isAfter(now)) return false;
+    if (info.allPurchasedProductIdentifiers.contains(productId)) {
+      final expStr = info.allExpirationDates[productId];
+      final exp = DateTime.tryParse(expStr ?? '');
+      return exp == null ? true : exp.isAfter(now);
+    }
+    return false;
   }
 
   /// Sync RevenueCat status to Firestore

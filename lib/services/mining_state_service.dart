@@ -42,6 +42,9 @@ class MiningStateService extends ChangeNotifier {
   DateTime? _lastUiNotify;
   double _lastNotifiedDisplay = -1;
   static const Duration _minUiNotifyInterval = Duration(seconds: 1);
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userDocSub;
+  Timer? _subExpiryTimer;
+  Timer? _refreshDebounce;
 
   // Getters
   double get totalPoints => _totalPoints;
@@ -122,6 +125,7 @@ class MiningStateService extends ChangeNotifier {
     _deviceId = await DeviceId.get();
     await SubscriptionService().init();
     await _refresh();
+    _startUserDocListener();
     _startSimulationIfNeeded();
     _initialized = true;
   }
@@ -190,7 +194,6 @@ class MiningStateService extends ChangeNotifier {
         sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
     _subscriptionExpiresAt = subExpires;
 
-    final wasManagerEnabled = _managerEnabled;
     bool isSubActive = subStatus == 'active';
     if (isSubActive && subExpires != null) {
       if (now.isAfter(subExpires.toDate())) {
@@ -214,14 +217,6 @@ class MiningStateService extends ChangeNotifier {
       }
     }
     _managerEnabled = isSubActive;
-    if (wasManagerEnabled && !_managerEnabled) {
-      await stopMining();
-      await stopAllCoinMining();
-    }
-    if (!_managerEnabled && _miningActive) {
-      await stopMining();
-      await stopAllCoinMining();
-    }
 
     _managedCoinSelections =
         ((d[FirestoreUserFields.managedCoinSelections] as List?)
@@ -258,8 +253,67 @@ class MiningStateService extends ChangeNotifier {
         _managerGlobalEnabled &&
         _managerEtaAuto &&
         !_miningActive) {
-      await startMining(maxEnd: _subscriptionExpiresAt?.toDate());
+      await startMining();
     }
+  }
+
+  void _startUserDocListener() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _userDocSub?.cancel();
+    _userDocSub = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .snapshots()
+        .listen((snap) {
+          final d = snap.data();
+          if (d == null) return;
+          final sub =
+              d[FirestoreUserFields.subscription] as Map<String, dynamic>?;
+          final subStatus =
+              sub?[FirestoreUserSubscriptionFields.status] as String?;
+          final subExpires =
+              sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
+          final now = DateTime.now();
+          bool nextEnabled = subStatus == 'active';
+          if (nextEnabled &&
+              subExpires != null &&
+              now.isAfter(subExpires.toDate())) {
+            nextEnabled = false;
+          }
+
+          final activeManagerId =
+              (d[FirestoreUserFields.activeManagerId] as String?) ?? '';
+
+          final bool shouldRefresh =
+              nextEnabled != _managerEnabled ||
+              subExpires?.millisecondsSinceEpoch !=
+                  _subscriptionExpiresAt?.millisecondsSinceEpoch ||
+              activeManagerId != (_activeManagerId ?? '');
+
+          if (subExpires != null) {
+            _scheduleExpiryRefresh(subExpires.toDate());
+          } else {
+            _subExpiryTimer?.cancel();
+            _subExpiryTimer = null;
+          }
+
+          if (!shouldRefresh) return;
+          _refreshDebounce?.cancel();
+          _refreshDebounce = Timer(const Duration(milliseconds: 600), () {
+            refresh();
+          });
+        });
+  }
+
+  void _scheduleExpiryRefresh(DateTime expiresAt) {
+    _subExpiryTimer?.cancel();
+    final now = DateTime.now();
+    if (!expiresAt.isAfter(now)) return;
+    final delay = expiresAt.difference(now);
+    _subExpiryTimer = Timer(delay, () {
+      refresh();
+    });
   }
 
   Future<void> startMining({DateTime? maxEnd}) async {
@@ -393,6 +447,12 @@ class MiningStateService extends ChangeNotifier {
   void reset() {
     _simTimer?.cancel();
     _simTimer = null;
+    _userDocSub?.cancel();
+    _userDocSub = null;
+    _subExpiryTimer?.cancel();
+    _subExpiryTimer = null;
+    _refreshDebounce?.cancel();
+    _refreshDebounce = null;
     _totalPoints = 0.0;
     _hourlyRate = 0.0;
     _lastStart = null;
@@ -417,6 +477,9 @@ class MiningStateService extends ChangeNotifier {
   @override
   void dispose() {
     _simTimer?.cancel();
+    _userDocSub?.cancel();
+    _subExpiryTimer?.cancel();
+    _refreshDebounce?.cancel();
     super.dispose();
   }
 }
