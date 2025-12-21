@@ -49,6 +49,14 @@ class _ManagerPageState extends State<ManagerPage> {
     await _loadManagers();
   }
 
+  Future<void> _editManager(String id, Map<String, dynamic> data) async {
+    await showDialog(
+      context: context,
+      builder: (_) => _EditManagerDialog(id: id, data: data),
+    );
+    await _loadManagers();
+  }
+
   Future<void> _migrateLegacyManager() async {
     final cfg = legacyManagerCfg ?? {};
     await FirebaseFirestore.instance
@@ -157,6 +165,7 @@ class _ManagerPageState extends State<ManagerPage> {
                   _ManagerRow(
                     id: doc.id,
                     data: doc.data(),
+                    onEdit: () => _editManager(doc.id, doc.data()),
                     onDelete: () => _deleteManager(doc.id),
                   ),
               ],
@@ -171,10 +180,12 @@ class _ManagerPageState extends State<ManagerPage> {
 class _ManagerRow extends StatelessWidget {
   final String id;
   final Map<String, dynamic> data;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
   const _ManagerRow({
     required this.id,
     required this.data,
+    required this.onEdit,
     required this.onDelete,
   });
   @override
@@ -207,6 +218,7 @@ class _ManagerRow extends StatelessWidget {
               '$name • ETA:${eta ? 'on' : 'off'} • Coin:${coin ? 'on' : 'off'} • Global:${global ? 'yes' : 'no'} • Max:$maxCoins${storeId.isNotEmpty ? ' • ID:$storeId' : ''}',
             ),
           ),
+          IconButton(onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
           IconButton(
             onPressed: onDelete,
             icon: const Icon(Icons.delete_outline),
@@ -260,7 +272,7 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
               TextField(
                 controller: storeProductIdCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'RevenueCat Product ID (optional)',
+                  labelText: 'RevenueCat Product ID',
                   hintText: 'e.g. manager_monthly',
                 ),
               ),
@@ -313,17 +325,28 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
 
   Future<void> _submit() async {
     final name = nameCtrl.text.trim();
-    if (name.length < 2) return;
+    final storeProductId = storeProductIdCtrl.text.trim();
+    if (name.length < 2) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Name is required')));
+      return;
+    }
+    if (storeProductId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('RevenueCat Product ID is required')),
+      );
+      return;
+    }
     setState(() => submitting = true);
     await FirebaseFirestore.instance
         .collection(FirestoreConstants.managers)
         .add({
           FirestoreManagerFields.name: name,
           FirestoreManagerFields.thumbnailUrl: thumbCtrl.text.trim(),
-          FirestoreManagerFields.storeProductId:
-              storeProductIdCtrl.text.trim().isEmpty
-              ? null
-              : storeProductIdCtrl.text.trim(),
+          FirestoreManagerFields.storeProductId: storeProductId,
           FirestoreManagerFields.enableEtaAuto: eta,
           FirestoreManagerFields.enableUserCoinAuto: coin,
           FirestoreManagerFields.globalCommunity: global,
@@ -333,6 +356,182 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
           FirestoreManagerFields.createdAt: FieldValue.serverTimestamp(),
           FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
         });
+    if (mounted) Navigator.pop(context);
+  }
+}
+
+class _EditManagerDialog extends StatefulWidget {
+  final String id;
+  final Map<String, dynamic> data;
+  const _EditManagerDialog({required this.id, required this.data});
+
+  @override
+  State<_EditManagerDialog> createState() => _EditManagerDialogState();
+}
+
+class _EditManagerDialogState extends State<_EditManagerDialog> {
+  late final TextEditingController nameCtrl;
+  late final TextEditingController thumbCtrl;
+  late final TextEditingController storeProductIdCtrl;
+  late final TextEditingController maxCtrl;
+  bool eta = true;
+  bool coin = true;
+  bool global = true;
+  bool isActive = true;
+  bool submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final d = widget.data;
+    nameCtrl = TextEditingController(
+      text: (d[FirestoreManagerFields.name] as String?) ?? '',
+    );
+    thumbCtrl = TextEditingController(
+      text: (d[FirestoreManagerFields.thumbnailUrl] as String?) ?? '',
+    );
+    storeProductIdCtrl = TextEditingController(
+      text: (d[FirestoreManagerFields.storeProductId] as String?) ?? '',
+    );
+    maxCtrl = TextEditingController(
+      text:
+          ((d[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
+                  ?.toInt())
+              ?.toString() ??
+          '0',
+    );
+    eta = (d[FirestoreManagerFields.enableEtaAuto] as bool?) ?? true;
+    coin = (d[FirestoreManagerFields.enableUserCoinAuto] as bool?) ?? true;
+    global = (d[FirestoreManagerFields.globalCommunity] as bool?) ?? true;
+    isActive = (d[FirestoreManagerFields.isActive] as bool?) ?? true;
+  }
+
+  @override
+  void dispose() {
+    nameCtrl.dispose();
+    thumbCtrl.dispose();
+    storeProductIdCtrl.dispose();
+    maxCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text(
+                'Edit Manager',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Name'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: thumbCtrl,
+                decoration: const InputDecoration(labelText: 'Thumbnail URL'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: storeProductIdCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'RevenueCat Product ID',
+                  hintText: 'e.g. manager_monthly',
+                ),
+              ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                value: eta,
+                onChanged: (v) => setState(() => eta = v ?? true),
+                title: const Text('Enable ETA'),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              CheckboxListTile(
+                value: coin,
+                onChanged: (v) => setState(() => coin = v ?? true),
+                title: const Text('Enable Coin'),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              CheckboxListTile(
+                value: global,
+                onChanged: (v) => setState(() => global = v ?? true),
+                title: const Text('Global community'),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              CheckboxListTile(
+                value: isActive,
+                onChanged: (v) => setState(() => isActive = v ?? true),
+                title: const Text('Active'),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: maxCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Max managed community coins',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  ElevatedButton(
+                    onPressed: submitting ? null : _submit,
+                    child: const Text('Save'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final name = nameCtrl.text.trim();
+    final storeProductId = storeProductIdCtrl.text.trim();
+    if (name.length < 2) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Name is required')));
+      return;
+    }
+    if (storeProductId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('RevenueCat Product ID is required')),
+      );
+      return;
+    }
+    setState(() => submitting = true);
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.managers)
+        .doc(widget.id)
+        .set({
+          FirestoreManagerFields.name: name,
+          FirestoreManagerFields.thumbnailUrl: thumbCtrl.text.trim(),
+          FirestoreManagerFields.storeProductId: storeProductId,
+          FirestoreManagerFields.enableEtaAuto: eta,
+          FirestoreManagerFields.enableUserCoinAuto: coin,
+          FirestoreManagerFields.globalCommunity: global,
+          FirestoreManagerFields.maxCommunityCoinsManaged:
+              int.tryParse(maxCtrl.text.trim()) ?? 0,
+          FirestoreManagerFields.isActive: isActive,
+          FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
     if (mounted) Navigator.pop(context);
   }
 }

@@ -61,6 +61,62 @@ class MiningStateService extends ChangeNotifier {
   int get streakDays => _streakDays;
   Timestamp? get subscriptionExpiresAt => _subscriptionExpiresAt;
 
+  Future<void> stopMining() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final now = DateTime.now();
+    final end = _lastEnd?.toDate();
+    if (end != null && now.isBefore(end)) {
+      await FirebaseFirestore.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .set({
+            FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(now),
+            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+    }
+    final res = await EarningsEngine.syncEarnings();
+    _totalPoints =
+        (res[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+        _totalPoints;
+
+    _simTimer?.cancel();
+    _simTimer = null;
+    _miningActive = false;
+    _lastEnd = Timestamp.fromDate(now);
+    _displayTotal = _totalPoints;
+    final ns = NotificationService();
+    await ns.cancelAll();
+    _maybeNotify(force: true);
+  }
+
+  Future<void> stopAllCoinMining() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final now = DateTime.now();
+    final coinsRef = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .collection(FirestoreUserSubCollections.coins);
+    final snap = await coinsRef.get();
+    final batch = FirebaseFirestore.instance.batch();
+    int updates = 0;
+    for (final d in snap.docs) {
+      final data = d.data();
+      final end =
+          data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
+      if (end == null) continue;
+      if (!now.isBefore(end.toDate())) continue;
+      batch.set(d.reference, {
+        FirestoreUserCoinMiningFields.lastMiningEnd: Timestamp.fromDate(now),
+      }, SetOptions(merge: true));
+      updates++;
+    }
+    if (updates > 0) {
+      await batch.commit();
+    }
+  }
+
   Future<void> init() async {
     if (_initialized) return;
     _deviceId = await DeviceId.get();
@@ -134,13 +190,38 @@ class MiningStateService extends ChangeNotifier {
         sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
     _subscriptionExpiresAt = subExpires;
 
+    final wasManagerEnabled = _managerEnabled;
     bool isSubActive = subStatus == 'active';
     if (isSubActive && subExpires != null) {
-      if (DateTime.now().isAfter(subExpires.toDate())) {
+      if (now.isAfter(subExpires.toDate())) {
         isSubActive = false;
+        final existingRole = d[FirestoreUserFields.role] as String?;
+        final roleToWrite = existingRole == FirestoreUserRoles.admin
+            ? FirestoreUserRoles.admin
+            : FirestoreUserRoles.free;
+        await FirebaseFirestore.instance
+            .collection(FirestoreConstants.users)
+            .doc(uid)
+            .set({
+              '${FirestoreUserFields.subscription}.${FirestoreUserSubscriptionFields.status}':
+                  'expired',
+              '${FirestoreUserFields.subscription}.${FirestoreUserSubscriptionFields.autoRenew}':
+                  false,
+              FirestoreUserFields.managerEnabled: false,
+              FirestoreUserFields.role: roleToWrite,
+              FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
       }
     }
     _managerEnabled = isSubActive;
+    if (wasManagerEnabled && !_managerEnabled) {
+      await stopMining();
+      await stopAllCoinMining();
+    }
+    if (!_managerEnabled && _miningActive) {
+      await stopMining();
+      await stopAllCoinMining();
+    }
 
     _managedCoinSelections =
         ((d[FirestoreUserFields.managedCoinSelections] as List?)

@@ -54,6 +54,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     if (last == null || now.difference(last) >= const Duration(seconds: 1)) {
       _lastUiUpdate = now;
       setState(() {});
+      unawaited(_manageCommunityCoins());
       return;
     }
     _debounceTimer ??= Timer(const Duration(seconds: 1), () {
@@ -61,6 +62,7 @@ class _MobileHomePageState extends State<MobileHomePage>
       _lastUiUpdate = DateTime.now();
       _debounceTimer = null;
       setState(() {});
+      unawaited(_manageCommunityCoins());
     });
   }
 
@@ -352,7 +354,6 @@ class _MobileHomePageState extends State<MobileHomePage>
                 .doc(uid)
                 .set({
                   FirestoreUserFields.activeManagerId: id,
-                  FirestoreUserFields.managerEnabled: (id != null),
                   FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
                 }, SetOptions(merge: true));
             if (id != null) {
@@ -1032,6 +1033,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
   Offerings? offerings;
   String? currentPlanId;
   bool loading = true;
+  String? processingManagerId;
 
   @override
   void initState() {
@@ -1049,6 +1051,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
         .get();
 
     // Load Offerings
+    await SubscriptionService().init();
     final offs = await SubscriptionService().getOfferings();
 
     // Load Current Subscription
@@ -1126,85 +1129,254 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
         currentPlanId != null && currentPlanId == storeProductId;
 
     // Find package
-    Package? pkg;
-    if (offerings != null &&
-        offerings!.current != null &&
-        storeProductId.isNotEmpty) {
-      // Look in current offering's available packages
-      try {
-        pkg = offerings!.current!.availablePackages.firstWhere(
-          (p) => p.storeProduct.identifier == storeProductId,
-        );
-      } catch (_) {}
+    final pkg = storeProductId.isEmpty
+        ? null
+        : _findPackageForProductId(storeProductId);
+    final isProcessing = processingManagerId == doc.id;
+
+    Future<void> handleTap() async {
+      if (isProcessing) return;
+      if (isSubscribed) {
+        if (isCurrent) return;
+        setState(() => processingManagerId = doc.id);
+        await widget.onSelected(doc.id);
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+
+      if (pkg != null) {
+        setState(() => processingManagerId = doc.id);
+        final success = await SubscriptionService().purchasePackage(pkg);
+        if (success) {
+          await _load();
+          await widget.onSelected(doc.id);
+          if (mounted) Navigator.pop(context);
+        } else {
+          if (mounted) {
+            setState(() => processingManagerId = null);
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(const SnackBar(content: Text('Purchase failed')));
+          }
+        }
+        return;
+      }
+
+      await _openPlans(
+        targetManagerId: doc.id,
+        targetProductId: storeProductId,
+      );
     }
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundImage: thumb.isNotEmpty ? NetworkImage(thumb) : null,
-              child: thumb.isEmpty ? const Icon(Icons.auto_mode_rounded) : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    name,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  if (isSubscribed)
-                    const Text(
-                      'Active',
-                      style: TextStyle(color: Colors.green, fontSize: 12),
-                    )
-                  else if (pkg != null)
-                    Text(
-                      pkg.storeProduct.priceString,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                ],
+      child: InkWell(
+        onTap: handleTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundImage: thumb.isNotEmpty ? NetworkImage(thumb) : null,
+                child: thumb.isEmpty
+                    ? const Icon(Icons.auto_mode_rounded)
+                    : null,
               ),
-            ),
-            if (isSubscribed)
-              // If subscribed, user can select it as active manager (if not already)
-              ElevatedButton(
-                onPressed: isCurrent
-                    ? null
-                    : () async {
-                        await widget.onSelected(doc.id);
-                        if (mounted) Navigator.pop(context);
-                      },
-                child: isCurrent
-                    ? const Icon(Icons.check)
-                    : const Text('Select'),
-              )
-            else if (pkg != null)
-              ElevatedButton(
-                onPressed: () async {
-                  final success = await SubscriptionService().purchasePackage(
-                    pkg!,
-                  );
-                  if (success) {
-                    // Refresh state to show active
-                    await _load();
-                    // Auto-select
-                    await widget.onSelected(doc.id);
-                    if (mounted) Navigator.pop(context);
-                  }
-                },
-                child: const Text('Buy'),
-              )
-            else
-              const Text('Unavailable', style: TextStyle(color: Colors.grey)),
-          ],
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    if (isSubscribed)
+                      const Text(
+                        'Active',
+                        style: TextStyle(color: Colors.green, fontSize: 12),
+                      )
+                    else if (pkg != null)
+                      Text(
+                        pkg.storeProduct.priceString,
+                        style: const TextStyle(fontSize: 12),
+                      )
+                    else
+                      const Text(
+                        'Tap to view plans',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                  ],
+                ),
+              ),
+              if (isProcessing)
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              else if (isSubscribed)
+                ElevatedButton(
+                  onPressed: isCurrent ? null : handleTap,
+                  child: isCurrent
+                      ? const Icon(Icons.check)
+                      : const Text('Select'),
+                )
+              else if (pkg != null)
+                ElevatedButton(onPressed: handleTap, child: const Text('Buy'))
+              else
+                ElevatedButton(
+                  onPressed: handleTap,
+                  child: const Text('Plans'),
+                ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Package? _findPackageForProductId(String productId) {
+    final offs = offerings;
+    if (offs == null) return null;
+    final seen = <String>{};
+    final pkgs = <Package>[];
+
+    final current = offs.current;
+    if (current != null) {
+      for (final p in current.availablePackages) {
+        if (seen.add(p.storeProduct.identifier)) {
+          pkgs.add(p);
+        }
+      }
+    }
+
+    final all = offs.all;
+    for (final o in all.values) {
+      for (final p in o.availablePackages) {
+        if (seen.add(p.storeProduct.identifier)) {
+          pkgs.add(p);
+        }
+      }
+    }
+
+    for (final p in pkgs) {
+      if (p.storeProduct.identifier == productId) return p;
+    }
+    return null;
+  }
+
+  Future<void> _openPlans({
+    required String targetManagerId,
+    required String targetProductId,
+  }) async {
+    final offs = offerings;
+    if (offs == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Subscriptions are only available on Android/iOS.'),
+        ),
+      );
+      return;
+    }
+
+    final seen = <String>{};
+    final pkgs = <Package>[];
+
+    final current = offs.current;
+    if (current != null) {
+      for (final p in current.availablePackages) {
+        if (seen.add(p.storeProduct.identifier)) {
+          pkgs.add(p);
+        }
+      }
+    }
+
+    for (final o in offs.all.values) {
+      for (final p in o.availablePackages) {
+        if (seen.add(p.storeProduct.identifier)) {
+          pkgs.add(p);
+        }
+      }
+    }
+
+    if (pkgs.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No subscription plans available')),
+      );
+      return;
+    }
+
+    final chosen = await showDialog<Package>(
+      context: context,
+      builder: (ctx) {
+        return Dialog(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Subscription Plans',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: pkgs.length,
+                    itemBuilder: (c, i) {
+                      final p = pkgs[i];
+                      final id = p.storeProduct.identifier;
+                      final isTarget = id == targetProductId;
+                      return ListTile(
+                        title: Text(
+                          '${p.storeProduct.title} (${p.storeProduct.priceString})',
+                        ),
+                        subtitle: Text(id),
+                        trailing: isTarget
+                            ? const Text(
+                                'Recommended',
+                                style: TextStyle(color: Colors.green),
+                              )
+                            : null,
+                        onTap: () => Navigator.pop(ctx, p),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (chosen == null) return;
+    if (!mounted) return;
+
+    setState(() => processingManagerId = targetManagerId);
+    final success = await SubscriptionService().purchasePackage(chosen);
+    if (success) {
+      await _load();
+      await widget.onSelected(targetManagerId);
+      if (mounted) Navigator.pop(context);
+    } else {
+      if (mounted) {
+        setState(() => processingManagerId = null);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Purchase failed')));
+      }
+    }
   }
 }
 

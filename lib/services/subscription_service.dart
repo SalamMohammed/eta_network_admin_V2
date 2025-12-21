@@ -14,6 +14,10 @@ class SubscriptionService {
   /// Initialize RevenueCat with API key from Firestore
   Future<void> init() async {
     if (_initialized) return;
+    if (kIsWeb) {
+      debugPrint('SubscriptionService: RevenueCat is not supported on web.');
+      return;
+    }
 
     try {
       final doc = await FirebaseFirestore.instance
@@ -87,10 +91,9 @@ class SubscriptionService {
   Future<bool> purchasePackage(Package package) async {
     if (!_initialized) return false;
     try {
-      final purchaseResult = await Purchases.purchase(
-        PurchaseParams.package(package),
-      );
-      await _handleCustomerInfoUpdate(purchaseResult.customerInfo);
+      await Purchases.purchase(PurchaseParams.package(package));
+      final fresh = await Purchases.getCustomerInfo();
+      await _handleCustomerInfoUpdate(fresh);
       return true;
     } catch (e) {
       debugPrint('SubscriptionService purchase failed: $e');
@@ -102,8 +105,9 @@ class SubscriptionService {
   Future<bool> restorePurchases() async {
     if (!_initialized) return false;
     try {
-      final customerInfo = await Purchases.restorePurchases();
-      await _handleCustomerInfoUpdate(customerInfo);
+      await Purchases.restorePurchases();
+      final fresh = await Purchases.getCustomerInfo();
+      await _handleCustomerInfoUpdate(fresh);
       return true;
     } catch (e) {
       debugPrint('SubscriptionService restore failed: $e');
@@ -116,33 +120,88 @@ class SubscriptionService {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
-    // Determine the "best" active entitlement or subscription
-    // For now, we look for any active entitlement.
-    // In a complex app, you might map specific entitlement IDs to specific plans.
-
-    final entitlements = info.entitlements.active;
-    String status = 'expired';
     String? planId;
     String? provider;
     DateTime? expiresAt;
     bool autoRenew = false;
 
-    if (entitlements.isNotEmpty) {
-      // Pick the first active entitlement
-      final entitlement = entitlements.values.first;
-      status = 'active';
-      planId = entitlement.productIdentifier;
-      provider = entitlement.store.name; // e.g. appStore, playStore
-      if (entitlement.expirationDate != null) {
-        expiresAt = DateTime.parse(entitlement.expirationDate!);
-      }
-      autoRenew = entitlement.willRenew;
-    }
-
-    // Update Firestore
     final userRef = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
+
+    final now = DateTime.now();
+    final activeEntitlements = info.entitlements.active.values.toList();
+    final allEntitlements = info.entitlements.all.values.toList();
+
+    bool isActive = false;
+
+    if (activeEntitlements.isNotEmpty) {
+      activeEntitlements.sort((a, b) {
+        final da = DateTime.tryParse(a.expirationDate ?? '');
+        final db = DateTime.tryParse(b.expirationDate ?? '');
+        if (da == null && db == null) return 0;
+        if (da == null) return -1;
+        if (db == null) return 1;
+        return db.compareTo(da);
+      });
+      final entitlement = activeEntitlements.first;
+      planId = entitlement.productIdentifier;
+      provider = entitlement.store.name;
+      expiresAt = DateTime.tryParse(entitlement.expirationDate ?? '');
+      autoRenew = entitlement.willRenew;
+      isActive = expiresAt == null ? true : expiresAt.isAfter(now);
+    }
+
+    if (!isActive) {
+      final activeSubs = info.activeSubscriptions.toList();
+      DateTime? bestExp;
+      String? bestPlanId;
+      for (final subId in activeSubs) {
+        final expStr = info.allExpirationDates[subId];
+        final exp = DateTime.tryParse(expStr ?? '');
+        if (exp == null) continue;
+        if (!exp.isAfter(now)) continue;
+        if (bestExp == null || exp.isAfter(bestExp)) {
+          bestExp = exp;
+          bestPlanId = subId;
+        }
+      }
+      if (bestPlanId != null) {
+        planId = bestPlanId;
+        expiresAt = bestExp;
+        isActive = true;
+      }
+    }
+
+    if (!isActive) {
+      final latestExpirationDate = DateTime.tryParse(
+        info.latestExpirationDate ?? '',
+      );
+      if (latestExpirationDate != null && latestExpirationDate.isAfter(now)) {
+        expiresAt = latestExpirationDate;
+        isActive = true;
+        final activeSubs = info.activeSubscriptions.toList();
+        if (activeSubs.isNotEmpty) {
+          planId = activeSubs.first;
+        }
+      }
+    }
+
+    if (provider == null && allEntitlements.isNotEmpty) {
+      provider = allEntitlements.first.store.name;
+    }
+    if (!autoRenew && allEntitlements.isNotEmpty) {
+      autoRenew = allEntitlements.first.willRenew;
+    }
+
+    final status = isActive ? 'active' : 'expired';
+
+    final existingSnap = await userRef.get();
+    final existingData = existingSnap.data() ?? {};
+    final existingRole = existingData[FirestoreUserFields.role] as String?;
+    final roleToWrite = existingRole == FirestoreUserRoles.admin
+        ? FirestoreUserRoles.admin
+        : (isActive ? FirestoreUserRoles.pro : FirestoreUserRoles.free);
 
     final subData = {
       FirestoreUserSubscriptionFields.status: status,
@@ -155,25 +214,16 @@ class SubscriptionService {
       FirestoreUserSubscriptionFields.autoRenew: autoRenew,
     };
 
-    // If active, we might also want to enable the manager associated with this plan.
-    // This logic depends on how we map plans to managers.
-    // If the planId corresponds to a Manager's storeProductId, we can activate that manager.
-
     await userRef.set({
       FirestoreUserFields.subscription: subData,
-      // We don't necessarily toggle 'managerEnabled' here blindly,
-      // but we could if the subscription is active.
-      // For now, we leave the manager selection logic to the UI/MiningService
-      // which will read this subscription status.
+      FirestoreUserFields.role: roleToWrite,
+      FirestoreUserFields.managerEnabled: isActive,
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
     // Check if we need to enable/disable manager based on subscription
-    if (status == 'active' && planId != null) {
+    if (isActive && planId != null) {
       await _syncManagerFromPlan(uid, planId);
-    } else {
-      // If expired, maybe disable manager?
-      // Or let the MiningService handle it by checking the date.
-      // We'll let MiningService be the enforcer.
     }
   }
 

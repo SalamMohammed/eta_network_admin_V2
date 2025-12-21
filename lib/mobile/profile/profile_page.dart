@@ -31,11 +31,26 @@ class _ProfilePageState extends State<ProfilePage> {
   int totalSessions = 0;
   String? thumbnailUrl;
   final _referralCtrl = TextEditingController();
+  final _miningService = MiningStateService();
 
   @override
   void initState() {
     super.initState();
+    _miningService.addListener(_handleMiningUpdate);
+    _miningService.init();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _miningService.removeListener(_handleMiningUpdate);
+    _referralCtrl.dispose();
+    super.dispose();
+  }
+
+  void _handleMiningUpdate() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _load() async {
@@ -142,6 +157,7 @@ class _ProfilePageState extends State<ProfilePage> {
               _kv('StreakDays', '$streakDays'),
               _kv('Referral count', '$referralCount'),
               _kv('Total mining sessions', '$totalSessions'),
+              _toggle('Mining Manager Enabled', _miningService.managerEnabled),
             ]),
             if (!referralLocked && (invitedBy == null || invitedBy!.isEmpty))
               _section('Add Referral Code', [
