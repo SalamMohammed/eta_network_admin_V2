@@ -32,6 +32,20 @@ let cachedWebhookAuth = null;
 let cachedWebhookAuthFetchedAtMs = 0;
 const WEBHOOK_AUTH_CACHE_TTL_MS = 5 * 60 * 1000;
 
+const HANDLED_EVENT_TYPES = new Set([
+  'INITIAL_PURCHASE',
+  'RENEWAL',
+  'CANCELLATION',
+  'UNCANCELLATION',
+  'EXPIRATION',
+  'PRODUCT_CHANGE',
+]);
+
+const ALLOWED_APP_IDS = new Set(['com.eta.network', 'net.etanetwork.app']);
+
+const managerIdCache = new Map();
+const MANAGER_ID_CACHE_TTL_MS = 10 * 60 * 1000;
+
 async function getWebhookAuthToken() {
   const now = Date.now();
   if (
@@ -75,82 +89,74 @@ exports.handleRevenueCatWebhook = onRequest(async (req, res) => {
       return;
     }
 
-    const { type, app_user_id, product_id, expiration_at_ms, store, entitlement_id } = event;
+    const { type, app_user_id, expiration_at_ms, store } = event;
+    const normalizedType = (type || '').toString().toUpperCase().trim();
 
     if (!app_user_id) {
-      console.log('No app_user_id, skipping');
       res.status(200).send('OK');
       return;
     }
 
-    console.log(`Received event: ${type} for user: ${app_user_id}`);
+    if (!normalizedType || !HANDLED_EVENT_TYPES.has(normalizedType)) {
+      res.status(200).json({ ok: true, ignored: true });
+      return;
+    }
+
+    const rawAppId =
+      (event.app_id || event.appId || event.bundle_id || event.bundleId || '').toString().trim();
+    const normalizedAppId = rawAppId ? rawAppId.toLowerCase() : '';
+    if (normalizedAppId && !ALLOWED_APP_IDS.has(normalizedAppId)) {
+      res.status(200).json({ ok: true, ignored: true });
+      return;
+    }
 
     const userRef = db.collection(USERS_COLLECTION).doc(app_user_id);
     
-    // We only care about events that change status/expiration
-    // INITIAL_PURCHASE, RENEWAL, CANCELLATION, EXPIRATION, PRODUCT_CHANGE
+    const nowMs = Date.now();
+    const expMs =
+      typeof expiration_at_ms === 'number' ? expiration_at_ms : Number(expiration_at_ms || 0);
+    const hasExpiry = Number.isFinite(expMs) && expMs > 0;
+    const expiresAt = hasExpiry ? admin.firestore.Timestamp.fromMillis(expMs) : null;
+    const expiredByTime = hasExpiry ? expMs <= nowMs : false;
 
-    let status = 'active';
-    let expiresAt = null;
+    let status = (normalizedType === 'EXPIRATION' || expiredByTime) ? 'expired' : 'active';
     let autoRenew = true;
+    if (normalizedType === 'CANCELLATION') autoRenew = false;
+    if (normalizedType === 'UNCANCELLATION') autoRenew = true;
+    if (status === 'expired') autoRenew = false;
 
-    if (expiration_at_ms) {
-      expiresAt = admin.firestore.Timestamp.fromMillis(expiration_at_ms);
-    }
-
-    if (type === 'EXPIRATION') {
-      status = 'expired';
-      autoRenew = false;
-    } else if (type === 'CANCELLATION') {
-      // Cancellation means auto-renew is off, but might still be active until expiration
-      // RevenueCat sends CANCELLATION when user turns off auto-renew
-      // We keep status active if expiration is in future (logic handled below/in app)
-      // But for simplicity, we just flag autoRenew = false. Status remains active until actual expiry.
-      // However, if we don't have the current status, we might assume active if not expired.
-      autoRenew = false;
-    } else if (type === 'UNCANCELLATION') {
-        autoRenew = true;
-    }
+    const productId =
+      (event.product_id || event.productId || event.new_product_id || event.newProductId || '')
+        .toString()
+        .trim();
 
     // Prepare update data
     const updateData = {
       [`${SUBSCRIPTION_FIELD}.${SUB_STATUS}`]: status,
       [`${SUBSCRIPTION_FIELD}.${SUB_AUTO_RENEW}`]: autoRenew,
       [`${SUBSCRIPTION_FIELD}.${SUB_PROVIDER}`]: store || 'unknown',
+      [USER_MANAGER_ENABLED]: status === 'active',
     };
 
-    if (product_id) {
-       updateData[`${SUBSCRIPTION_FIELD}.${SUB_PLAN_ID}`] = product_id;
+    if (productId) {
+       updateData[`${SUBSCRIPTION_FIELD}.${SUB_PLAN_ID}`] = productId;
     }
     if (expiresAt) {
       updateData[`${SUBSCRIPTION_FIELD}.${SUB_EXPIRES_AT}`] = expiresAt;
     }
 
-    // Special handling for CANCELLATION: if type is CANCELLATION, we don't necessarily set status to 'expired' immediately.
-    // The status depends on expiration date.
-    // However, if type is EXPIRATION, we explicitly set status to 'expired'.
-    
-    // For INITIAL_PURCHASE and RENEWAL, status is 'active'.
-    if (type === 'INITIAL_PURCHASE' || type === 'RENEWAL' || type === 'PRODUCT_CHANGE') {
-        status = 'active';
-        updateData[`${SUBSCRIPTION_FIELD}.${SUB_STATUS}`] = status;
+    if (status === 'expired') {
+      updateData[USER_ACTIVE_MANAGER_ID] = null;
+    }
+
+    if (status === 'active' && productId) {
+      const managerId = await getManagerIdForPlan(productId);
+      if (managerId) {
+        updateData[USER_ACTIVE_MANAGER_ID] = managerId;
+      }
     }
 
     await userRef.set(updateData, { merge: true });
-
-    // If active, ensure manager is linked
-    if (status === 'active' && product_id) {
-       await syncManagerFromPlan(app_user_id, product_id);
-    } else if (status === 'expired') {
-        // Disable manager access
-        await userRef.set(
-          {
-            [USER_MANAGER_ENABLED]: false,
-            [USER_ACTIVE_MANAGER_ID]: null,
-          },
-          { merge: true },
-        );
-    }
 
     res.status(200).json({ ok: true });
   } catch (error) {
@@ -159,22 +165,21 @@ exports.handleRevenueCatWebhook = onRequest(async (req, res) => {
   }
 });
 
-async function syncManagerFromPlan(uid, planId) {
-    const managersSnapshot = await db.collection(MANAGERS_COLLECTION)
-        .where('storeProductId', '==', planId)
-        .limit(1)
-        .get();
+async function getManagerIdForPlan(planId) {
+  const now = Date.now();
+  const cached = managerIdCache.get(planId);
+  if (cached && now - cached.fetchedAtMs < MANAGER_ID_CACHE_TTL_MS) {
+    return cached.managerId;
+  }
 
-    if (!managersSnapshot.empty) {
-        const managerId = managersSnapshot.docs[0].id;
-        await db.collection(USERS_COLLECTION).doc(uid).set(
-          {
-            [USER_ACTIVE_MANAGER_ID]: managerId,
-            [USER_MANAGER_ENABLED]: true,
-          },
-          { merge: true },
-        );
-    }
+  const managersSnapshot = await db.collection(MANAGERS_COLLECTION)
+    .where('storeProductId', '==', planId)
+    .limit(1)
+    .get();
+
+  const managerId = managersSnapshot.empty ? null : managersSnapshot.docs[0].id;
+  managerIdCache.set(planId, { managerId, fetchedAtMs: now });
+  return managerId;
 }
 
 exports.checkExpiredSubscriptions = onSchedule("every 24 hours", async (event) => {
@@ -199,7 +204,8 @@ exports.checkExpiredSubscriptions = onSchedule("every 24 hours", async (event) =
         batch.update(userRef, {
             [`${SUBSCRIPTION_FIELD}.${SUB_STATUS}`]: 'expired',
             [`${SUBSCRIPTION_FIELD}.${SUB_AUTO_RENEW}`]: false,
-            [USER_MANAGER_ENABLED]: false
+            [USER_MANAGER_ENABLED]: false,
+            [USER_ACTIVE_MANAGER_ID]: null,
         });
         count++;
     });

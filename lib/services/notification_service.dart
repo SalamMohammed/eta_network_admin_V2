@@ -94,6 +94,16 @@ class NotificationService {
     if (platform != null) {
       await platform.createNotificationChannel(localChannel);
       await platform.createNotificationChannel(fcmChannel);
+      try {
+        await platform.requestNotificationsPermission();
+      } catch (e) {
+        debugPrint('Android notifications permission request failed: $e');
+      }
+      try {
+        await platform.requestExactAlarmsPermission();
+      } catch (e) {
+        debugPrint('Android exact alarm permission request failed: $e');
+      }
     }
 
     // 4. Initialize Firebase Messaging
@@ -214,7 +224,31 @@ class NotificationService {
       );
       debugPrint('Scheduled mining finish notification at $endTime');
     } catch (e) {
-      debugPrint('Error scheduling mining notification: $e');
+      debugPrint('Error scheduling exact mining notification: $e');
+      try {
+        await _localNotifications.zonedSchedule(
+          _miningFinishedId,
+          'Mining Session Ended',
+          'Your mining session has finished! Tap to start a new session and keep earning.',
+          tz.TZDateTime.from(endTime, tz.local),
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'mining_reminders',
+              'Mining Reminders',
+              channelDescription:
+                  'Notifications for mining sessions and streaks',
+              importance: Importance.high,
+              priority: Priority.high,
+            ),
+          ),
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+        debugPrint('Scheduled inexact mining finish notification at $endTime');
+      } catch (e2) {
+        debugPrint('Error scheduling inexact mining notification: $e2');
+      }
     }
   }
 

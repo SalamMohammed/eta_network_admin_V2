@@ -339,11 +339,9 @@ class MiningStateService extends ChangeNotifier {
       if (_lastEnd != null) {
         final end = _lastEnd!.toDate();
         final ns = NotificationService();
-        // We assume NotificationService is initialized in main.dart
-        ns.cancelAll().then((_) {
-          ns.scheduleMiningFinished(end);
-          ns.scheduleStreakReminder(end);
-        });
+        await ns.cancelAll();
+        await ns.scheduleMiningFinished(end);
+        await ns.scheduleStreakReminder(end);
       }
 
       // Reset simulation base to current total when starting new session
