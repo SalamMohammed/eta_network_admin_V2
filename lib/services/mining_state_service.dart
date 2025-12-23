@@ -5,7 +5,6 @@ import 'package:flutter/foundation.dart';
 import '../shared/firestore_constants.dart';
 import 'earnings_engine.dart';
 import '../shared/device_id.dart';
-import 'notification_service.dart';
 import 'subscription_service.dart';
 
 class MiningStateService extends ChangeNotifier {
@@ -88,8 +87,6 @@ class MiningStateService extends ChangeNotifier {
     _miningActive = false;
     _lastEnd = Timestamp.fromDate(now);
     _displayTotal = _totalPoints;
-    final ns = NotificationService();
-    await ns.cancelAll();
     _maybeNotify(force: true);
   }
 
@@ -151,8 +148,8 @@ class MiningStateService extends ChangeNotifier {
     final g = general.data() ?? {};
     _sessionHours =
         ((g[FirestoreAppConfigFields.sessionDurationHours] as num?)
-                ?.toDouble() ??
-            24.0);
+            ?.toDouble() ??
+        24.0);
 
     // Load User Data
     final snap = await FirebaseFirestore.instance
@@ -171,17 +168,6 @@ class MiningStateService extends ChangeNotifier {
 
     final now = DateTime.now();
     _miningActive = _lastEnd != null && now.isBefore(_lastEnd!.toDate());
-
-    if (_lastEnd != null) {
-      final end = _lastEnd!.toDate();
-      final ns = NotificationService();
-      await ns.cancelAll();
-      await ns.scheduleMiningFinished(end);
-      await ns.scheduleStreakReminder(end);
-    } else {
-      final ns = NotificationService();
-      await ns.cancelAll();
-    }
 
     // Initialize display total if not already simulating
     if (!_miningActive || _simTimer == null) {
@@ -335,15 +321,6 @@ class MiningStateService extends ChangeNotifier {
 
       final now = DateTime.now();
       _miningActive = _lastEnd != null && now.isBefore(_lastEnd!.toDate());
-
-      // Schedule notifications
-      if (_lastEnd != null) {
-        final end = _lastEnd!.toDate();
-        final ns = NotificationService();
-        await ns.cancelAll();
-        await ns.scheduleMiningFinished(end);
-        await ns.scheduleStreakReminder(end);
-      }
 
       // Reset simulation base to current total when starting new session
       _totalPoints =

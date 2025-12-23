@@ -1,13 +1,19 @@
 const { onRequest } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { setGlobalOptions } = require("firebase-functions/v2");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
+const { CloudTasksClient } = require("@google-cloud/tasks");
 
 admin.initializeApp();
 const db = admin.firestore();
+const tasksClient = new CloudTasksClient();
 
 // Set global options (e.g., region)
 setGlobalOptions({ region: "us-central1", invoker: "public" });
+const REGION = "us-central1";
+const TASKS_LOCATION = REGION;
+const MINING_END_QUEUE = "mining-end-notifications";
 
 // Firestore Constants (matching client-side)
 const USERS_COLLECTION = 'users';
@@ -27,6 +33,14 @@ const SUB_AUTO_RENEW = 'autoRenew';
 // User Fields
 const USER_MANAGER_ENABLED = 'managerEnabled';
 const USER_ACTIVE_MANAGER_ID = 'activeManagerId';
+const USER_FCM_TOKEN = 'fcmToken';
+const USER_LAST_MINING_END = 'lastMiningEnd';
+
+const USER_MINING_END_NOTIFIED_END_MS = 'miningEndNotifiedEndMs';
+const USER_MINING_END_NOTIFIED_AT = 'miningEndNotifiedAt';
+const USER_MINING_END_TASK_SCHEDULED_END_MS = 'miningEndTaskScheduledEndMs';
+const USER_MINING_END_TASK_SCHEDULED_AT = 'miningEndTaskScheduledAt';
+const USER_MINING_END_TASK_NAME = 'miningEndTaskName';
 
 let cachedWebhookAuth = null;
 let cachedWebhookAuthFetchedAtMs = 0;
@@ -213,3 +227,198 @@ exports.checkExpiredSubscriptions = onSchedule("every 24 hours", async (event) =
     await batch.commit();
     console.log(`Updated ${count} expired subscriptions.`);
 });
+
+async function ensureQueueExists() {
+  const project = process.env.GCLOUD_PROJECT;
+  if (!project) throw new Error("GCLOUD_PROJECT is not set");
+  const queueName = tasksClient.queuePath(project, TASKS_LOCATION, MINING_END_QUEUE);
+
+  try {
+    await tasksClient.getQueue({ name: queueName });
+    return queueName;
+  } catch (e) {
+    const code = e && typeof e.code === "number" ? e.code : null;
+    if (code !== 5) {
+      throw e;
+    }
+  }
+
+  const parent = tasksClient.locationPath(project, TASKS_LOCATION);
+  await tasksClient.createQueue({
+    parent,
+    queue: { name: queueName },
+  });
+
+  return queueName;
+}
+
+function getFunctionUrl(functionName) {
+  const project = process.env.GCLOUD_PROJECT;
+  if (!project) throw new Error("GCLOUD_PROJECT is not set");
+  return `https://${REGION}-${project}.cloudfunctions.net/${functionName}`;
+}
+
+exports.sendMiningEndNotificationTask = onRequest(async (req, res) => {
+  try {
+    if (req.method !== "POST") {
+      res.status(405).send("Method Not Allowed");
+      return;
+    }
+
+    const uid = (req.body && req.body.uid ? String(req.body.uid) : "").trim();
+    const endMs = Number(req.body && req.body.endMs ? req.body.endMs : 0);
+    if (!uid || !Number.isFinite(endMs) || endMs <= 0) {
+      res.status(400).json({ ok: false, error: "invalid_payload" });
+      return;
+    }
+
+    const userRef = db.collection(USERS_COLLECTION).doc(uid);
+    const snap = await userRef.get();
+    if (!snap.exists) {
+      res.status(200).json({ ok: true, skipped: "missing_user" });
+      return;
+    }
+
+    const data = snap.data() || {};
+    const endTs = data[USER_LAST_MINING_END];
+    if (!endTs || typeof endTs.toMillis !== "function") {
+      res.status(200).json({ ok: true, skipped: "missing_lastMiningEnd" });
+      return;
+    }
+
+    const currentEndMs = endTs.toMillis();
+    if (currentEndMs !== endMs) {
+      res.status(200).json({ ok: true, skipped: "end_changed" });
+      return;
+    }
+
+    const nowMs = Date.now();
+    if (nowMs + 10 * 1000 < endMs) {
+      res.status(200).json({ ok: true, skipped: "too_early" });
+      return;
+    }
+
+    const token = (data[USER_FCM_TOKEN] || "").toString().trim();
+    if (!token) {
+      res.status(200).json({ ok: true, skipped: "missing_fcmToken" });
+      return;
+    }
+
+    const alreadyMs = Number(data[USER_MINING_END_NOTIFIED_END_MS] || 0);
+    if (Number.isFinite(alreadyMs) && alreadyMs >= endMs) {
+      res.status(200).json({ ok: true, skipped: "already_notified" });
+      return;
+    }
+
+    await admin.messaging().send({
+      token,
+      notification: {
+        title: "Mining Session Ended",
+        body: "Your mining session has finished! Tap to start a new session and keep earning.",
+      },
+      data: {
+        type: "mining_end",
+        endMs: String(endMs),
+        uid,
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: "high_importance_channel",
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: "default",
+          },
+        },
+      },
+    });
+
+    await userRef.set(
+      {
+        [USER_MINING_END_NOTIFIED_END_MS]: endMs,
+        [USER_MINING_END_NOTIFIED_AT]: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    res.status(200).json({ ok: true, sent: true });
+  } catch (err) {
+    const code = err && err.code ? String(err.code) : "";
+    if (code === "messaging/registration-token-not-registered") {
+      const uid = (req.body && req.body.uid ? String(req.body.uid) : "").trim();
+      if (uid) {
+        await db.collection(USERS_COLLECTION).doc(uid).set({ [USER_FCM_TOKEN]: null }, { merge: true });
+      }
+      res.status(200).json({ ok: true, cleanedToken: true });
+      return;
+    }
+    console.error("sendMiningEndNotificationTask error:", err);
+    res.status(500).json({ ok: false });
+  }
+});
+
+exports.scheduleMiningEndNotification = onDocumentWritten(
+  `${USERS_COLLECTION}/{uid}`,
+  async (event) => {
+    const after = event.data.after;
+    if (!after.exists) return;
+    const data = after.data() || {};
+
+    const endTs = data[USER_LAST_MINING_END];
+    if (!endTs || typeof endTs.toMillis !== "function") return;
+
+    const endMs = endTs.toMillis();
+    const scheduledEndMs = Number(data[USER_MINING_END_TASK_SCHEDULED_END_MS] || 0);
+    if (Number.isFinite(scheduledEndMs) && scheduledEndMs === endMs) {
+      return;
+    }
+
+    const project = process.env.GCLOUD_PROJECT;
+    if (!project) throw new Error("GCLOUD_PROJECT is not set");
+
+    const queueName = await ensureQueueExists();
+    const url = getFunctionUrl("sendMiningEndNotificationTask");
+    const uid = event.params.uid;
+
+    const scheduleAtMs = Math.max(Date.now() + 10 * 1000, endMs);
+    const taskId = `miningEnd-${uid}-${endMs}`;
+    const name = tasksClient.taskPath(project, TASKS_LOCATION, MINING_END_QUEUE, taskId);
+    const body = Buffer.from(JSON.stringify({ uid, endMs })).toString("base64");
+
+    try {
+      await tasksClient.createTask({
+        parent: queueName,
+        task: {
+          name,
+          scheduleTime: {
+            seconds: Math.floor(scheduleAtMs / 1000),
+            nanos: (scheduleAtMs % 1000) * 1e6,
+          },
+          httpRequest: {
+            httpMethod: "POST",
+            url,
+            headers: { "Content-Type": "application/json" },
+            body,
+          },
+        },
+      });
+    } catch (e) {
+      const code = e && typeof e.code === "number" ? e.code : null;
+      if (code !== 6) {
+        throw e;
+      }
+    }
+
+    await after.ref.set(
+      {
+        [USER_MINING_END_TASK_SCHEDULED_END_MS]: endMs,
+        [USER_MINING_END_TASK_SCHEDULED_AT]: admin.firestore.FieldValue.serverTimestamp(),
+        [USER_MINING_END_TASK_NAME]: name,
+      },
+      { merge: true },
+    );
+  },
+);

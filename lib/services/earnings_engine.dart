@@ -199,8 +199,9 @@ class EarningsEngine {
       'EarningsEngine: final hourlyRate=${hourlyRate.toStringAsFixed(6)}',
     );
     final DateTime start = now;
-    final int sessionSeconds =
-        (sessionHours > 0.0 ? (sessionHours * 3600.0).round() : 0);
+    final int sessionSeconds = (sessionHours > 0.0
+        ? (sessionHours * 3600.0).round()
+        : 0);
     DateTime end = now.add(
       Duration(seconds: sessionSeconds > 0 ? sessionSeconds : 24 * 3600),
     );

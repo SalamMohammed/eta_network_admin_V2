@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:flutter/services.dart';
 import '../shared/theme/colors.dart';
 import 'widgets/glowing_button.dart';
 import 'widgets/progress_ring.dart';
@@ -11,6 +12,7 @@ import 'balance/my_coin_block.dart';
 import '../services/coin_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/mining_state_service.dart';
+import '../services/notification_service.dart';
 import '../services/subscription_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -133,6 +135,15 @@ class _MobileHomePageState extends State<MobileHomePage>
           SnackBar(content: Text('Reward: ${reward.amount} ${reward.type}')),
         );
       },
+    );
+  }
+
+  Future<void> _runNotificationDiagnostics() async {
+    final diagnostics = await NotificationService().buildDiagnostics();
+    await Clipboard.setData(ClipboardData(text: diagnostics));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Diagnostics copied to clipboard')),
     );
   }
 
@@ -384,6 +395,14 @@ class _MobileHomePageState extends State<MobileHomePage>
                                 ),
                               ),
                             ),
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: TextButton.icon(
+                              onPressed: _runNotificationDiagnostics,
+                              icon: const Icon(Icons.bug_report_rounded),
+                              label: const Text('Notification Diagnostics'),
+                            ),
+                          ),
                           if (_showMiningPressBanner)
                             Padding(
                               padding: const EdgeInsets.only(top: 12),

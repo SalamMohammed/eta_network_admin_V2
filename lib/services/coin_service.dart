@@ -170,8 +170,9 @@ class CoinService {
         (g[FirestoreAppConfigFields.sessionDurationHours] as num?)
             ?.toDouble() ??
         24.0;
-    final int sessionSeconds =
-        (sessionHours > 0.0 ? (sessionHours * 3600.0).round() : 0);
+    final int sessionSeconds = (sessionHours > 0.0
+        ? (sessionHours * 3600.0).round()
+        : 0);
     DateTime endDt = now.add(
       Duration(seconds: sessionSeconds > 0 ? sessionSeconds : 24 * 3600),
     );

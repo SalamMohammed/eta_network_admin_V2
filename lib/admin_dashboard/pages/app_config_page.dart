@@ -56,7 +56,8 @@ class _AppConfigPageState extends State<AppConfigPage> {
         ((g[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ?? 0.2)
             .toString();
     final sessionHours =
-        (g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toDouble() ??
+        (g[FirestoreAppConfigFields.sessionDurationHours] as num?)
+            ?.toDouble() ??
         24.0;
     sessionHoursCtrl.text = sessionHours == sessionHours.roundToDouble()
         ? sessionHours.toInt().toString()
@@ -233,8 +234,8 @@ class _AppConfigPageState extends State<AppConfigPage> {
     final parsedSessionHours = double.tryParse(sessionHoursCtrl.text.trim());
     final sessionHours =
         (parsedSessionHours != null && parsedSessionHours > 0.0)
-            ? parsedSessionHours
-            : 24.0;
+        ? parsedSessionHours
+        : 24.0;
     await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.general)

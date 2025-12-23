@@ -1,7 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
-import 'package:timezone/data/latest.dart' as tz;
+import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -30,12 +30,18 @@ class NotificationService {
   bool _initialized = false;
   static const String _prefsLastVerifiedKey = 'fcmLastVerifiedAt';
   static const String _prefsTokenKey = 'fcmLastToken';
+  static const String _prefsMiningFinishedAtMsKey =
+      'localNotifMiningFinishedAtMs';
+  static const String _prefsMiningFinishedResultKey =
+      'localNotifMiningFinishedResult';
+  static const String _prefsStreakAtMsKey = 'localNotifStreakAtMs';
+  static const String _prefsStreakResultKey = 'localNotifStreakResult';
 
   Future<void> init() async {
     if (_initialized) return;
 
     // 1. Initialize Timezone
-    tz.initializeTimeZones();
+    tz_data.initializeTimeZones();
     try {
       final String timeZoneName = await FlutterTimezone.getLocalTimezone();
       tz.setLocalLocation(tz.getLocation(timeZoneName));
@@ -54,6 +60,9 @@ class NotificationService {
           requestAlertPermission: true,
           requestBadgePermission: true,
           requestSoundPermission: true,
+          defaultPresentAlert: true,
+          defaultPresentBadge: true,
+          defaultPresentSound: true,
         );
 
     const InitializationSettings initSettings = InitializationSettings(
@@ -68,6 +77,16 @@ class NotificationService {
         // Handle navigation if needed
       },
     );
+
+    final ios = _localNotifications
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    try {
+      await ios?.requestPermissions(alert: true, badge: true, sound: true);
+    } catch (e) {
+      debugPrint('iOS local notifications permission request failed: $e');
+    }
 
     // 3. Create Notification Channels (Android)
     // Channel for Mining/Streak (Local)
@@ -198,10 +217,25 @@ class NotificationService {
 
   /// Schedules a notification when the mining session ends.
   Future<void> scheduleMiningFinished(DateTime endTime) async {
-    if (!_initialized) return;
-    await _localNotifications.cancel(_miningFinishedId);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(
+      _prefsMiningFinishedAtMsKey,
+      endTime.millisecondsSinceEpoch,
+    );
+    if (!_initialized) {
+      await prefs.setString(_prefsMiningFinishedResultKey, 'not_initialized');
+      return;
+    }
+    final now = DateTime.now();
+    if (endTime.isBefore(now)) {
+      await prefs.setString(
+        _prefsMiningFinishedResultKey,
+        'skipped_past now=${now.toIso8601String()} end=${endTime.toIso8601String()}',
+      );
+      return;
+    }
 
-    if (endTime.isBefore(DateTime.now())) return;
+    await _localNotifications.cancel(_miningFinishedId);
 
     try {
       await _localNotifications.zonedSchedule(
@@ -217,11 +251,17 @@ class NotificationService {
             importance: Importance.high,
             priority: Priority.high,
           ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
         ),
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
+      await prefs.setString(_prefsMiningFinishedResultKey, 'scheduled_exact');
       debugPrint('Scheduled mining finish notification at $endTime');
     } catch (e) {
       debugPrint('Error scheduling exact mining notification: $e');
@@ -240,13 +280,26 @@ class NotificationService {
               importance: Importance.high,
               priority: Priority.high,
             ),
+            iOS: DarwinNotificationDetails(
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
+            ),
           ),
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
           uiLocalNotificationDateInterpretation:
               UILocalNotificationDateInterpretation.absoluteTime,
         );
+        await prefs.setString(
+          _prefsMiningFinishedResultKey,
+          'scheduled_inexact',
+        );
         debugPrint('Scheduled inexact mining finish notification at $endTime');
       } catch (e2) {
+        await prefs.setString(
+          _prefsMiningFinishedResultKey,
+          'error_inexact $e2',
+        );
         debugPrint('Error scheduling inexact mining notification: $e2');
       }
     }
@@ -254,13 +307,26 @@ class NotificationService {
 
   /// Schedules a streak reminder (e.g. 20 hours after session ends).
   Future<void> scheduleStreakReminder(DateTime endTime) async {
-    if (!_initialized) return;
-    await _localNotifications.cancel(_streakReminderId);
-
-    // Schedule for 23 hours after session ENDS (so they have 1 hour left in 24h grace period)
     final reminderTime = endTime.add(const Duration(hours: 23));
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(
+      _prefsStreakAtMsKey,
+      reminderTime.millisecondsSinceEpoch,
+    );
+    if (!_initialized) {
+      await prefs.setString(_prefsStreakResultKey, 'not_initialized');
+      return;
+    }
+    final now = DateTime.now();
+    if (reminderTime.isBefore(now)) {
+      await prefs.setString(
+        _prefsStreakResultKey,
+        'skipped_past now=${now.toIso8601String()} reminder=${reminderTime.toIso8601String()}',
+      );
+      return;
+    }
 
-    if (reminderTime.isBefore(DateTime.now())) return;
+    await _localNotifications.cancel(_streakReminderId);
 
     try {
       await _localNotifications.zonedSchedule(
@@ -276,13 +342,20 @@ class NotificationService {
             importance: Importance.defaultImportance,
             priority: Priority.defaultPriority,
           ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+          ),
         ),
         androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         uiLocalNotificationDateInterpretation:
             UILocalNotificationDateInterpretation.absoluteTime,
       );
+      await prefs.setString(_prefsStreakResultKey, 'scheduled_inexact');
       debugPrint('Scheduled streak reminder at $reminderTime');
     } catch (e) {
+      await prefs.setString(_prefsStreakResultKey, 'error $e');
       debugPrint('Error scheduling streak notification: $e');
     }
   }
@@ -308,8 +381,107 @@ class NotificationService {
           importance: Importance.high,
           priority: Priority.high,
         ),
+        iOS: DarwinNotificationDetails(
+          presentAlert: true,
+          presentBadge: true,
+          presentSound: true,
+        ),
       ),
     );
+  }
+
+  Future<String> buildDiagnostics() async {
+    final lines = <String>[];
+    lines.add('=== Notification Diagnostics ===');
+    lines.add('initialized=$_initialized');
+    lines.add('kIsWeb=$kIsWeb');
+    lines.add('platform=${defaultTargetPlatform.name}');
+    final now = DateTime.now();
+    lines.add('now=${now.toIso8601String()}');
+    lines.add('tzLocal=${tz.local.name}');
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final miningAtMs = prefs.getInt(_prefsMiningFinishedAtMsKey);
+      final miningRes = prefs.getString(_prefsMiningFinishedResultKey);
+      if (miningAtMs != null) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(miningAtMs);
+        lines.add('miningFinishedAt=${dt.toIso8601String()}');
+        lines.add('miningFinishedIn=${dt.difference(now).inSeconds}s');
+      }
+      if (miningRes != null && miningRes.isNotEmpty) {
+        lines.add('miningFinishedResult=$miningRes');
+      }
+
+      final streakAtMs = prefs.getInt(_prefsStreakAtMsKey);
+      final streakRes = prefs.getString(_prefsStreakResultKey);
+      if (streakAtMs != null) {
+        final dt = DateTime.fromMillisecondsSinceEpoch(streakAtMs);
+        lines.add('streakReminderAt=${dt.toIso8601String()}');
+        lines.add('streakReminderIn=${dt.difference(now).inSeconds}s');
+      }
+      if (streakRes != null && streakRes.isNotEmpty) {
+        lines.add('streakReminderResult=$streakRes');
+      }
+    } catch (e) {
+      lines.add('localScheduleStateError=$e');
+    }
+
+    try {
+      final tzName = await FlutterTimezone.getLocalTimezone();
+      lines.add('deviceTimeZone=$tzName');
+    } catch (e) {
+      lines.add('deviceTimeZoneError=$e');
+    }
+
+    try {
+      final settings = await _firebaseMessaging.getNotificationSettings();
+      lines.add('fcmAuthorization=${settings.authorizationStatus.name}');
+      lines.add('fcmAlert=${settings.alert.name}');
+      lines.add('fcmBadge=${settings.badge.name}');
+      lines.add('fcmSound=${settings.sound.name}');
+    } catch (e) {
+      lines.add('fcmSettingsError=$e');
+    }
+
+    try {
+      final android = _localNotifications
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      if (android != null) {
+        final enabled = await android.areNotificationsEnabled();
+        lines.add('androidNotificationsEnabled=$enabled');
+        final canExact = await android.canScheduleExactNotifications();
+        lines.add('androidCanScheduleExact=$canExact');
+      } else {
+        lines.add('androidImplementation=null');
+      }
+    } catch (e) {
+      lines.add('androidStatusError=$e');
+    }
+
+    try {
+      final ios = _localNotifications
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >();
+      lines.add('iosImplementation=${ios != null}');
+    } catch (e) {
+      lines.add('iosStatusError=$e');
+    }
+
+    try {
+      final pending = await _localNotifications.pendingNotificationRequests();
+      lines.add('pendingCount=${pending.length}');
+      for (final p in pending) {
+        lines.add('pending id=${p.id} title=${p.title} body=${p.body}');
+      }
+    } catch (e) {
+      lines.add('pendingError=$e');
+    }
+
+    return lines.join('\n');
   }
 
   Future<String?> getFcmToken() async {
