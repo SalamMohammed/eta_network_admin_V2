@@ -13,6 +13,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/mining_state_service.dart';
 import '../services/subscription_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import '../services/ads_service.dart';
 
 class MobileHomePage extends StatefulWidget {
   const MobileHomePage({super.key});
@@ -24,16 +26,25 @@ class MobileHomePage extends StatefulWidget {
 class _MobileHomePageState extends State<MobileHomePage>
     with SingleTickerProviderStateMixin {
   final _miningService = MiningStateService();
+  final _adsService = AdsService();
   late final TabController _tab = TabController(length: 2, vsync: this);
   String _minedSort = 'popular';
   String _liveSort = 'popular';
   DateTime? _lastUiUpdate;
   Timer? _debounceTimer;
 
+  BannerAd? _miningPressBanner;
+  bool _miningPressBannerLoaded = false;
+  bool _showMiningPressBanner = false;
+
+  bool _rewardedLoading = false;
+
   @override
   void initState() {
     super.initState();
     _miningService.addListener(_handleServiceUpdate);
+    _adsService.addListener(_handleAdsUpdate);
+    unawaited(_adsService.init());
     _miningService.init().then((_) {
       if (mounted) _manageCommunityCoins();
     });
@@ -42,9 +53,87 @@ class _MobileHomePageState extends State<MobileHomePage>
   @override
   void dispose() {
     _miningService.removeListener(_handleServiceUpdate);
+    _adsService.removeListener(_handleAdsUpdate);
     _tab.dispose();
     _debounceTimer?.cancel();
+    _miningPressBanner?.dispose();
+    _miningPressBanner = null;
     super.dispose();
+  }
+
+  Future<void> _maybeShowMiningPressBanner() async {
+    await _adsService.init();
+    if (!_adsService.isSupportedPlatform) return;
+    if (!_adsService.config.enableBannerOnMiningPress) return;
+
+    _miningPressBanner?.dispose();
+    _miningPressBanner = BannerAd(
+      adUnitId: _adsService.bannerAdUnitId,
+      request: const AdRequest(),
+      size: AdSize.banner,
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          if (!mounted) return;
+          setState(() {
+            _miningPressBannerLoaded = true;
+            _showMiningPressBanner = true;
+          });
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          if (!mounted) return;
+          setState(() {
+            _miningPressBannerLoaded = false;
+            _showMiningPressBanner = false;
+          });
+        },
+      ),
+    );
+    if (mounted) {
+      setState(() {
+        _miningPressBannerLoaded = false;
+        _showMiningPressBanner = true;
+      });
+    }
+    _miningPressBanner!.load();
+  }
+
+  void _handleAdsUpdate() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> _showRewardedAd() async {
+    await _adsService.init();
+    if (!_adsService.isSupportedPlatform) return;
+    if (!_adsService.config.enableRewarded) return;
+    if (_rewardedLoading) return;
+
+    setState(() => _rewardedLoading = true);
+    final ad = await _adsService.loadRewardedAd();
+    if (!mounted) return;
+    setState(() => _rewardedLoading = false);
+
+    if (ad == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Rewarded ad not available')),
+      );
+      return;
+    }
+
+    ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdDismissedFullScreenContent: (ad) => ad.dispose(),
+      onAdFailedToShowFullScreenContent: (ad, error) => ad.dispose(),
+    );
+
+    ad.show(
+      onUserEarnedReward: (ad, reward) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Reward: ${reward.amount} ${reward.type}')),
+        );
+      },
+    );
   }
 
   void _handleServiceUpdate() {
@@ -266,6 +355,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                                 : () async {
                                     try {
                                       await _miningService.startMining();
+                                      await _maybeShowMiningPressBanner();
                                     } catch (e) {
                                       if (!mounted) return;
                                       // ignore: use_build_context_synchronously
@@ -279,6 +369,80 @@ class _MobileHomePageState extends State<MobileHomePage>
                                     }
                                   },
                           ),
+                          if (_adsService.config.enableRewarded)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: TextButton.icon(
+                                onPressed: _rewardedLoading
+                                    ? null
+                                    : _showRewardedAd,
+                                icon: const Icon(Icons.ondemand_video_rounded),
+                                label: Text(
+                                  _rewardedLoading
+                                      ? 'Loading ad…'
+                                      : 'Watch ad (rewarded)',
+                                ),
+                              ),
+                            ),
+                          if (_showMiningPressBanner)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 12),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: AppColors.primaryBackground,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 8,
+                                          ),
+                                          child: Text('Sponsored'),
+                                        ),
+                                        IconButton(
+                                          onPressed: () {
+                                            setState(() {
+                                              _showMiningPressBanner = false;
+                                              _miningPressBannerLoaded = false;
+                                            });
+                                            _miningPressBanner?.dispose();
+                                            _miningPressBanner = null;
+                                          },
+                                          icon: const Icon(Icons.close_rounded),
+                                        ),
+                                      ],
+                                    ),
+                                    if (_miningPressBanner != null &&
+                                        _miningPressBannerLoaded)
+                                      SizedBox(
+                                        width: _miningPressBanner!.size.width
+                                            .toDouble(),
+                                        height: _miningPressBanner!.size.height
+                                            .toDouble(),
+                                        child: AdWidget(
+                                          ad: _miningPressBanner!,
+                                        ),
+                                      )
+                                    else
+                                      const Padding(
+                                        padding: EdgeInsets.only(bottom: 12),
+                                        child: SizedBox(
+                                          height: 50,
+                                          child: Center(
+                                            child: CircularProgressIndicator(),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),

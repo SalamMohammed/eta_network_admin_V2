@@ -5,6 +5,7 @@ import 'shared/theme/app_theme.dart';
 import 'auth/auth_gate.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'services/notification_service.dart';
+import 'services/ads_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +14,7 @@ Future<void> main() async {
   if (!kIsWeb) {
     await NotificationService().init();
     await NotificationService().ensureTokenRegistered();
+    await AdsService().init();
   }
 
   runApp(const MyApp());

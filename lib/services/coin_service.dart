@@ -166,10 +166,15 @@ class CoinService {
     }
 
     final now = DateTime.now();
-    final int hours =
-        (g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
-        24;
-    DateTime endDt = now.add(Duration(hours: hours));
+    final double sessionHours =
+        (g[FirestoreAppConfigFields.sessionDurationHours] as num?)
+            ?.toDouble() ??
+        24.0;
+    final int sessionSeconds =
+        (sessionHours > 0.0 ? (sessionHours * 3600.0).round() : 0);
+    DateTime endDt = now.add(
+      Duration(seconds: sessionSeconds > 0 ? sessionSeconds : 24 * 3600),
+    );
     if (maxEnd != null && maxEnd.isAfter(now) && maxEnd.isBefore(endDt)) {
       endDt = maxEnd;
     }

@@ -154,9 +154,10 @@ class EarningsEngine {
     final afterRankData = afterRankSnap.data() ?? {};
     final double baseRate =
         (cfg[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ?? 0.2;
-    final int sessionHours =
-        (cfg[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
-        24;
+    final double sessionHours =
+        (cfg[FirestoreAppConfigFields.sessionDurationHours] as num?)
+            ?.toDouble() ??
+        24.0;
     final double streakMultiplier = _streakMultiplier(newStreakDays, streakCfg);
     final double rankMultiplier = _rankMultiplierByName(
       (afterRankData[FirestoreUserFields.rank] as String?) ?? '',
@@ -198,7 +199,11 @@ class EarningsEngine {
       'EarningsEngine: final hourlyRate=${hourlyRate.toStringAsFixed(6)}',
     );
     final DateTime start = now;
-    DateTime end = now.add(Duration(hours: sessionHours));
+    final int sessionSeconds =
+        (sessionHours > 0.0 ? (sessionHours * 3600.0).round() : 0);
+    DateTime end = now.add(
+      Duration(seconds: sessionSeconds > 0 ? sessionSeconds : 24 * 3600),
+    );
     if (maxEnd != null && maxEnd.isAfter(start) && maxEnd.isBefore(end)) {
       end = maxEnd;
     }

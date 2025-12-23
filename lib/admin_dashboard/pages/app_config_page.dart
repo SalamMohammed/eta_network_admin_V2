@@ -55,10 +55,12 @@ class _AppConfigPageState extends State<AppConfigPage> {
     baseRateCtrl.text =
         ((g[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ?? 0.2)
             .toString();
-    sessionHoursCtrl.text =
-        ((g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
-                24)
-            .toString();
+    final sessionHours =
+        (g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toDouble() ??
+        24.0;
+    sessionHoursCtrl.text = sessionHours == sessionHours.roundToDouble()
+        ? sessionHours.toInt().toString()
+        : sessionHours.toString();
     deviceSingleUser =
         ((g[FirestoreAppConfigFields.deviceSingleUserEnforced] as bool?) ??
         false);
@@ -228,14 +230,18 @@ class _AppConfigPageState extends State<AppConfigPage> {
   }
 
   Future<void> _saveGeneral() async {
+    final parsedSessionHours = double.tryParse(sessionHoursCtrl.text.trim());
+    final sessionHours =
+        (parsedSessionHours != null && parsedSessionHours > 0.0)
+            ? parsedSessionHours
+            : 24.0;
     await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.general)
         .set({
           FirestoreAppConfigFields.baseRate:
               double.tryParse(baseRateCtrl.text) ?? 0.2,
-          FirestoreAppConfigFields.sessionDurationHours:
-              int.tryParse(sessionHoursCtrl.text) ?? 24,
+          FirestoreAppConfigFields.sessionDurationHours: sessionHours,
           FirestoreAppConfigFields.deviceSingleUserEnforced: deviceSingleUser,
           FirestoreAppConfigFields.revenueCatApiKey: revenueCatApiKeyCtrl.text
               .trim(),

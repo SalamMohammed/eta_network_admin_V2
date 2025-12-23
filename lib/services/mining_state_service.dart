@@ -19,7 +19,7 @@ class MiningStateService extends ChangeNotifier {
   Timestamp? _lastStart;
   Timestamp? _lastEnd;
   bool _miningActive = false;
-  int _sessionHours = 24;
+  double _sessionHours = 24.0;
   int _streakDays = 0;
 
   // Manager state
@@ -58,7 +58,7 @@ class MiningStateService extends ChangeNotifier {
   int get managerMaxCommunity => _managerMaxCommunity;
   String? get activeManagerId => _activeManagerId;
   List<String> get managedCoinSelections => _managedCoinSelections;
-  int get sessionHours => _sessionHours;
+  double get sessionHours => _sessionHours;
   Timestamp? get lastEnd => _lastEnd;
   Timestamp? get lastStart => _lastStart;
   int get streakDays => _streakDays;
@@ -150,8 +150,9 @@ class MiningStateService extends ChangeNotifier {
         .get();
     final g = general.data() ?? {};
     _sessionHours =
-        ((g[FirestoreAppConfigFields.sessionDurationHours] as num?)?.toInt() ??
-        24);
+        ((g[FirestoreAppConfigFields.sessionDurationHours] as num?)
+                ?.toDouble() ??
+            24.0);
 
     // Load User Data
     final snap = await FirebaseFirestore.instance

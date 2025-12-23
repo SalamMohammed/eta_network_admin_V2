@@ -114,6 +114,18 @@ class FirestoreAppConfigDocs {
   static const String userCoin = 'user_coin';
   static const String manager = 'manager';
   static const String legal = 'legal';
+  static const String ads = 'ads';
+}
+
+class FirestoreAdsConfigFields {
+  static const String enableRewarded = 'enableRewarded';
+  static const String enableBannerOnMiningPress = 'enableBannerOnMiningPress';
+  static const String maxRewardedPerDay = 'maxRewardedPerDay';
+  static const String rewardBonusPercent = 'rewardBonusPercent';
+  static const String bannerAdUnitIdAndroid = 'bannerAdUnitIdAndroid';
+  static const String bannerAdUnitIdIos = 'bannerAdUnitIdIos';
+  static const String rewardedAdUnitIdAndroid = 'rewardedAdUnitIdAndroid';
+  static const String rewardedAdUnitIdIos = 'rewardedAdUnitIdIos';
 }
 
 class FirestoreLegalFields {
