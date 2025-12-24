@@ -336,6 +336,47 @@ class MiningStateService extends ChangeNotifier {
     }
   }
 
+  Future<double> applyRewardedAdHourlyBoost({
+    required double baseHourlyRate,
+    required double percent,
+    required int rewardedWatchIndex,
+  }) async {
+    if (rewardedWatchIndex < 2) return _hourlyRate;
+    if (baseHourlyRate <= 0) return _hourlyRate;
+    if (percent <= 0) return _hourlyRate;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return _hourlyRate;
+    if (!_miningActive || _lastStart == null || _lastEnd == null) {
+      return _hourlyRate;
+    }
+
+    final syncRes = await EarningsEngine.syncEarnings();
+    _totalPoints =
+        (syncRes[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+        _totalPoints;
+    _displayTotal = _totalPoints;
+    _simBase = _totalPoints;
+    _simAnchor = DateTime.now();
+
+    final frac = (percent / 100.0).clamp(0.0, 1e6);
+    final bonusPerAd = baseHourlyRate * frac;
+    final targetHourlyRate =
+        baseHourlyRate + (bonusPerAd * (rewardedWatchIndex - 1));
+    if (targetHourlyRate <= 0) return _hourlyRate;
+
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .update({
+          FirestoreUserFields.hourlyRate: targetHourlyRate,
+          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+        });
+
+    _hourlyRate = targetHourlyRate;
+    _maybeNotify(force: true);
+    return targetHourlyRate;
+  }
+
   void _startSimulationIfNeeded() {
     // If we're already simulating and parameters haven't changed drastically, let it run
     // But if we just refreshed and got new base points, we might need to adjust

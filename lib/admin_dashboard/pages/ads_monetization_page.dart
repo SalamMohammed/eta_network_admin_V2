@@ -198,7 +198,7 @@ class _AdsMonetizationPageState extends State<AdsMonetizationPage> {
                       child: TextField(
                         controller: rewardBonusCtrl,
                         decoration: const InputDecoration(
-                          labelText: 'Reward bonus (% of hourlyRate)',
+                          labelText: 'Ad reward percentage (%)',
                         ),
                       ),
                     ),

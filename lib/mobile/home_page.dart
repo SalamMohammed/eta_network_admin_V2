@@ -45,8 +45,11 @@ class _MobileHomePageState extends State<MobileHomePage>
       'ads_rewarded_session_start_ms';
   static const String _prefsRewardedSessionCountKey =
       'ads_rewarded_session_count';
+  static const String _prefsRewardedSessionBaseHourlyRateKey =
+      'ads_rewarded_session_base_hourly_rate';
   int _rewardedSessionStartMs = 0;
   int _rewardedWatchedThisSession = 0;
+  double _rewardedSessionBaseHourlyRate = 0.0;
 
   @override
   void initState() {
@@ -118,10 +121,12 @@ class _MobileHomePageState extends State<MobileHomePage>
     final prefs = await SharedPreferences.getInstance();
     final start = prefs.getInt(_prefsRewardedSessionStartMsKey) ?? 0;
     final count = prefs.getInt(_prefsRewardedSessionCountKey) ?? 0;
+    final base = prefs.getDouble(_prefsRewardedSessionBaseHourlyRateKey) ?? 0.0;
     if (!mounted) return;
     setState(() {
       _rewardedSessionStartMs = start;
       _rewardedWatchedThisSession = count;
+      _rewardedSessionBaseHourlyRate = base;
     });
   }
 
@@ -134,6 +139,10 @@ class _MobileHomePageState extends State<MobileHomePage>
     await prefs.setInt(
       _prefsRewardedSessionCountKey,
       _rewardedWatchedThisSession,
+    );
+    await prefs.setDouble(
+      _prefsRewardedSessionBaseHourlyRateKey,
+      _rewardedSessionBaseHourlyRate,
     );
   }
 
@@ -149,6 +158,7 @@ class _MobileHomePageState extends State<MobileHomePage>
         setState(() {
           _rewardedSessionStartMs = 0;
           _rewardedWatchedThisSession = 0;
+          _rewardedSessionBaseHourlyRate = 0.0;
         });
         await _persistRewardedSessionLimiter();
       }
@@ -160,7 +170,17 @@ class _MobileHomePageState extends State<MobileHomePage>
       setState(() {
         _rewardedSessionStartMs = sessionStartMs;
         _rewardedWatchedThisSession = 0;
+        _rewardedSessionBaseHourlyRate = _miningService.hourlyRate;
       });
+      await _persistRewardedSessionLimiter();
+      return;
+    }
+
+    if (_rewardedSessionBaseHourlyRate <= 0) {
+      if (!mounted) return;
+      setState(
+        () => _rewardedSessionBaseHourlyRate = _miningService.hourlyRate,
+      );
       await _persistRewardedSessionLimiter();
     }
   }
@@ -194,9 +214,6 @@ class _MobileHomePageState extends State<MobileHomePage>
       return false;
     }
 
-    setState(() => _rewardedWatchedThisSession += 1);
-    await _persistRewardedSessionLimiter();
-
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) => ad.dispose(),
       onAdFailedToShowFullScreenContent: (ad, error) => ad.dispose(),
@@ -205,6 +222,39 @@ class _MobileHomePageState extends State<MobileHomePage>
     ad.show(
       onUserEarnedReward: (ad, reward) {
         if (!mounted) return;
+        unawaited(() async {
+          try {
+            await _syncRewardedSessionWithMiningState();
+            if (!mounted) return;
+            final next = _rewardedWatchedThisSession + 1;
+            setState(() => _rewardedWatchedThisSession = next);
+            await _persistRewardedSessionLimiter();
+            if (next >= 2) {
+              final before = _miningService.hourlyRate;
+              final after = await _miningService.applyRewardedAdHourlyBoost(
+                baseHourlyRate: _rewardedSessionBaseHourlyRate,
+                percent: _adsService.config.rewardBonusPercent,
+                rewardedWatchIndex: next,
+              );
+              if (!mounted) return;
+              if (after > before) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Mining rate boosted: ${before.toStringAsFixed(2)} → ${after.toStringAsFixed(2)} ETA/hr',
+                    ),
+                  ),
+                );
+              }
+            }
+          } catch (e) {
+            debugPrint('Rewarded bonus apply failed: $e');
+            if (!mounted) return;
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text('Ad bonus failed: $e')));
+          }
+        }());
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Reward: ${reward.amount} ${reward.type}')),
         );
