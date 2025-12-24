@@ -121,6 +121,8 @@ class FirestoreAdsConfigFields {
   static const String enableRewarded = 'enableRewarded';
   static const String enableBannerOnMiningPress = 'enableBannerOnMiningPress';
   static const String maxRewardedPerDay = 'maxRewardedPerDay';
+  static const String maxRewardedPerMiningSession =
+      'maxRewardedPerMiningSession';
   static const String rewardBonusPercent = 'rewardBonusPercent';
   static const String bannerAdUnitIdAndroid = 'bannerAdUnitIdAndroid';
   static const String bannerAdUnitIdIos = 'bannerAdUnitIdIos';

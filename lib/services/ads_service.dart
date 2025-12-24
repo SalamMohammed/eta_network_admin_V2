@@ -10,6 +10,7 @@ class AdsConfig {
   final bool enableRewarded;
   final bool enableBannerOnMiningPress;
   final int maxRewardedPerDay;
+  final int maxRewardedPerMiningSession;
   final double rewardBonusPercent;
   final String bannerAdUnitIdAndroid;
   final String bannerAdUnitIdIos;
@@ -20,6 +21,7 @@ class AdsConfig {
     required this.enableRewarded,
     required this.enableBannerOnMiningPress,
     required this.maxRewardedPerDay,
+    required this.maxRewardedPerMiningSession,
     required this.rewardBonusPercent,
     required this.bannerAdUnitIdAndroid,
     required this.bannerAdUnitIdIos,
@@ -31,6 +33,7 @@ class AdsConfig {
     enableRewarded: true,
     enableBannerOnMiningPress: true,
     maxRewardedPerDay: 5,
+    maxRewardedPerMiningSession: 5,
     rewardBonusPercent: 2,
     bannerAdUnitIdAndroid: 'ca-app-pub-3940256099942544/6300978111',
     bannerAdUnitIdIos: 'ca-app-pub-3940256099942544/2934735716',
@@ -42,6 +45,7 @@ class AdsConfig {
     bool? enableRewarded,
     bool? enableBannerOnMiningPress,
     int? maxRewardedPerDay,
+    int? maxRewardedPerMiningSession,
     double? rewardBonusPercent,
     String? bannerAdUnitIdAndroid,
     String? bannerAdUnitIdIos,
@@ -53,6 +57,8 @@ class AdsConfig {
       enableBannerOnMiningPress:
           enableBannerOnMiningPress ?? this.enableBannerOnMiningPress,
       maxRewardedPerDay: maxRewardedPerDay ?? this.maxRewardedPerDay,
+      maxRewardedPerMiningSession:
+          maxRewardedPerMiningSession ?? this.maxRewardedPerMiningSession,
       rewardBonusPercent: rewardBonusPercent ?? this.rewardBonusPercent,
       bannerAdUnitIdAndroid:
           bannerAdUnitIdAndroid ?? this.bannerAdUnitIdAndroid,
@@ -67,6 +73,12 @@ class AdsConfig {
     final int maxPerDay =
         ((data[FirestoreAdsConfigFields.maxRewardedPerDay] as num?)?.toInt() ??
                 defaults.maxRewardedPerDay)
+            .clamp(0, 1000);
+
+    final int maxPerSession =
+        ((data[FirestoreAdsConfigFields.maxRewardedPerMiningSession] as num?)
+                    ?.toInt() ??
+                defaults.maxRewardedPerMiningSession)
             .clamp(0, 1000);
 
     final double rewardPercent =
@@ -102,6 +114,7 @@ class AdsConfig {
           (data[FirestoreAdsConfigFields.enableBannerOnMiningPress] as bool?) ??
           defaults.enableBannerOnMiningPress,
       maxRewardedPerDay: maxPerDay,
+      maxRewardedPerMiningSession: maxPerSession,
       rewardBonusPercent: rewardPercent,
       bannerAdUnitIdAndroid: bannerAndroid.isEmpty
           ? defaults.bannerAdUnitIdAndroid

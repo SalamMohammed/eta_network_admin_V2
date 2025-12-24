@@ -14,6 +14,7 @@ class AdsMonetizationPage extends StatefulWidget {
 class _AdsMonetizationPageState extends State<AdsMonetizationPage> {
   final rewardBonusCtrl = TextEditingController();
   final maxRewardsCtrl = TextEditingController();
+  final maxRewardsPerSessionCtrl = TextEditingController();
   final bannerAndroidUnitIdCtrl = TextEditingController();
   final bannerIosUnitIdCtrl = TextEditingController();
   final rewardedAndroidUnitIdCtrl = TextEditingController();
@@ -33,6 +34,7 @@ class _AdsMonetizationPageState extends State<AdsMonetizationPage> {
   void dispose() {
     rewardBonusCtrl.dispose();
     maxRewardsCtrl.dispose();
+    maxRewardsPerSessionCtrl.dispose();
     bannerAndroidUnitIdCtrl.dispose();
     bannerIosUnitIdCtrl.dispose();
     rewardedAndroidUnitIdCtrl.dispose();
@@ -62,6 +64,11 @@ class _AdsMonetizationPageState extends State<AdsMonetizationPage> {
               .toString();
       maxRewardsCtrl.text =
           ((d[FirestoreAdsConfigFields.maxRewardedPerDay] as num?)?.toInt() ??
+                  5)
+              .toString();
+      maxRewardsPerSessionCtrl.text =
+          ((d[FirestoreAdsConfigFields.maxRewardedPerMiningSession] as num?)
+                      ?.toInt() ??
                   5)
               .toString();
 
@@ -99,6 +106,8 @@ class _AdsMonetizationPageState extends State<AdsMonetizationPage> {
                 double.tryParse(rewardBonusCtrl.text.trim()) ?? 2,
             FirestoreAdsConfigFields.maxRewardedPerDay:
                 int.tryParse(maxRewardsCtrl.text.trim()) ?? 5,
+            FirestoreAdsConfigFields.maxRewardedPerMiningSession:
+                int.tryParse(maxRewardsPerSessionCtrl.text.trim()) ?? 5,
             FirestoreAdsConfigFields.bannerAdUnitIdAndroid:
                 bannerAndroidUnitIdCtrl.text.trim(),
             FirestoreAdsConfigFields.bannerAdUnitIdIos: bannerIosUnitIdCtrl.text
@@ -199,6 +208,15 @@ class _AdsMonetizationPageState extends State<AdsMonetizationPage> {
                         controller: maxRewardsCtrl,
                         decoration: const InputDecoration(
                           labelText: 'Max rewarded per day per user',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        controller: maxRewardsPerSessionCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Max rewarded per mining session',
                         ),
                       ),
                     ),

@@ -17,6 +17,7 @@ import '../services/subscription_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/ads_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MobileHomePage extends StatefulWidget {
   const MobileHomePage({super.key});
@@ -40,6 +41,12 @@ class _MobileHomePageState extends State<MobileHomePage>
   bool _showMiningPressBanner = false;
 
   bool _rewardedLoading = false;
+  static const String _prefsRewardedSessionStartMsKey =
+      'ads_rewarded_session_start_ms';
+  static const String _prefsRewardedSessionCountKey =
+      'ads_rewarded_session_count';
+  int _rewardedSessionStartMs = 0;
+  int _rewardedWatchedThisSession = 0;
 
   @override
   void initState() {
@@ -47,8 +54,10 @@ class _MobileHomePageState extends State<MobileHomePage>
     _miningService.addListener(_handleServiceUpdate);
     _adsService.addListener(_handleAdsUpdate);
     unawaited(_adsService.init());
+    unawaited(_loadRewardedSessionLimiter());
     _miningService.init().then((_) {
       if (mounted) _manageCommunityCoins();
+      unawaited(_syncRewardedSessionWithMiningState());
     });
   }
 
@@ -105,23 +114,88 @@ class _MobileHomePageState extends State<MobileHomePage>
     setState(() {});
   }
 
-  Future<void> _showRewardedAd() async {
-    await _adsService.init();
-    if (!_adsService.isSupportedPlatform) return;
-    if (!_adsService.config.enableRewarded) return;
-    if (_rewardedLoading) return;
-
-    setState(() => _rewardedLoading = true);
-    final ad = await _adsService.loadRewardedAd();
+  Future<void> _loadRewardedSessionLimiter() async {
+    final prefs = await SharedPreferences.getInstance();
+    final start = prefs.getInt(_prefsRewardedSessionStartMsKey) ?? 0;
+    final count = prefs.getInt(_prefsRewardedSessionCountKey) ?? 0;
     if (!mounted) return;
+    setState(() {
+      _rewardedSessionStartMs = start;
+      _rewardedWatchedThisSession = count;
+    });
+  }
+
+  Future<void> _persistRewardedSessionLimiter() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(
+      _prefsRewardedSessionStartMsKey,
+      _rewardedSessionStartMs,
+    );
+    await prefs.setInt(
+      _prefsRewardedSessionCountKey,
+      _rewardedWatchedThisSession,
+    );
+  }
+
+  Future<void> _syncRewardedSessionWithMiningState() async {
+    final miningActive = _miningService.miningActive;
+    final sessionStartMs = miningActive
+        ? (_miningService.lastStart?.millisecondsSinceEpoch ?? 0)
+        : 0;
+
+    if (!miningActive || sessionStartMs <= 0) {
+      if (_rewardedSessionStartMs != 0 || _rewardedWatchedThisSession != 0) {
+        if (!mounted) return;
+        setState(() {
+          _rewardedSessionStartMs = 0;
+          _rewardedWatchedThisSession = 0;
+        });
+        await _persistRewardedSessionLimiter();
+      }
+      return;
+    }
+
+    if (_rewardedSessionStartMs != sessionStartMs) {
+      if (!mounted) return;
+      setState(() {
+        _rewardedSessionStartMs = sessionStartMs;
+        _rewardedWatchedThisSession = 0;
+      });
+      await _persistRewardedSessionLimiter();
+    }
+  }
+
+  bool get _rewardedLimitReached {
+    final max = _adsService.config.maxRewardedPerMiningSession;
+    if (max <= 0) return true;
+    return _rewardedWatchedThisSession >= max;
+  }
+
+  Future<bool> _tryShowRewardedAd({required bool silentUnavailable}) async {
+    await _syncRewardedSessionWithMiningState();
+    await _adsService.init();
+    if (!_adsService.isSupportedPlatform) return false;
+    if (!_adsService.config.enableRewarded) return false;
+    if (!_miningService.miningActive) return false;
+    if (_rewardedLimitReached) return false;
+    if (_rewardedLoading) return false;
+
+    if (mounted) setState(() => _rewardedLoading = true);
+    final ad = await _adsService.loadRewardedAd();
+    if (!mounted) return false;
     setState(() => _rewardedLoading = false);
 
     if (ad == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Rewarded ad not available')),
-      );
-      return;
+      if (!silentUnavailable) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Rewarded ad not available')),
+        );
+      }
+      return false;
     }
+
+    setState(() => _rewardedWatchedThisSession += 1);
+    await _persistRewardedSessionLimiter();
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
       onAdDismissedFullScreenContent: (ad) => ad.dispose(),
@@ -136,6 +210,15 @@ class _MobileHomePageState extends State<MobileHomePage>
         );
       },
     );
+    return true;
+  }
+
+  Future<void> _maybeAutoShowRewardedOnMiningStart() async {
+    await _tryShowRewardedAd(silentUnavailable: true);
+  }
+
+  Future<void> _showRewardedAd() async {
+    await _tryShowRewardedAd(silentUnavailable: false);
   }
 
   Future<void> _runNotificationDiagnostics() async {
@@ -149,6 +232,7 @@ class _MobileHomePageState extends State<MobileHomePage>
 
   void _handleServiceUpdate() {
     if (!mounted) return;
+    unawaited(_syncRewardedSessionWithMiningState());
     final now = DateTime.now();
     final last = _lastUiUpdate;
     if (last == null || now.difference(last) >= const Duration(seconds: 1)) {
@@ -366,6 +450,8 @@ class _MobileHomePageState extends State<MobileHomePage>
                                 : () async {
                                     try {
                                       await _miningService.startMining();
+                                      await _syncRewardedSessionWithMiningState();
+                                      await _maybeAutoShowRewardedOnMiningStart();
                                       await _maybeShowMiningPressBanner();
                                     } catch (e) {
                                       if (!mounted) return;
@@ -380,17 +466,23 @@ class _MobileHomePageState extends State<MobileHomePage>
                                     }
                                   },
                           ),
-                          if (_adsService.config.enableRewarded)
+                          if (_adsService.config.enableRewarded && miningActive)
                             Padding(
                               padding: const EdgeInsets.only(top: 8),
                               child: TextButton.icon(
-                                onPressed: _rewardedLoading
+                                onPressed:
+                                    (_rewardedLoading || _rewardedLimitReached)
                                     ? null
                                     : _showRewardedAd,
                                 icon: const Icon(Icons.ondemand_video_rounded),
                                 label: Text(
                                   _rewardedLoading
                                       ? 'Loading ad…'
+                                      : _adsService
+                                                .config
+                                                .maxRewardedPerMiningSession >
+                                            0
+                                      ? 'Watch ad (rewarded) $_rewardedWatchedThisSession/${_adsService.config.maxRewardedPerMiningSession}'
                                       : 'Watch ad (rewarded)',
                                 ),
                               ),
