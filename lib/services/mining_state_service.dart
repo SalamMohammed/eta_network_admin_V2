@@ -30,6 +30,9 @@ class MiningStateService extends ChangeNotifier {
   String? _activeManagerId;
   List<String> _managedCoinSelections = const [];
   Timestamp? _subscriptionExpiresAt;
+  double _managerBonusPerHour = 0.0;
+  double _activeManagerMultiplier = 1.0;
+  double _baseRate = 0.2;
 
   // Simulation state
   double _displayTotal = 0.0;
@@ -146,6 +149,9 @@ class MiningStateService extends ChangeNotifier {
         .doc(FirestoreAppConfigDocs.general)
         .get();
     final g = general.data() ?? {};
+    final baseRate =
+        (g[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ?? 0.2;
+    _baseRate = baseRate;
     _sessionHours =
         ((g[FirestoreAppConfigFields.sessionDurationHours] as num?)
             ?.toDouble() ??
@@ -162,6 +168,8 @@ class MiningStateService extends ChangeNotifier {
         (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
     _hourlyRate =
         (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+    _managerBonusPerHour =
+        (d[FirestoreUserFields.managerBonusPerHour] as num?)?.toDouble() ?? 0.0;
     _lastStart = d[FirestoreUserFields.lastMiningStart] as Timestamp?;
     _lastEnd = d[FirestoreUserFields.lastMiningEnd] as Timestamp?;
     _streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
@@ -180,6 +188,9 @@ class MiningStateService extends ChangeNotifier {
     final subExpires =
         sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
     _subscriptionExpiresAt = subExpires;
+
+    final bool subscriptionExpired =
+        subExpires != null && now.isAfter(subExpires.toDate());
 
     bool isSubActive = subStatus == 'active';
     if (isSubActive && subExpires != null) {
@@ -203,7 +214,9 @@ class MiningStateService extends ChangeNotifier {
             }, SetOptions(merge: true));
       }
     }
-    _managerEnabled = isSubActive;
+    final managerEnabledFlag = d[FirestoreUserFields.managerEnabled] as bool?;
+    _managerEnabled =
+        !subscriptionExpired && (isSubActive || (managerEnabledFlag ?? false));
 
     _managedCoinSelections =
         ((d[FirestoreUserFields.managedCoinSelections] as List?)
@@ -228,11 +241,26 @@ class MiningStateService extends ChangeNotifier {
           (m[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
               ?.toInt() ??
           0;
+      _activeManagerMultiplier =
+          (m[FirestoreManagerFields.managerMultiplier] as num?)?.toDouble() ??
+          2.0;
+      final mgrActive = (m[FirestoreManagerFields.isActive] as bool?) ?? true;
+      await _maybeApplyManagerMultiplier(
+        uid: uid,
+        baseRate: baseRate,
+        managerIsActive: mgrActive,
+      );
     } else {
       _managerGlobalEnabled = false;
       _managerEtaAuto = false;
       _managerUserCoinAuto = false;
       _managerMaxCommunity = 0;
+      _activeManagerMultiplier = 1.0;
+      await _maybeApplyManagerMultiplier(
+        uid: uid,
+        baseRate: baseRate,
+        managerIsActive: false,
+      );
     }
 
     // Auto-start mining if manager enabled
@@ -242,6 +270,51 @@ class MiningStateService extends ChangeNotifier {
         !_miningActive) {
       await startMining();
     }
+  }
+
+  Future<void> _maybeApplyManagerMultiplier({
+    required String uid,
+    required double baseRate,
+    required bool managerIsActive,
+  }) async {
+    final bool shouldApply =
+        _managerEnabled &&
+        managerIsActive &&
+        (_activeManagerId ?? '').isNotEmpty &&
+        _activeManagerMultiplier > 0.0 &&
+        baseRate > 0;
+
+    final double existingBonus = _managerBonusPerHour;
+    final double baseWithoutManager = (_hourlyRate - existingBonus).clamp(
+      0.0,
+      1e18,
+    );
+    final double nextBonus = shouldApply
+        ? (baseRate * _activeManagerMultiplier)
+        : 0.0;
+    final double nextHourlyRate = (baseWithoutManager + nextBonus).clamp(
+      0.0,
+      1e18,
+    );
+
+    final bool bonusChanged = (nextBonus - existingBonus).abs() > 1e-9;
+    final bool rateChanged = (nextHourlyRate - _hourlyRate).abs() > 1e-9;
+    if (!bonusChanged && !rateChanged) return;
+
+    await FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .set({
+          FirestoreUserFields.hourlyRate: nextHourlyRate,
+          FirestoreUserFields.managerBonusPerHour: nextBonus,
+          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+
+    _hourlyRate = nextHourlyRate;
+    _managerBonusPerHour = nextBonus;
+    _simBase = _displayTotal;
+    _simAnchor = DateTime.now();
+    _maybeNotify(force: true);
   }
 
   void _startUserDocListener() {
@@ -262,11 +335,17 @@ class MiningStateService extends ChangeNotifier {
           final subExpires =
               sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
           final now = DateTime.now();
-          bool nextEnabled = subStatus == 'active';
-          if (nextEnabled &&
+          bool nextEnabled =
+              (d[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+          final bool subEnabled = subStatus == 'active';
+          if (!nextEnabled && subEnabled) {
+            nextEnabled = true;
+          }
+          if (subEnabled &&
               subExpires != null &&
               now.isAfter(subExpires.toDate())) {
-            nextEnabled = false;
+            nextEnabled =
+                (d[FirestoreUserFields.managerEnabled] as bool?) ?? false;
           }
 
           final activeManagerId =
@@ -327,6 +406,28 @@ class MiningStateService extends ChangeNotifier {
           (res[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
           _totalPoints;
       _displayTotal = _totalPoints;
+
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null && (_activeManagerId ?? '').isNotEmpty) {
+        try {
+          final mgr = await FirebaseFirestore.instance
+              .collection(FirestoreConstants.managers)
+              .doc(_activeManagerId)
+              .get();
+          final m = mgr.data() ?? {};
+          final mgrActive =
+              (m[FirestoreManagerFields.isActive] as bool?) ?? true;
+          _activeManagerMultiplier =
+              (m[FirestoreManagerFields.managerMultiplier] as num?)
+                  ?.toDouble() ??
+              _activeManagerMultiplier;
+          await _maybeApplyManagerMultiplier(
+            uid: uid,
+            baseRate: _baseRate,
+            managerIsActive: mgrActive,
+          );
+        } catch (_) {}
+      }
 
       _startSimulationIfNeeded();
       _maybeNotify(force: true);
@@ -488,6 +589,8 @@ class MiningStateService extends ChangeNotifier {
     _activeManagerId = null;
     _managedCoinSelections = const [];
     _subscriptionExpiresAt = null;
+    _managerBonusPerHour = 0.0;
+    _activeManagerMultiplier = 1.0;
     notifyListeners();
   }
 

@@ -38,6 +38,7 @@ class FirestoreUserFields {
   static const String managerEnabled = 'managerEnabled';
   static const String activeManagerId = 'activeManagerId';
   static const String managedCoinSelections = 'managedCoinSelections';
+  static const String managerBonusPerHour = 'managerBonusPerHour';
   static const String subscription = 'subscription';
   static const String thumbnailUrl = 'thumbnailUrl';
   static const String fcmToken = 'fcmToken';
@@ -172,6 +173,7 @@ class FirestoreManagerFields {
   static const String enableUserCoinAuto = 'enableUserCoinAuto';
   static const String globalCommunity = 'globalCommunity';
   static const String maxCommunityCoinsManaged = 'maxCommunityCoinsManaged';
+  static const String managerMultiplier = 'managerMultiplier';
   static const String storeProductId = 'storeProductId';
   static const String isActive = 'isActive';
   static const String createdAt = 'createdAt';

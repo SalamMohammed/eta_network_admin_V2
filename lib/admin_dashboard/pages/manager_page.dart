@@ -76,6 +76,7 @@ class _ManagerPageState extends State<ManagerPage> {
                       as num?)
                   ?.toInt() ??
               0,
+          FirestoreManagerFields.managerMultiplier: 2.0,
           FirestoreManagerFields.isActive: true,
           FirestoreManagerFields.createdAt: FieldValue.serverTimestamp(),
           FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
@@ -201,6 +202,9 @@ class _ManagerRow extends StatelessWidget {
         (data[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
             ?.toInt() ??
         0;
+    final multiplier =
+        (data[FirestoreManagerFields.managerMultiplier] as num?)?.toDouble() ??
+        2.0;
     final storeId =
         (data[FirestoreManagerFields.storeProductId] as String?) ?? '';
     return Container(
@@ -215,7 +219,7 @@ class _ManagerRow extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              '$name • ETA:${eta ? 'on' : 'off'} • Coin:${coin ? 'on' : 'off'} • Global:${global ? 'yes' : 'no'} • Max:$maxCoins${storeId.isNotEmpty ? ' • ID:$storeId' : ''}',
+              '$name • ETA:${eta ? 'on' : 'off'} • Coin:${coin ? 'on' : 'off'} • Global:${global ? 'yes' : 'no'} • Mult:${multiplier.toStringAsFixed(2)} • Max:$maxCoins${storeId.isNotEmpty ? ' • ID:$storeId' : ''}',
             ),
           ),
           IconButton(onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
@@ -242,6 +246,7 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
   bool eta = true;
   bool coin = true;
   bool global = true;
+  final multiplierCtrl = TextEditingController(text: '2');
   final maxCtrl = TextEditingController(text: '3');
   bool submitting = false;
 
@@ -274,6 +279,14 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
                 decoration: const InputDecoration(
                   labelText: 'RevenueCat Product ID',
                   hintText: 'e.g. manager_monthly',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: multiplierCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Manager multiplier',
+                  hintText: 'e.g. 2',
                 ),
               ),
               const SizedBox(height: 8),
@@ -326,6 +339,7 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
   Future<void> _submit() async {
     final name = nameCtrl.text.trim();
     final storeProductId = storeProductIdCtrl.text.trim();
+    final multiplier = double.tryParse(multiplierCtrl.text.trim()) ?? 0.0;
     if (name.length < 2) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -340,6 +354,13 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
       );
       return;
     }
+    if (multiplier < 1) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Multiplier must be ≥ 1')));
+      return;
+    }
     setState(() => submitting = true);
     await FirebaseFirestore.instance
         .collection(FirestoreConstants.managers)
@@ -352,6 +373,7 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
           FirestoreManagerFields.globalCommunity: global,
           FirestoreManagerFields.maxCommunityCoinsManaged:
               int.tryParse(maxCtrl.text.trim()) ?? 0,
+          FirestoreManagerFields.managerMultiplier: multiplier,
           FirestoreManagerFields.isActive: true,
           FirestoreManagerFields.createdAt: FieldValue.serverTimestamp(),
           FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
@@ -373,6 +395,7 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
   late final TextEditingController nameCtrl;
   late final TextEditingController thumbCtrl;
   late final TextEditingController storeProductIdCtrl;
+  late final TextEditingController multiplierCtrl;
   late final TextEditingController maxCtrl;
   bool eta = true;
   bool coin = true;
@@ -393,6 +416,12 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
     storeProductIdCtrl = TextEditingController(
       text: (d[FirestoreManagerFields.storeProductId] as String?) ?? '',
     );
+    multiplierCtrl = TextEditingController(
+      text:
+          ((d[FirestoreManagerFields.managerMultiplier] as num?)?.toDouble() ??
+                  2.0)
+              .toString(),
+    );
     maxCtrl = TextEditingController(
       text:
           ((d[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
@@ -411,6 +440,7 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
     nameCtrl.dispose();
     thumbCtrl.dispose();
     storeProductIdCtrl.dispose();
+    multiplierCtrl.dispose();
     maxCtrl.dispose();
     super.dispose();
   }
@@ -444,6 +474,14 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
                 decoration: const InputDecoration(
                   labelText: 'RevenueCat Product ID',
                   hintText: 'e.g. manager_monthly',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: multiplierCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Manager multiplier',
+                  hintText: 'e.g. 2',
                 ),
               ),
               const SizedBox(height: 8),
@@ -502,6 +540,7 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
   Future<void> _submit() async {
     final name = nameCtrl.text.trim();
     final storeProductId = storeProductIdCtrl.text.trim();
+    final multiplier = double.tryParse(multiplierCtrl.text.trim()) ?? 0.0;
     if (name.length < 2) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -514,6 +553,13 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('RevenueCat Product ID is required')),
       );
+      return;
+    }
+    if (multiplier < 1) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Multiplier must be ≥ 1')));
       return;
     }
     setState(() => submitting = true);
@@ -529,6 +575,7 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
           FirestoreManagerFields.globalCommunity: global,
           FirestoreManagerFields.maxCommunityCoinsManaged:
               int.tryParse(maxCtrl.text.trim()) ?? 0,
+          FirestoreManagerFields.managerMultiplier: multiplier,
           FirestoreManagerFields.isActive: isActive,
           FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));

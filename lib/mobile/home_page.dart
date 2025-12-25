@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:flutter/services.dart';
 import '../shared/theme/colors.dart';
 import 'widgets/glowing_button.dart';
 import 'widgets/progress_ring.dart';
@@ -12,7 +11,6 @@ import 'balance/my_coin_block.dart';
 import '../services/coin_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/mining_state_service.dart';
-import '../services/notification_service.dart';
 import '../services/subscription_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -35,10 +33,6 @@ class _MobileHomePageState extends State<MobileHomePage>
   String _liveSort = 'popular';
   DateTime? _lastUiUpdate;
   Timer? _debounceTimer;
-
-  BannerAd? _miningPressBanner;
-  bool _miningPressBannerLoaded = false;
-  bool _showMiningPressBanner = false;
 
   bool _rewardedLoading = false;
   static const String _prefsRewardedSessionStartMsKey =
@@ -70,46 +64,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     _adsService.removeListener(_handleAdsUpdate);
     _tab.dispose();
     _debounceTimer?.cancel();
-    _miningPressBanner?.dispose();
-    _miningPressBanner = null;
     super.dispose();
-  }
-
-  Future<void> _maybeShowMiningPressBanner() async {
-    await _adsService.init();
-    if (!_adsService.isSupportedPlatform) return;
-    if (!_adsService.config.enableBannerOnMiningPress) return;
-
-    _miningPressBanner?.dispose();
-    _miningPressBanner = BannerAd(
-      adUnitId: _adsService.bannerAdUnitId,
-      request: const AdRequest(),
-      size: AdSize.banner,
-      listener: BannerAdListener(
-        onAdLoaded: (_) {
-          if (!mounted) return;
-          setState(() {
-            _miningPressBannerLoaded = true;
-            _showMiningPressBanner = true;
-          });
-        },
-        onAdFailedToLoad: (ad, error) {
-          ad.dispose();
-          if (!mounted) return;
-          setState(() {
-            _miningPressBannerLoaded = false;
-            _showMiningPressBanner = false;
-          });
-        },
-      ),
-    );
-    if (mounted) {
-      setState(() {
-        _miningPressBannerLoaded = false;
-        _showMiningPressBanner = true;
-      });
-    }
-    _miningPressBanner!.load();
   }
 
   void _handleAdsUpdate() {
@@ -269,15 +224,6 @@ class _MobileHomePageState extends State<MobileHomePage>
 
   Future<void> _showRewardedAd() async {
     await _tryShowRewardedAd(silentUnavailable: false);
-  }
-
-  Future<void> _runNotificationDiagnostics() async {
-    final diagnostics = await NotificationService().buildDiagnostics();
-    await Clipboard.setData(ClipboardData(text: diagnostics));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Diagnostics copied to clipboard')),
-    );
   }
 
   void _handleServiceUpdate() {
@@ -502,7 +448,6 @@ class _MobileHomePageState extends State<MobileHomePage>
                                       await _miningService.startMining();
                                       await _syncRewardedSessionWithMiningState();
                                       await _maybeAutoShowRewardedOnMiningStart();
-                                      await _maybeShowMiningPressBanner();
                                     } catch (e) {
                                       if (!mounted) return;
                                       // ignore: use_build_context_synchronously
@@ -534,73 +479,6 @@ class _MobileHomePageState extends State<MobileHomePage>
                                             0
                                       ? 'Watch ad (rewarded) $_rewardedWatchedThisSession/${_adsService.config.maxRewardedPerMiningSession}'
                                       : 'Watch ad (rewarded)',
-                                ),
-                              ),
-                            ),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: TextButton.icon(
-                              onPressed: _runNotificationDiagnostics,
-                              icon: const Icon(Icons.bug_report_rounded),
-                              label: const Text('Notification Diagnostics'),
-                            ),
-                          ),
-                          if (_showMiningPressBanner)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 12),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: AppColors.primaryBackground,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Padding(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 8,
-                                          ),
-                                          child: Text('Sponsored'),
-                                        ),
-                                        IconButton(
-                                          onPressed: () {
-                                            setState(() {
-                                              _showMiningPressBanner = false;
-                                              _miningPressBannerLoaded = false;
-                                            });
-                                            _miningPressBanner?.dispose();
-                                            _miningPressBanner = null;
-                                          },
-                                          icon: const Icon(Icons.close_rounded),
-                                        ),
-                                      ],
-                                    ),
-                                    if (_miningPressBanner != null &&
-                                        _miningPressBannerLoaded)
-                                      SizedBox(
-                                        width: _miningPressBanner!.size.width
-                                            .toDouble(),
-                                        height: _miningPressBanner!.size.height
-                                            .toDouble(),
-                                        child: AdWidget(
-                                          ad: _miningPressBanner!,
-                                        ),
-                                      )
-                                    else
-                                      const Padding(
-                                        padding: EdgeInsets.only(bottom: 12),
-                                        child: SizedBox(
-                                          height: 50,
-                                          child: Center(
-                                            child: CircularProgressIndicator(),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
                                 ),
                               ),
                             ),
