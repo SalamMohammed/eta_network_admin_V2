@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../shared/theme/colors.dart';
 import '../admin_dashboard/dashboard_page.dart';
 import '../mobile/app.dart';
+import '../mobile/onboarding/onboarding_flow.dart';
 
 class SelectorPage extends StatelessWidget {
   const SelectorPage({super.key});
@@ -29,8 +31,19 @@ class SelectorPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const MobileAppScaffold()));
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    final completed =
+                        prefs.getBool('eta_onboarding_completed') ?? false;
+                    if (!context.mounted) return;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => completed
+                            ? const MobileAppScaffold()
+                            : const OnboardingFlow(),
+                      ),
+                    );
                   },
                   child: const Text('Mobile App'),
                 ),

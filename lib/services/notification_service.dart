@@ -28,6 +28,7 @@ class NotificationService {
   final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
 
   bool _initialized = false;
+  bool _messagingWired = false;
   static const String _prefsLastVerifiedKey = 'fcmLastVerifiedAt';
   static const String _prefsTokenKey = 'fcmLastToken';
   static const String _prefsMiningFinishedAtMsKey =
@@ -57,12 +58,12 @@ class NotificationService {
 
     const DarwinInitializationSettings iosSettings =
         DarwinInitializationSettings(
-          requestAlertPermission: true,
-          requestBadgePermission: true,
-          requestSoundPermission: true,
-          defaultPresentAlert: true,
-          defaultPresentBadge: true,
-          defaultPresentSound: true,
+          requestAlertPermission: false,
+          requestBadgePermission: false,
+          requestSoundPermission: false,
+          defaultPresentAlert: false,
+          defaultPresentBadge: false,
+          defaultPresentSound: false,
         );
 
     const InitializationSettings initSettings = InitializationSettings(
@@ -77,16 +78,6 @@ class NotificationService {
         // Handle navigation if needed
       },
     );
-
-    final ios = _localNotifications
-        .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-        >();
-    try {
-      await ios?.requestPermissions(alert: true, badge: true, sound: true);
-    } catch (e) {
-      debugPrint('iOS local notifications permission request failed: $e');
-    }
 
     // 3. Create Notification Channels (Android)
     // Channel for Mining/Streak (Local)
@@ -113,6 +104,39 @@ class NotificationService {
     if (platform != null) {
       await platform.createNotificationChannel(localChannel);
       await platform.createNotificationChannel(fcmChannel);
+    }
+
+    // 4. Initialize Firebase Messaging
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    await _firebaseMessaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    _initialized = true;
+  }
+
+  Future<NotificationSettings> requestPermissions() async {
+    if (!_initialized) {
+      await init();
+    }
+
+    final ios = _localNotifications
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+    try {
+      await ios?.requestPermissions(alert: true, badge: true, sound: true);
+    } catch (e) {
+      debugPrint('iOS local notifications permission request failed: $e');
+    }
+
+    final platform = _localNotifications
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (platform != null) {
       try {
         await platform.requestNotificationsPermission();
       } catch (e) {
@@ -125,41 +149,32 @@ class NotificationService {
       }
     }
 
-    // 4. Initialize Firebase Messaging
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    await _firebaseMessaging.setForegroundNotificationPresentationOptions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    NotificationSettings settings = await _firebaseMessaging.requestPermission(
+    final settings = await _firebaseMessaging.requestPermission(
       alert: true,
       badge: true,
       sound: true,
       provisional: false,
     );
 
-    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
-      debugPrint('User granted permission');
-
-      // Listen for foreground messages
+    if (!_messagingWired &&
+        (settings.authorizationStatus == AuthorizationStatus.authorized ||
+            settings.authorizationStatus == AuthorizationStatus.provisional)) {
+      _messagingWired = true;
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         RemoteNotification? notification = message.notification;
         AndroidNotification? android = message.notification?.android;
-
-        // If we receive a notification while in foreground, show it locally
         if (notification != null && android != null) {
           _localNotifications.show(
             notification.hashCode,
             notification.title,
             notification.body,
-            NotificationDetails(
+            const NotificationDetails(
               android: AndroidNotificationDetails(
-                fcmChannel.id,
-                fcmChannel.name,
-                channelDescription: fcmChannel.description,
-                icon: android.smallIcon ?? '@mipmap/ic_launcher',
+                'high_importance_channel',
+                'High Importance Notifications',
+                channelDescription:
+                    'This channel is used for important announcements.',
+                icon: '@mipmap/ic_launcher',
                 importance: Importance.max,
                 priority: Priority.high,
               ),
@@ -167,24 +182,6 @@ class NotificationService {
           );
         }
       });
-
-      String? token = await _firebaseMessaging.getToken();
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null && token != null && token.isNotEmpty) {
-        await FirebaseFirestore.instance
-            .collection(FirestoreConstants.users)
-            .doc(uid)
-            .set({
-              FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-              FirestoreUserFields.fcmToken: token,
-            }, SetOptions(merge: true));
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_prefsTokenKey, token);
-        await prefs.setInt(
-          _prefsLastVerifiedKey,
-          DateTime.now().millisecondsSinceEpoch,
-        );
-      }
       _firebaseMessaging.onTokenRefresh.listen((tok) async {
         final u = FirebaseAuth.instance.currentUser?.uid;
         if (u != null && tok.isNotEmpty) {
@@ -203,11 +200,15 @@ class NotificationService {
           );
         }
       });
-    } else {
-      debugPrint('notif permission declined');
     }
 
-    _initialized = true;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null &&
+        (settings.authorizationStatus == AuthorizationStatus.authorized ||
+            settings.authorizationStatus == AuthorizationStatus.provisional)) {
+      await ensureTokenRegistered(force: true);
+    }
+    return settings;
   }
 
   // --- Scheduling ---

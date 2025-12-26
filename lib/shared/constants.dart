@@ -1,1 +1,3 @@
-const bool kIsDev = true; // Set to false for production
+import 'package:flutter/foundation.dart' show kReleaseMode;
+
+const bool kIsDev = !kReleaseMode;
