@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../shared/theme/colors.dart';
 import '../../auth/auth_gate.dart';
 import '../../shared/firestore_constants.dart';
@@ -232,6 +233,9 @@ class _ProfilePageState extends State<ProfilePage> {
             ElevatedButton(
               onPressed: () async {
                 MiningStateService().reset();
+                try {
+                  await GoogleSignIn().signOut();
+                } catch (_) {}
                 await FirebaseAuth.instance.signOut();
                 if (context.mounted) {
                   Navigator.pushAndRemoveUntil(

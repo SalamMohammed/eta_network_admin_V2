@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../shared/theme/colors.dart';
 import '../../auth/auth_gate.dart';
 
@@ -58,6 +59,9 @@ class Header extends StatelessWidget {
           const SizedBox(width: 8),
           ElevatedButton(
             onPressed: () async {
+              try {
+                await GoogleSignIn().signOut();
+              } catch (_) {}
               await FirebaseAuth.instance.signOut();
               // reset navigation to auth gate
               if (context.mounted) {
