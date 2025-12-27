@@ -198,15 +198,18 @@ class _ManagerRow extends StatelessWidget {
         (data[FirestoreManagerFields.enableUserCoinAuto] as bool?) ?? true;
     final global =
         (data[FirestoreManagerFields.globalCommunity] as bool?) ?? true;
+    final multiplier =
+        (data[FirestoreManagerFields.managerMultiplier] as num?)?.toDouble() ??
+        1.0;
     final maxCoins =
         (data[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
             ?.toInt() ??
         0;
-    final multiplier =
-        (data[FirestoreManagerFields.managerMultiplier] as num?)?.toDouble() ??
-        2.0;
     final storeId =
         (data[FirestoreManagerFields.storeProductId] as String?) ?? '';
+    final bestValue =
+        (data[FirestoreManagerFields.bestValue] as bool?) ?? false;
+
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
@@ -219,7 +222,7 @@ class _ManagerRow extends StatelessWidget {
           const SizedBox(width: 12),
           Expanded(
             child: Text(
-              '$name • ETA:${eta ? 'on' : 'off'} • Coin:${coin ? 'on' : 'off'} • Global:${global ? 'yes' : 'no'} • Mult:${multiplier.toStringAsFixed(2)} • Max:$maxCoins${storeId.isNotEmpty ? ' • ID:$storeId' : ''}',
+              '$name • ETA:${eta ? 'on' : 'off'} • Coin:${coin ? 'on' : 'off'} • Global:${global ? 'yes' : 'no'} • Mult:${multiplier.toStringAsFixed(2)} • Max:$maxCoins${bestValue ? ' • Best Value' : ''}${storeId.isNotEmpty ? ' • ID:$storeId' : ''}',
             ),
           ),
           IconButton(onPressed: onEdit, icon: const Icon(Icons.edit_outlined)),
@@ -246,6 +249,7 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
   bool eta = true;
   bool coin = true;
   bool global = true;
+  bool bestValue = false;
   final multiplierCtrl = TextEditingController(text: '2');
   final maxCtrl = TextEditingController(text: '3');
   bool submitting = false;
@@ -308,6 +312,12 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
                 title: const Text('Global community'),
                 controlAffinity: ListTileControlAffinity.leading,
               ),
+              CheckboxListTile(
+                value: bestValue,
+                onChanged: (v) => setState(() => bestValue = v ?? false),
+                title: const Text('Best value'),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
               const SizedBox(height: 8),
               TextField(
                 controller: maxCtrl,
@@ -362,22 +372,38 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
       return;
     }
     setState(() => submitting = true);
-    await FirebaseFirestore.instance
-        .collection(FirestoreConstants.managers)
-        .add({
-          FirestoreManagerFields.name: name,
-          FirestoreManagerFields.thumbnailUrl: thumbCtrl.text.trim(),
-          FirestoreManagerFields.storeProductId: storeProductId,
-          FirestoreManagerFields.enableEtaAuto: eta,
-          FirestoreManagerFields.enableUserCoinAuto: coin,
-          FirestoreManagerFields.globalCommunity: global,
-          FirestoreManagerFields.maxCommunityCoinsManaged:
-              int.tryParse(maxCtrl.text.trim()) ?? 0,
-          FirestoreManagerFields.managerMultiplier: multiplier,
-          FirestoreManagerFields.isActive: true,
-          FirestoreManagerFields.createdAt: FieldValue.serverTimestamp(),
+    final col = FirebaseFirestore.instance.collection(
+      FirestoreConstants.managers,
+    );
+    final newRef = col.doc();
+    final batch = FirebaseFirestore.instance.batch();
+    if (bestValue) {
+      final qs = await col
+          .where(FirestoreManagerFields.bestValue, isEqualTo: true)
+          .get();
+      for (final d in qs.docs) {
+        batch.set(d.reference, {
+          FirestoreManagerFields.bestValue: false,
           FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
-        });
+        }, SetOptions(merge: true));
+      }
+    }
+    batch.set(newRef, {
+      FirestoreManagerFields.name: name,
+      FirestoreManagerFields.thumbnailUrl: thumbCtrl.text.trim(),
+      FirestoreManagerFields.storeProductId: storeProductId,
+      FirestoreManagerFields.enableEtaAuto: eta,
+      FirestoreManagerFields.enableUserCoinAuto: coin,
+      FirestoreManagerFields.globalCommunity: global,
+      FirestoreManagerFields.bestValue: bestValue,
+      FirestoreManagerFields.maxCommunityCoinsManaged:
+          int.tryParse(maxCtrl.text.trim()) ?? 0,
+      FirestoreManagerFields.managerMultiplier: multiplier,
+      FirestoreManagerFields.isActive: true,
+      FirestoreManagerFields.createdAt: FieldValue.serverTimestamp(),
+      FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
+    });
+    await batch.commit();
     if (mounted) Navigator.pop(context);
   }
 }
@@ -400,6 +426,7 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
   bool eta = true;
   bool coin = true;
   bool global = true;
+  bool bestValue = false;
   bool isActive = true;
   bool submitting = false;
 
@@ -432,6 +459,7 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
     eta = (d[FirestoreManagerFields.enableEtaAuto] as bool?) ?? true;
     coin = (d[FirestoreManagerFields.enableUserCoinAuto] as bool?) ?? true;
     global = (d[FirestoreManagerFields.globalCommunity] as bool?) ?? true;
+    bestValue = (d[FirestoreManagerFields.bestValue] as bool?) ?? false;
     isActive = (d[FirestoreManagerFields.isActive] as bool?) ?? true;
   }
 
@@ -504,6 +532,12 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
                 controlAffinity: ListTileControlAffinity.leading,
               ),
               CheckboxListTile(
+                value: bestValue,
+                onChanged: (v) => setState(() => bestValue = v ?? false),
+                title: const Text('Best value'),
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
+              CheckboxListTile(
                 value: isActive,
                 onChanged: (v) => setState(() => isActive = v ?? true),
                 title: const Text('Active'),
@@ -563,22 +597,37 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
       return;
     }
     setState(() => submitting = true);
-    await FirebaseFirestore.instance
-        .collection(FirestoreConstants.managers)
-        .doc(widget.id)
-        .set({
-          FirestoreManagerFields.name: name,
-          FirestoreManagerFields.thumbnailUrl: thumbCtrl.text.trim(),
-          FirestoreManagerFields.storeProductId: storeProductId,
-          FirestoreManagerFields.enableEtaAuto: eta,
-          FirestoreManagerFields.enableUserCoinAuto: coin,
-          FirestoreManagerFields.globalCommunity: global,
-          FirestoreManagerFields.maxCommunityCoinsManaged:
-              int.tryParse(maxCtrl.text.trim()) ?? 0,
-          FirestoreManagerFields.managerMultiplier: multiplier,
-          FirestoreManagerFields.isActive: isActive,
+    final col = FirebaseFirestore.instance.collection(
+      FirestoreConstants.managers,
+    );
+    final batch = FirebaseFirestore.instance.batch();
+    if (bestValue) {
+      final qs = await col
+          .where(FirestoreManagerFields.bestValue, isEqualTo: true)
+          .get();
+      for (final d in qs.docs) {
+        if (d.id == widget.id) continue;
+        batch.set(d.reference, {
+          FirestoreManagerFields.bestValue: false,
           FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
+      }
+    }
+    batch.set(col.doc(widget.id), {
+      FirestoreManagerFields.name: name,
+      FirestoreManagerFields.thumbnailUrl: thumbCtrl.text.trim(),
+      FirestoreManagerFields.storeProductId: storeProductId,
+      FirestoreManagerFields.enableEtaAuto: eta,
+      FirestoreManagerFields.enableUserCoinAuto: coin,
+      FirestoreManagerFields.globalCommunity: global,
+      FirestoreManagerFields.bestValue: bestValue,
+      FirestoreManagerFields.maxCommunityCoinsManaged:
+          int.tryParse(maxCtrl.text.trim()) ?? 0,
+      FirestoreManagerFields.managerMultiplier: multiplier,
+      FirestoreManagerFields.isActive: isActive,
+      FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+    await batch.commit();
     if (mounted) Navigator.pop(context);
   }
 }

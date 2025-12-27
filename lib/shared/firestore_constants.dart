@@ -179,6 +179,7 @@ class FirestoreManagerFields {
   static const String maxCommunityCoinsManaged = 'maxCommunityCoinsManaged';
   static const String managerMultiplier = 'managerMultiplier';
   static const String storeProductId = 'storeProductId';
+  static const String bestValue = 'bestValue';
   static const String isActive = 'isActive';
   static const String createdAt = 'createdAt';
   static const String updatedAt = 'updatedAt';

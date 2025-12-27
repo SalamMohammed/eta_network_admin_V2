@@ -2148,6 +2148,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
   String? currentPlanId;
   bool loading = true;
   String? processingManagerId;
+  String? selectedManagerId;
 
   @override
   void initState() {
@@ -2182,9 +2183,32 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
         managers = qs.docs;
         offerings = offs;
         currentPlanId = planId;
+        String? picked = selectedManagerId ?? widget.currentId;
+        if (picked == null || picked.isEmpty) {
+          for (final d in qs.docs) {
+            final isBest =
+                (d.data()[FirestoreManagerFields.bestValue] as bool?) ?? false;
+            if (isBest) {
+              picked = d.id;
+              break;
+            }
+          }
+        }
+        picked = picked ?? (qs.docs.isNotEmpty ? qs.docs.first.id : null);
+        if (picked != null && qs.docs.every((d) => d.id != picked)) {
+          picked = qs.docs.isNotEmpty ? qs.docs.first.id : null;
+        }
+        selectedManagerId = picked;
         loading = false;
       });
     }
+  }
+
+  QueryDocumentSnapshot<Map<String, dynamic>>? _findDocById(String id) {
+    for (final d in managers) {
+      if (d.id == id) return d;
+    }
+    return null;
   }
 
   String? _activePlanIdFromCustomerInfo(CustomerInfo info) {
@@ -2219,151 +2243,544 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
 
   @override
   Widget build(BuildContext context) {
+    const bg1 = Color(0xFF0E1721);
+    const bg2 = Color(0xFF0A121B);
+    const surface = Color(0xFF17222C);
+    const border = Color(0xFF24303B);
+    const blue = Color(0xFF1677FF);
+
+    final selectedId = selectedManagerId;
+    final selectedDoc = selectedId == null ? null : _findDocById(selectedId);
+    final selectedData = selectedDoc?.data();
+    final selectedProductId =
+        (selectedData?[FirestoreManagerFields.storeProductId] as String?) ?? '';
+    final selectedPkg = selectedProductId.isEmpty
+        ? null
+        : _findPackageForProductId(selectedProductId);
+    final selectedPrice = selectedPkg?.storeProduct.priceString ?? '—';
+    final isProcessing = processingManagerId != null;
+
     return Dialog(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: loading
-            ? const SizedBox(
-                height: 100,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Select Manager Plan',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  if (managers.isEmpty) const Text('No managers available'),
-                  for (final doc in managers) _buildManagerRow(doc),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Close'),
-                  ),
-                ],
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final scale = (constraints.maxWidth / 420).clamp(0.82, 1.0);
+          double s(double v) => v * scale;
+          final subtitleFont =
+              (constraints.maxWidth / 420).clamp(0.78, 1.10) * 13.5;
+
+          return Container(
+            padding: EdgeInsets.all(s(16)),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [bg1, bg2],
               ),
+              borderRadius: BorderRadius.circular(s(22)),
+              border: Border.all(color: border),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  blurRadius: 24,
+                  offset: const Offset(0, 16),
+                ),
+              ],
+            ),
+            child: loading
+                ? SizedBox(
+                    height: s(140),
+                    child: const Center(child: CircularProgressIndicator()),
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Select Manager',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: s(20),
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                SizedBox(height: s(6)),
+                                FractionallySizedBox(
+                                  widthFactor: 0.75,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'Hire a Manager to automate your mining and boost ETA point generation.',
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: Colors.white60,
+                                      fontSize: subtitleFont,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.25,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SizedBox(width: s(10)),
+                          InkWell(
+                            onTap: () => Navigator.pop(context),
+                            borderRadius: BorderRadius.circular(999),
+                            child: Container(
+                              width: s(36),
+                              height: s(36),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.06),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.10),
+                                ),
+                              ),
+                              alignment: Alignment.center,
+                              child: Icon(
+                                Icons.close_rounded,
+                                size: s(20),
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: s(14)),
+                      if (managers.isEmpty)
+                        Padding(
+                          padding: EdgeInsets.symmetric(vertical: s(18)),
+                          child: Text(
+                            'No managers available',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: s(14),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        )
+                      else
+                        Column(
+                          children: [
+                            for (int i = 0; i < managers.length; i++)
+                              Padding(
+                                padding: EdgeInsets.only(bottom: s(12)),
+                                child: _buildManagerRow(
+                                  managers[i],
+                                  index: i,
+                                  scale: s,
+                                  surface: surface,
+                                  border: border,
+                                  blue: blue,
+                                ),
+                              ),
+                          ],
+                        ),
+                      SizedBox(height: s(4)),
+                      Row(
+                        children: [
+                          Text(
+                            'Selected Plan:',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: s(13),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            selectedPrice,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: s(18),
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          SizedBox(width: s(6)),
+                          Padding(
+                            padding: EdgeInsets.only(top: s(4)),
+                            child: Text(
+                              '/mo',
+                              style: TextStyle(
+                                color: Colors.white38,
+                                fontSize: s(13),
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: s(12)),
+                      SizedBox(
+                        width: double.infinity,
+                        height: s(54),
+                        child: ElevatedButton(
+                          onPressed:
+                              (selectedDoc == null ||
+                                  isProcessing ||
+                                  managers.isEmpty)
+                              ? null
+                              : () => _confirmSelected(),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: blue,
+                            disabledBackgroundColor: blue.withValues(
+                              alpha: 0.35,
+                            ),
+                            foregroundColor: Colors.white,
+                            disabledForegroundColor: Colors.white.withValues(
+                              alpha: 0.7,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(s(16)),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (isProcessing) ...[
+                                SizedBox(
+                                  width: s(18),
+                                  height: s(18),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: s(2),
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                          Colors.white,
+                                        ),
+                                  ),
+                                ),
+                                SizedBox(width: s(10)),
+                              ],
+                              Text(
+                                'Subscribe & Boost Mining',
+                                style: TextStyle(
+                                  fontSize: s(15),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              SizedBox(width: s(10)),
+                              Icon(
+                                Icons.arrow_forward_rounded,
+                                size: s(18),
+                                color: Colors.white,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: s(10)),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.lock_rounded,
+                            size: s(14),
+                            color: Colors.white38,
+                          ),
+                          SizedBox(width: s(6)),
+                          Text(
+                            'Secure payment via Google Play',
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: s(12.5),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildManagerRow(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+  Future<void> _confirmSelected() async {
+    final id = selectedManagerId;
+    if (id == null || processingManagerId != null) return;
+    final doc = _findDocById(id);
+    if (doc == null) return;
+
+    final data = doc.data();
+    final storeProductId =
+        (data[FirestoreManagerFields.storeProductId] as String?) ?? '';
+    final bool isCurrent = widget.currentId == doc.id;
+    final bool isSubscribed =
+        currentPlanId != null && currentPlanId == storeProductId;
+
+    if (isSubscribed) {
+      if (!isCurrent) {
+        setState(() => processingManagerId = doc.id);
+        await widget.onSelected(doc.id);
+      }
+      if (mounted) Navigator.pop(context);
+      return;
+    }
+
+    final pkg = storeProductId.isEmpty
+        ? null
+        : _findPackageForProductId(storeProductId);
+    if (pkg != null) {
+      setState(() => processingManagerId = doc.id);
+      final success = await SubscriptionService().purchasePackage(pkg);
+      if (success) {
+        await _load();
+        await widget.onSelected(doc.id);
+        if (mounted) Navigator.pop(context);
+      } else {
+        if (mounted) {
+          setState(() => processingManagerId = null);
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Purchase failed')));
+        }
+      }
+      return;
+    }
+
+    setState(() => processingManagerId = null);
+    await _openPlans(targetManagerId: doc.id, targetProductId: storeProductId);
+  }
+
+  Widget _buildManagerRow(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc, {
+    required int index,
+    required double Function(double v) scale,
+    required Color surface,
+    required Color border,
+    required Color blue,
+  }) {
     final data = doc.data();
     final name = (data[FirestoreManagerFields.name] as String?) ?? '—';
     final thumb = (data[FirestoreManagerFields.thumbnailUrl] as String?) ?? '';
     final storeProductId =
         (data[FirestoreManagerFields.storeProductId] as String?) ?? '';
+    final multiplier =
+        (data[FirestoreManagerFields.managerMultiplier] as num?)?.toDouble() ??
+        1.0;
+    final eta = (data[FirestoreManagerFields.enableEtaAuto] as bool?) ?? true;
+    final coin =
+        (data[FirestoreManagerFields.enableUserCoinAuto] as bool?) ?? true;
+    final bestValue =
+        (data[FirestoreManagerFields.bestValue] as bool?) ?? false;
+    final maxCoins =
+        (data[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
+            ?.toInt() ??
+        0;
 
-    final bool isCurrent = widget.currentId == doc.id;
-    final bool isSubscribed =
-        currentPlanId != null && currentPlanId == storeProductId;
-
-    // Find package
     final pkg = storeProductId.isEmpty
         ? null
         : _findPackageForProductId(storeProductId);
-    final isProcessing = processingManagerId == doc.id;
 
-    Future<void> handleTap() async {
-      if (isProcessing) return;
-      if (isSubscribed) {
-        if (isCurrent) return;
-        setState(() => processingManagerId = doc.id);
-        await widget.onSelected(doc.id);
-        if (mounted) Navigator.pop(context);
-        return;
-      }
+    final selected = selectedManagerId == doc.id;
+    final icon = multiplier >= 2.5
+        ? Icons.diamond_rounded
+        : (multiplier >= 1.75 ? Icons.groups_rounded : Icons.person_rounded);
+    final iconBg = multiplier >= 2.5
+        ? const Color(0xFFFFB020)
+        : (multiplier >= 1.75
+              ? const Color(0xFF8B5CF6)
+              : const Color(0xFF1B4BFF));
 
-      if (pkg != null) {
-        setState(() => processingManagerId = doc.id);
-        final success = await SubscriptionService().purchasePackage(pkg);
-        if (success) {
-          await _load();
-          await widget.onSelected(doc.id);
-          if (mounted) Navigator.pop(context);
-        } else {
-          if (mounted) {
-            setState(() => processingManagerId = null);
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(const SnackBar(content: Text('Purchase failed')));
-          }
-        }
-        return;
-      }
+    final pct = (((multiplier - 1.0) * 100).clamp(0.0, 9999.0));
+    final pctText = '+${pct.toStringAsFixed(0)}% Speed';
+    final price = pkg?.storeProduct.priceString ?? '—';
 
-      await _openPlans(
-        targetManagerId: doc.id,
-        targetProductId: storeProductId,
-      );
-    }
-
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      child: InkWell(
-        onTap: handleTap,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              CircleAvatar(
-                backgroundImage: thumb.isNotEmpty ? NetworkImage(thumb) : null,
-                child: thumb.isEmpty
-                    ? const Icon(Icons.auto_mode_rounded)
-                    : null,
+    return GestureDetector(
+      onTap: () => setState(() => selectedManagerId = doc.id),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            padding: EdgeInsets.all(scale(14)),
+            decoration: BoxDecoration(
+              color: surface,
+              borderRadius: BorderRadius.circular(scale(18)),
+              border: Border.all(
+                color: selected ? blue : border,
+                width: selected ? scale(1.6) : 1,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: scale(44),
+                  height: scale(44),
+                  decoration: BoxDecoration(
+                    color: iconBg.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                  ),
+                  child: ClipOval(
+                    child: thumb.isNotEmpty
+                        ? Image.network(
+                            thumb,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stack) {
+                              return Icon(icon, color: iconBg, size: scale(22));
+                            },
+                          )
+                        : Icon(icon, color: iconBg, size: scale(22)),
+                  ),
+                ),
+                SizedBox(width: scale(12)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: scale(15.5),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(height: scale(6)),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.eco_rounded,
+                            size: scale(16),
+                            color: const Color(0xFF2ECC71),
+                          ),
+                          SizedBox(width: scale(6)),
+                          Text(
+                            pctText,
+                            style: TextStyle(
+                              color: const Color(0xFF2ECC71),
+                              fontSize: scale(13),
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (eta && coin) ...[
+                        SizedBox(height: scale(6)),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.check_rounded,
+                              size: scale(16),
+                              color: Colors.white54,
+                            ),
+                            SizedBox(width: scale(6)),
+                            Text(
+                              'Auto-collect',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: scale(12.5),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: scale(4)),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.check_rounded,
+                              size: scale(16),
+                              color: Colors.white54,
+                            ),
+                            SizedBox(width: scale(6)),
+                            Text(
+                              'Auto mine $maxCoins ${maxCoins == 1 ? 'coin' : 'coins'}',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: scale(12.5),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                SizedBox(width: scale(10)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      name,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    if (isSubscribed)
-                      const Text(
-                        'Active',
-                        style: TextStyle(color: Colors.green, fontSize: 12),
-                      )
-                    else if (pkg != null)
-                      Text(
-                        pkg.storeProduct.priceString,
-                        style: const TextStyle(fontSize: 12),
-                      )
-                    else
-                      const Text(
-                        'Tap to view plans',
-                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      price,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: scale(16),
+                        fontWeight: FontWeight.w900,
                       ),
+                    ),
+                    SizedBox(height: scale(2)),
+                    Text(
+                      '/mo',
+                      style: TextStyle(
+                        color: Colors.white38,
+                        fontSize: scale(12.5),
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              if (isProcessing)
-                const SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else if (isSubscribed)
-                ElevatedButton(
-                  onPressed: isCurrent ? null : handleTap,
-                  child: isCurrent
-                      ? const Icon(Icons.check)
-                      : const Text('Select'),
-                )
-              else if (pkg != null)
-                ElevatedButton(onPressed: handleTap, child: const Text('Buy'))
-              else
-                ElevatedButton(
-                  onPressed: handleTap,
-                  child: const Text('Plans'),
-                ),
-            ],
+                if (selected) ...[
+                  SizedBox(width: scale(10)),
+                  Container(
+                    width: scale(22),
+                    height: scale(22),
+                    decoration: BoxDecoration(
+                      color: blue,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: scale(16),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        ),
+          if (bestValue)
+            Positioned(
+              top: -scale(12),
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: scale(14),
+                    vertical: scale(6),
+                  ),
+                  decoration: BoxDecoration(
+                    color: blue,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'BEST VALUE',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: scale(12),
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -2528,11 +2945,19 @@ class _CoinSelectDialog extends StatefulWidget {
 class _CoinSelectDialogState extends State<_CoinSelectDialog> {
   List<QueryDocumentSnapshot<Map<String, dynamic>>> coins = const [];
   late List<String> selectedIds = [...widget.current];
+  final TextEditingController searchCtrl = TextEditingController();
+  String query = '';
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -2553,84 +2978,548 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
     setState(() {});
   }
 
+  String _ownerId(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    return (doc.data()[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
+  }
+
+  String _name(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    return (doc.data()[FirestoreUserCoinMiningFields.name] as String?) ?? '—';
+  }
+
+  String _symbol(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    return (doc.data()[FirestoreUserCoinMiningFields.symbol] as String?) ?? '';
+  }
+
+  String _imageUrl(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    return (doc.data()[FirestoreUserCoinMiningFields.imageUrl] as String?) ??
+        '';
+  }
+
+  double _rate(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+    return (doc.data()[FirestoreUserCoinMiningFields.hourlyRate] as num?)
+            ?.toDouble() ??
+        0.0;
+  }
+
+  bool _isActive(
+    QueryDocumentSnapshot<Map<String, dynamic>> doc, {
+    required DateTime now,
+  }) {
+    final end =
+        doc.data()[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
+    if (end == null) return false;
+    return now.isBefore(end.toDate());
+  }
+
   @override
   Widget build(BuildContext context) {
     final int max = widget.maxCount;
+    const bg1 = Color(0xFF0E1721);
+    const bg2 = Color(0xFF0A121B);
+    const surface = Color(0xFF17222C);
+    const border = Color(0xFF24303B);
+    const blue = Color(0xFF1677FF);
+
+    final now = DateTime.now();
+    final byId = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    for (final d in coins) {
+      final id = _ownerId(d);
+      if (id.isNotEmpty) byId[id] = d;
+    }
+
+    final q = query.trim().toLowerCase();
+    final filtered = q.isEmpty
+        ? coins
+        : coins.where((d) {
+            final n = _name(d).toLowerCase();
+            final s = _symbol(d).toLowerCase();
+            return n.contains(q) || s.contains(q);
+          }).toList();
+
+    Future<void> confirm() async {
+      await widget.onSelected(selectedIds);
+      if (!context.mounted) return;
+      Navigator.pop(context);
+    }
+
+    Future<void> clear() async {
+      await widget.onSelected(const []);
+      if (!context.mounted) return;
+      Navigator.pop(context);
+    }
+
+    void toggleId(String ownerId) {
+      if (ownerId.isEmpty) return;
+      setState(() {
+        if (selectedIds.contains(ownerId)) {
+          selectedIds.remove(ownerId);
+          return;
+        }
+        if (selectedIds.length < max) {
+          selectedIds.add(ownerId);
+        }
+      });
+    }
+
     return Dialog(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Select Coins (${selectedIds.length}/$max)',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 8),
-            if (coins.isEmpty) const Text('No mined coins to select'),
-            for (final doc in coins)
-              CheckboxListTile(
-                value: selectedIds.contains(
-                  (doc.data()[FirestoreUserCoinMiningFields.ownerId]
-                          as String?) ??
-                      '',
-                ),
-                onChanged: (v) {
-                  final ownerId =
-                      (doc.data()[FirestoreUserCoinMiningFields.ownerId]
-                          as String?) ??
-                      '';
-                  if (ownerId.isEmpty) return;
-                  setState(() {
-                    if (v == true) {
-                      if (selectedIds.length < max) {
-                        if (!selectedIds.contains(ownerId)) {
-                          selectedIds.add(ownerId);
-                        }
-                      }
-                    } else {
-                      selectedIds.remove(ownerId);
-                    }
-                  });
-                },
-                title: Text(
-                  (doc.data()[FirestoreUserCoinMiningFields.name] as String?) ??
-                      '—',
-                ),
-                controlAffinity: ListTileControlAffinity.leading,
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final scale = (constraints.maxWidth / 420).clamp(0.82, 1.0);
+          double s(double v) => v * scale;
+
+          Widget pill(String text) {
+            return Container(
+              padding: EdgeInsets.symmetric(horizontal: s(12), vertical: s(6)),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
               ),
-            const SizedBox(height: 8),
-            Row(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: blue,
+                  fontSize: s(13),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            );
+          }
+
+          Widget selectedChip(String ownerId) {
+            final doc = byId[ownerId];
+            final name = doc == null ? '—' : _name(doc);
+            final img = doc == null ? '' : _imageUrl(doc);
+            final active = doc == null ? false : _isActive(doc, now: now);
+
+            return Stack(
+              clipBehavior: Clip.none,
               children: [
-                ElevatedButton(
-                  onPressed: () async {
-                    await widget.onSelected(selectedIds);
-                    if (!context.mounted) return;
-                    // ignore: use_build_context_synchronously
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Confirm'),
+                Container(
+                  height: s(46),
+                  padding: EdgeInsets.symmetric(horizontal: s(12)),
+                  decoration: BoxDecoration(
+                    color: active ? blue.withValues(alpha: 0.18) : surface,
+                    borderRadius: BorderRadius.circular(s(14)),
+                    border: Border.all(
+                      color: active ? blue : border,
+                      width: active ? s(1.2) : 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircleAvatar(
+                        radius: s(14),
+                        backgroundColor: Colors.white.withValues(alpha: 0.08),
+                        backgroundImage: img.isNotEmpty
+                            ? NetworkImage(img)
+                            : null,
+                        child: img.isEmpty
+                            ? Text(
+                                name.isNotEmpty ? name[0].toUpperCase() : '?',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: s(12.5),
+                                ),
+                              )
+                            : null,
+                      ),
+                      SizedBox(width: s(10)),
+                      Text(
+                        name,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: s(14.5),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      SizedBox(width: s(10)),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: () async {
-                    await widget.onSelected(const []);
-                    if (!mounted) return;
-                    // ignore: use_build_context_synchronously
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Clear'),
+                Positioned(
+                  right: -s(6),
+                  top: -s(6),
+                  child: InkWell(
+                    onTap: () => toggleId(ownerId),
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      width: s(22),
+                      height: s(22),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFF5A5F),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.black.withValues(alpha: 0.20),
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        Icons.close_rounded,
+                        size: s(14),
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
                 ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
+              ],
+            );
+          }
+
+          Widget placeholderChip() {
+            final remaining = (max - selectedIds.length).clamp(0, max);
+            return Container(
+              height: s(46),
+              padding: EdgeInsets.symmetric(horizontal: s(14)),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(s(14)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+              ),
+              alignment: Alignment.center,
+              child: Text(
+                remaining <= 0 ? 'Limit reached' : 'Select $remaining more',
+                style: TextStyle(
+                  color: Colors.white38,
+                  fontSize: s(13.5),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            );
+          }
+
+          Widget coinRow(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+            final ownerId = _ownerId(doc);
+            final selected = selectedIds.contains(ownerId);
+            final name = _name(doc);
+            final symbol = _symbol(doc);
+            final img = _imageUrl(doc);
+            final rate = _rate(doc);
+            final active = _isActive(doc, now: now);
+            final subtitle = active
+                ? 'Active • ${rate.toStringAsFixed(1)}/hr'
+                : (symbol.isNotEmpty ? symbol : 'Inactive');
+
+            return GestureDetector(
+              onTap: () => toggleId(ownerId),
+              child: Container(
+                padding: EdgeInsets.all(s(14)),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(s(18)),
+                  border: Border.all(
+                    color: selected ? blue : border,
+                    width: selected ? s(1.4) : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: s(20),
+                      backgroundColor: Colors.white.withValues(alpha: 0.08),
+                      backgroundImage: img.isNotEmpty
+                          ? NetworkImage(img)
+                          : null,
+                      child: img.isEmpty
+                          ? Text(
+                              name.isNotEmpty ? name[0].toUpperCase() : '?',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w900,
+                                fontSize: s(14),
+                              ),
+                            )
+                          : null,
+                    ),
+                    SizedBox(width: s(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: s(16),
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          SizedBox(height: s(4)),
+                          Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: active ? blue : Colors.white54,
+                              fontSize: s(13.5),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(width: s(12)),
+                    Container(
+                      width: s(30),
+                      height: s(30),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? blue
+                            : Colors.white.withValues(alpha: 0.06),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: selected ? blue : Colors.white24,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(
+                        Icons.check_rounded,
+                        size: s(18),
+                        color: selected ? Colors.white : Colors.white54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          return Container(
+            padding: EdgeInsets.all(s(16)),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [bg1, bg2],
+              ),
+              borderRadius: BorderRadius.circular(s(22)),
+              border: Border.all(color: border),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.45),
+                  blurRadius: 24,
+                  offset: const Offset(0, 16),
                 ),
               ],
             ),
-          ],
-        ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: s(44),
+                    height: s(5),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                SizedBox(height: s(14)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Manage Mining Portfolio',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: s(20),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    pill('${selectedIds.length}/$max Selected'),
+                  ],
+                ),
+                SizedBox(height: s(6)),
+                Text(
+                  'You can mine up to $max coins simultaneously.',
+                  style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: s(13.5),
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
+                  ),
+                ),
+                SizedBox(height: s(14)),
+                SizedBox(
+                  height: s(54),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (final id in selectedIds) ...[
+                          selectedChip(id),
+                          SizedBox(width: s(10)),
+                        ],
+                        if (selectedIds.length < max) placeholderChip(),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: s(14)),
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: s(12)),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(s(18)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.10),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.search_rounded,
+                        size: s(20),
+                        color: Colors.white38,
+                      ),
+                      SizedBox(width: s(8)),
+                      Expanded(
+                        child: TextField(
+                          controller: searchCtrl,
+                          onChanged: (v) => setState(() => query = v),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: s(14.5),
+                            fontWeight: FontWeight.w800,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Search coins',
+                            hintStyle: TextStyle(
+                              color: Colors.white38,
+                              fontSize: s(14.5),
+                              fontWeight: FontWeight.w800,
+                            ),
+                            border: InputBorder.none,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: s(14)),
+                if (coins.isEmpty)
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: s(18)),
+                    child: Text(
+                      'No mined coins to select',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: s(14),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  )
+                else
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: filtered.length,
+                      separatorBuilder: (_, __) => SizedBox(height: s(12)),
+                      itemBuilder: (context, i) => coinRow(filtered[i]),
+                    ),
+                  ),
+                SizedBox(height: s(14)),
+                SizedBox(
+                  width: double.infinity,
+                  height: s(54),
+                  child: ElevatedButton(
+                    onPressed: selectedIds.isEmpty ? null : confirm,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: blue,
+                      disabledBackgroundColor: blue.withValues(alpha: 0.35),
+                      foregroundColor: Colors.white,
+                      disabledForegroundColor: Colors.white.withValues(
+                        alpha: 0.7,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(s(16)),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.check_circle_rounded, size: s(20)),
+                        SizedBox(width: s(10)),
+                        Text(
+                          'Start Mining (${selectedIds.length})',
+                          style: TextStyle(
+                            fontSize: s(15),
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: s(12)),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: s(48),
+                        child: OutlinedButton(
+                          onPressed: selectedIds.isEmpty ? null : clear,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.18),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(s(16)),
+                            ),
+                          ),
+                          child: Text(
+                            'Clear Selection',
+                            style: TextStyle(
+                              fontSize: s(14),
+                              fontWeight: FontWeight.w900,
+                              color: selectedIds.isEmpty
+                                  ? Colors.white38
+                                  : Colors.white70,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: s(12)),
+                    Expanded(
+                      child: SizedBox(
+                        height: s(48),
+                        child: TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white70,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(s(16)),
+                            ),
+                          ),
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(
+                              fontSize: s(14),
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
