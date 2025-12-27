@@ -206,89 +206,275 @@ class _CoinCard extends StatelessWidget {
   });
 
   Widget _homeCard(BuildContext context) {
-    const g1 = Color(0xFF5A46FF);
-    const g2 = Color(0xFF8A2BFF);
+    const cardBg = Color(0xFF0F1A24);
+    const cardBg2 = Color(0xFF0B121A);
+    const border = Color(0xFF24303B);
     final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
     final symbol = (data[FirestoreUserCoinFields.symbol] as String?) ?? '';
     final rate =
         (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
         0.0;
+    final img = (data[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
+    final links =
+        (data[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ??
+        const [];
+    final ownerId = (data[FirestoreUserCoinFields.ownerId] as String?) ?? '';
     return LayoutBuilder(
       builder: (context, constraints) {
-        final scale = (constraints.maxWidth / 360).clamp(0.7, 1.0);
+        final scale = (constraints.maxWidth / 380).clamp(0.78, 1.0);
         double s(double v) => v * scale;
-        return GestureDetector(
-          onTap: onEdit,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(s(22)),
-            child: Container(
-              height: s(110),
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [g1, g2],
+
+        Future<void> openLink(String url) async {
+          if (url.isEmpty) return;
+          final uri = Uri.tryParse(url);
+          if (uri == null) return;
+          try {
+            final ok = await canLaunchUrl(uri);
+            if (!ok) return;
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } catch (_) {}
+        }
+
+        String firstLinkUrl(String type) {
+          for (final l in links) {
+            final t = (l['type'] as String?) ?? '';
+            final u = (l['url'] as String?) ?? '';
+            if (t.toLowerCase() == type.toLowerCase() && u.isNotEmpty) {
+              return u;
+            }
+          }
+          return '';
+        }
+
+        final websiteUrl = firstLinkUrl('website');
+        final telegramUrl = firstLinkUrl('telegram');
+        final twitterUrl = firstLinkUrl('twitter');
+        final instagramUrl = firstLinkUrl('instagram');
+        final youtubeUrl = firstLinkUrl('youtube');
+        final facebookUrl = firstLinkUrl('facebook');
+
+        Widget iconPill({
+          required IconData icon,
+          required VoidCallback? onPressed,
+        }) {
+          return Container(
+            width: s(30),
+            height: s(30),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(s(10)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            ),
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              onPressed: onPressed,
+              icon: Icon(icon, size: s(16), color: Colors.white70),
+            ),
+          );
+        }
+
+        final iconWidgets = <Widget>[];
+        if (websiteUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.language_rounded,
+              onPressed: () => openLink(websiteUrl),
+            ),
+          );
+        }
+        if (telegramUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.send_rounded,
+              onPressed: () => openLink(telegramUrl),
+            ),
+          );
+        }
+        if (twitterUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.close_rounded,
+              onPressed: () => openLink(twitterUrl),
+            ),
+          );
+        }
+        if (instagramUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.camera_alt_rounded,
+              onPressed: () => openLink(instagramUrl),
+            ),
+          );
+        }
+        if (youtubeUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.play_circle_fill_rounded,
+              onPressed: () => openLink(youtubeUrl),
+            ),
+          );
+        }
+        if (facebookUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.facebook_rounded,
+              onPressed: () => openLink(facebookUrl),
+            ),
+          );
+        }
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(s(22)),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => _showCoinDetailsDialog(context, data),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [cardBg, cardBg2],
+                  ),
+                  border: Border.all(color: border),
+                  borderRadius: BorderRadius.circular(s(22)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black54,
+                      blurRadius: 18,
+                      offset: Offset(0, 10),
+                    ),
+                  ],
                 ),
-              ),
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: _DotPatternPainter(
-                        color: Colors.white.withValues(alpha: 0.12),
+                child: Padding(
+                  padding: EdgeInsets.all(s(16)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: s(66),
+                            height: s(66),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(s(18)),
+                              color: Colors.white.withValues(alpha: 0.06),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.14),
+                              ),
+                              image: img.isNotEmpty
+                                  ? DecorationImage(
+                                      image: NetworkImage(img),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : null,
+                            ),
+                            child: img.isEmpty
+                                ? Icon(
+                                    Icons.token_rounded,
+                                    color: Colors.white54,
+                                    size: s(28),
+                                  )
+                                : null,
+                          ),
+                          SizedBox(width: s(14)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: s(20),
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.white,
+                                          height: 1.1,
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      onPressed: onEdit,
+                                      icon: Icon(
+                                        Icons.edit_rounded,
+                                        color: Colors.white70,
+                                        size: s(18),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: s(8)),
+                                Row(
+                                  children: [
+                                    if (symbol.trim().isNotEmpty)
+                                      Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: s(10),
+                                          vertical: s(6),
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.08,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            s(10),
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.12,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          symbol.trim(),
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: s(12),
+                                            letterSpacing: 0.6,
+                                          ),
+                                        ),
+                                      ),
+                                    if (iconWidgets.isNotEmpty &&
+                                        symbol.trim().isNotEmpty) ...[
+                                      SizedBox(width: s(12)),
+                                      Container(
+                                        width: 1,
+                                        height: s(18),
+                                        color: Colors.white24,
+                                      ),
+                                      SizedBox(width: s(12)),
+                                    ],
+                                    if (iconWidgets.isNotEmpty)
+                                      Wrap(
+                                        spacing: s(10),
+                                        runSpacing: s(10),
+                                        children: iconWidgets,
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
+                      SizedBox(height: s(14)),
+                      Container(height: 1, color: Colors.white12),
+                      SizedBox(height: s(14)),
+                      CoinMiningControls(
+                        coinOwnerId: ownerId,
+                        baseRate: rate,
+                        symbol: symbol,
+                        variant: CoinMiningControlsVariant.myCoinCard,
+                      ),
+                    ],
                   ),
-                  Padding(
-                    padding: EdgeInsets.all(s(14)),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                name,
-                                style: TextStyle(
-                                  fontSize: s(20),
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                  height: 1.1,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              SizedBox(height: s(6)),
-                              Text(
-                                'Base rate: ${rate.toStringAsFixed(3)}/h${symbol.isNotEmpty ? ' • $symbol' : ''}',
-                                style: TextStyle(
-                                  fontSize: s(14),
-                                  color: Colors.white70,
-                                  height: 1.2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(width: s(10)),
-                        Container(
-                          width: s(50),
-                          height: s(50),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.22),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            Icons.edit_rounded,
-                            size: s(26),
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -311,73 +497,739 @@ class _CoinCard extends StatelessWidget {
     final links =
         (data[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ??
         const [];
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.primaryBackground,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 24,
-                backgroundColor: AppColors.primaryAccent,
-                backgroundImage: img.isNotEmpty ? NetworkImage(img) : null,
-                child: img.isEmpty
-                    ? Text(name.isNotEmpty ? name[0] : '?')
-                    : null,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    if (symbol.isNotEmpty)
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => _showCoinDetailsDialog(context, data),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.primaryBackground,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: AppColors.primaryAccent,
+                  backgroundImage: img.isNotEmpty ? NetworkImage(img) : null,
+                  child: img.isEmpty
+                      ? Text(name.isNotEmpty ? name[0] : '?')
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        symbol,
-                        style: const TextStyle(color: Colors.white70),
+                        name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                  ],
+                      if (symbol.isNotEmpty)
+                        Text(
+                          symbol,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              ElevatedButton(onPressed: onEdit, child: const Text('Edit coin')),
-            ],
-          ),
-          const SizedBox(height: 8),
-          // Text(desc.length > 160 ? '${desc.substring(0, 160)}…' : desc),
-          // const SizedBox(height: 8),
-          Text('Base rate: ${rate.toStringAsFixed(3)} coins/hour'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final l in links)
-                _LinkButton(
-                  type: (l['type'] as String?) ?? 'other',
-                  url: (l['url'] as String?) ?? '',
+                ElevatedButton(
+                  onPressed: onEdit,
+                  child: const Text('Edit coin'),
                 ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          CoinMiningControls(
-            coinOwnerId:
-                (data[FirestoreUserCoinFields.ownerId] as String?) ?? '',
-          ),
-        ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text('Base rate: ${rate.toStringAsFixed(3)} coins/hour'),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final l in links)
+                  _LinkButton(
+                    type: (l['type'] as String?) ?? 'other',
+                    url: (l['url'] as String?) ?? '',
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            CoinMiningControls(
+              coinOwnerId:
+                  (data[FirestoreUserCoinFields.ownerId] as String?) ?? '',
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
+  final ownerId =
+      (data[FirestoreUserCoinFields.ownerId] as String?) ??
+      (data[FirestoreUserCoinMiningFields.ownerId] as String?) ??
+      (data['ownerId'] as String?) ??
+      '';
+  final name =
+      (data[FirestoreUserCoinFields.name] as String?) ??
+      (data[FirestoreUserCoinMiningFields.name] as String?) ??
+      (data['name'] as String?) ??
+      '—';
+  final symbol =
+      (data[FirestoreUserCoinFields.symbol] as String?) ??
+      (data[FirestoreUserCoinMiningFields.symbol] as String?) ??
+      (data['symbol'] as String?) ??
+      '';
+  final imageUrl =
+      (data[FirestoreUserCoinFields.imageUrl] as String?) ??
+      (data[FirestoreUserCoinMiningFields.imageUrl] as String?) ??
+      (data['imageUrl'] as String?) ??
+      '';
+  final description =
+      (data[FirestoreUserCoinFields.description] as String?) ??
+      (data[FirestoreUserCoinMiningFields.description] as String?) ??
+      (data['description'] as String?) ??
+      'No description available.';
+  final links =
+      (data[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ??
+      (data[FirestoreUserCoinMiningFields.socialLinks] as List<dynamic>?) ??
+      (data['socialLinks'] as List<dynamic>?) ??
+      const [];
+
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+  final isCreator = uid != null && uid == ownerId;
+
+  Future<double?> fetchMyMined() async {
+    if (uid == null || uid.isEmpty || ownerId.isEmpty) return null;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .collection(FirestoreUserSubCollections.coins)
+          .doc(ownerId)
+          .get();
+      final d = snap.data() ?? {};
+      return (d[FirestoreUserCoinMiningFields.totalPoints] as num?)?.toDouble();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<double?> fetchTotalMinedAll() async {
+    if (ownerId.isEmpty) return null;
+    try {
+      final qs = await FirebaseFirestore.instance
+          .collectionGroup(FirestoreUserSubCollections.coins)
+          .where(FirestoreUserCoinMiningFields.ownerId, isEqualTo: ownerId)
+          .get();
+      double sum = 0.0;
+      for (final doc in qs.docs) {
+        final v =
+            (doc.data()[FirestoreUserCoinMiningFields.totalPoints] as num?)
+                ?.toDouble();
+        if (v != null && v.isFinite) {
+          sum += v;
+        }
+      }
+      return sum;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  final myMinedFuture = isCreator ? fetchMyMined() : null;
+  final totalMinedAllFuture = isCreator ? fetchTotalMinedAll() : null;
+
+  final rate =
+      (data[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
+      (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+      (data['hourlyRate'] as num?)?.toDouble() ??
+      (data['baseRatePerHour'] as num?)?.toDouble() ??
+      0.0;
+  final holders =
+      (data[FirestoreUserCoinFields.minersCount] as num?)?.toDouble() ??
+      (data['holdersCount'] as num?)?.toDouble() ??
+      (data['holders'] as num?)?.toDouble();
+  final changePct =
+      (data['rateChangePct'] as num?)?.toDouble() ??
+      (data['changePct'] as num?)?.toDouble();
+
+  showDialog(
+    context: context,
+    builder: (ctx) {
+      const cardBg = Color(0xFF0F1A24);
+      const cardBg2 = Color(0xFF0B121A);
+      const surface = Color(0xFF17222C);
+      const border = Color(0xFF24303B);
+      const buttonBlue = Color(0xFF1677FF);
+      const accentOrange = Color(0xFFFFB020);
+
+      String compactNum(num? v) {
+        if (v == null) {
+          return '—';
+        }
+        final n = v.toDouble();
+        if (!n.isFinite) {
+          return '—';
+        }
+        final abs = n.abs();
+        if (abs >= 1000000000) {
+          return '${(n / 1000000000).toStringAsFixed(1)}B';
+        }
+        if (abs >= 1000000) {
+          return '${(n / 1000000).toStringAsFixed(1)}M';
+        }
+        if (abs >= 1000) {
+          return '${(n / 1000).toStringAsFixed(1)}k';
+        }
+        if (abs >= 100) {
+          return n.toStringAsFixed(0);
+        }
+        if (abs >= 10) {
+          return n.toStringAsFixed(1);
+        }
+        return n.toStringAsFixed(2);
+      }
+
+      String fmtRate(double v) {
+        final s = v.toStringAsFixed(3);
+        return s.replaceFirst(RegExp(r'\.?0+$'), '');
+      }
+
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 22),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final scale = (constraints.maxWidth / 420).clamp(0.82, 1.0);
+            double s(double v) => v * scale;
+            var expanded = false;
+
+            Widget metricCard({
+              required IconData icon,
+              required Color iconBg,
+              required String title,
+              required String value,
+              String? suffix,
+              String? footnote,
+              Color? footnoteColor,
+            }) {
+              return Container(
+                padding: EdgeInsets.all(s(14)),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(s(18)),
+                  border: Border.all(color: border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: s(34),
+                          height: s(34),
+                          decoration: BoxDecoration(
+                            color: iconBg,
+                            borderRadius: BorderRadius.circular(s(12)),
+                          ),
+                          child: Icon(icon, size: s(18), color: Colors.white),
+                        ),
+                        SizedBox(width: s(10)),
+                        Expanded(
+                          child: Text(
+                            title.toUpperCase(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white60,
+                              fontSize: s(11.5),
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.9,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: s(12)),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          value,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: s(20),
+                            fontWeight: FontWeight.w900,
+                            height: 1.0,
+                          ),
+                        ),
+                        if (suffix != null) ...[
+                          SizedBox(width: s(6)),
+                          Padding(
+                            padding: EdgeInsets.only(bottom: s(2)),
+                            child: Text(
+                              suffix,
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: s(12.5),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (footnote != null) ...[
+                      SizedBox(height: s(6)),
+                      Text(
+                        footnote,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: footnoteColor ?? Colors.white54,
+                          fontSize: s(12.5),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }
+
+            return ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(s(26)),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [cardBg, cardBg2],
+                  ),
+                  border: Border.all(color: Colors.white10),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black54,
+                      blurRadius: 24,
+                      offset: Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(s(26)),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(height: s(10)),
+                      Container(
+                        width: s(54),
+                        height: s(5),
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      SizedBox(height: s(10)),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: s(18)),
+                        child: Row(
+                          children: [
+                            const Spacer(),
+                            IconButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              icon: Icon(
+                                Icons.close_rounded,
+                                color: Colors.white70,
+                                size: s(22),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Flexible(
+                        child: SingleChildScrollView(
+                          padding: EdgeInsets.fromLTRB(s(18), 0, s(18), s(16)),
+                          child: StatefulBuilder(
+                            builder: (context, setLocal) {
+                              void toggle() =>
+                                  setLocal(() => expanded = !expanded);
+
+                              final showReadMore = description.length > 140;
+                              final aboutText = description;
+
+                              return Column(
+                                children: [
+                                  Stack(
+                                    clipBehavior: Clip.none,
+                                    children: [
+                                      Container(
+                                        width: s(112),
+                                        height: s(112),
+                                        padding: EdgeInsets.all(s(4)),
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: accentOrange,
+                                            width: s(2),
+                                          ),
+                                        ),
+                                        child: CircleAvatar(
+                                          backgroundColor: Colors.white10,
+                                          backgroundImage: imageUrl.isNotEmpty
+                                              ? NetworkImage(imageUrl)
+                                              : null,
+                                          child: imageUrl.isEmpty
+                                              ? Icon(
+                                                  Icons.monetization_on_rounded,
+                                                  size: s(42),
+                                                  color: Colors.white54,
+                                                )
+                                              : null,
+                                        ),
+                                      ),
+                                      Positioned(
+                                        right: s(4),
+                                        bottom: s(6),
+                                        child: Container(
+                                          width: s(26),
+                                          height: s(26),
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: buttonBlue,
+                                            border: Border.all(
+                                              color: cardBg,
+                                              width: s(2),
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            Icons.check_rounded,
+                                            color: Colors.white,
+                                            size: s(16),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: s(12)),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          name,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: s(26),
+                                            fontWeight: FontWeight.w900,
+                                            height: 1.05,
+                                          ),
+                                        ),
+                                      ),
+                                      if (symbol.isNotEmpty) ...[
+                                        SizedBox(width: s(8)),
+                                        Text(
+                                          '(\$$symbol)',
+                                          style: TextStyle(
+                                            color: Colors.white54,
+                                            fontSize: s(16),
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                  if (ownerId.isNotEmpty) ...[
+                                    SizedBox(height: s(8)),
+                                    FutureBuilder<
+                                      DocumentSnapshot<Map<String, dynamic>>
+                                    >(
+                                      future: FirebaseFirestore.instance
+                                          .collection(FirestoreConstants.users)
+                                          .doc(ownerId)
+                                          .get(),
+                                      builder: (context, snapshot) {
+                                        final u = snapshot.data?.data();
+                                        final username =
+                                            (u?[FirestoreUserFields.username]
+                                                as String?) ??
+                                            'Unknown';
+                                        return Container(
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: s(12),
+                                            vertical: s(8),
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.06,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                            border: Border.all(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.12,
+                                              ),
+                                            ),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              CircleAvatar(
+                                                radius: s(10),
+                                                backgroundColor: Colors.white12,
+                                                child: Icon(
+                                                  Icons.person_rounded,
+                                                  size: s(14),
+                                                  color: Colors.white70,
+                                                ),
+                                              ),
+                                              SizedBox(width: s(8)),
+                                              Text(
+                                                'Created by @$username',
+                                                style: TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: s(13.5),
+                                                  fontWeight: FontWeight.w800,
+                                                ),
+                                              ),
+                                              SizedBox(width: s(8)),
+                                              Icon(
+                                                Icons.chevron_right_rounded,
+                                                color: Colors.white54,
+                                                size: s(18),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                  SizedBox(height: s(18)),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: metricCard(
+                                          icon: Icons.bolt_rounded,
+                                          iconBg: const Color(
+                                            0xFF1B4BFF,
+                                          ).withValues(alpha: 0.35),
+                                          title: 'Mining rate',
+                                          value: fmtRate(rate),
+                                          suffix: 'ETA/hr',
+                                          footnote: changePct == null
+                                              ? null
+                                              : '${changePct >= 0 ? '+' : ''}${changePct.toStringAsFixed(1)}%',
+                                          footnoteColor: changePct == null
+                                              ? null
+                                              : (changePct >= 0
+                                                    ? const Color(0xFF2ECC71)
+                                                    : const Color(0xFFFF5A5F)),
+                                        ),
+                                      ),
+                                      SizedBox(width: s(12)),
+                                      Expanded(
+                                        child: isCreator
+                                            ? FutureBuilder<double?>(
+                                                future: myMinedFuture,
+                                                builder: (context, snap) {
+                                                  final done =
+                                                      snap.connectionState ==
+                                                      ConnectionState.done;
+                                                  final v = done
+                                                      ? snap.data
+                                                      : null;
+                                                  return metricCard(
+                                                    icon: Icons.layers_rounded,
+                                                    iconBg: const Color(
+                                                      0xFF8B5CF6,
+                                                    ).withValues(alpha: 0.28),
+                                                    title: 'Your mined',
+                                                    value: done
+                                                        ? compactNum(v)
+                                                        : '…',
+                                                  );
+                                                },
+                                              )
+                                            : metricCard(
+                                                icon: Icons.layers_rounded,
+                                                iconBg: const Color(
+                                                  0xFF8B5CF6,
+                                                ).withValues(alpha: 0.28),
+                                                title: 'Total mined',
+                                                value: '—',
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: s(12)),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: metricCard(
+                                          icon: Icons.groups_rounded,
+                                          iconBg: const Color(
+                                            0xFFFF4D9D,
+                                          ).withValues(alpha: 0.22),
+                                          title: 'Holders',
+                                          value: compactNum(holders),
+                                        ),
+                                      ),
+                                      SizedBox(width: s(12)),
+                                      Expanded(
+                                        child: isCreator
+                                            ? FutureBuilder<double?>(
+                                                future: totalMinedAllFuture,
+                                                builder: (context, snap) {
+                                                  final done =
+                                                      snap.connectionState ==
+                                                      ConnectionState.done;
+                                                  final v = done
+                                                      ? snap.data
+                                                      : null;
+                                                  return metricCard(
+                                                    icon: Icons.layers_rounded,
+                                                    iconBg: const Color(
+                                                      0xFF8B5CF6,
+                                                    ).withValues(alpha: 0.28),
+                                                    title: 'Total mined',
+                                                    value: done
+                                                        ? compactNum(v)
+                                                        : '…',
+                                                  );
+                                                },
+                                              )
+                                            : const SizedBox.shrink(),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: s(18)),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      'About $name',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: s(16),
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                  ),
+                                  SizedBox(height: s(8)),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Text(
+                                      aboutText,
+                                      maxLines: showReadMore && !expanded
+                                          ? 4
+                                          : 999,
+                                      overflow: showReadMore && !expanded
+                                          ? TextOverflow.ellipsis
+                                          : TextOverflow.visible,
+                                      style: TextStyle(
+                                        color: Colors.white60,
+                                        fontSize: s(13.5),
+                                        fontWeight: FontWeight.w700,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                  if (showReadMore) ...[
+                                    SizedBox(height: s(8)),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: GestureDetector(
+                                        onTap: toggle,
+                                        child: Text(
+                                          expanded ? 'Read Less' : 'Read More',
+                                          style: TextStyle(
+                                            color: buttonBlue,
+                                            fontSize: s(13.5),
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  if (links.isNotEmpty) ...[
+                                    SizedBox(height: s(18)),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        'Project Links',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: s(14),
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(height: s(10)),
+                                    Wrap(
+                                      spacing: s(8),
+                                      runSpacing: s(8),
+                                      children: [
+                                        for (final l in links)
+                                          _LinkButton(
+                                            type:
+                                                (l['type'] as String?) ??
+                                                'other',
+                                            url: (l['url'] as String?) ?? '',
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                  SizedBox(height: s(18)),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: s(52),
+                                    child: ElevatedButton(
+                                      onPressed: () => Navigator.pop(ctx),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: buttonBlue,
+                                        foregroundColor: Colors.white,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        elevation: 0,
+                                      ),
+                                      child: Text(
+                                        'Close',
+                                        style: TextStyle(
+                                          fontSize: s(15),
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    },
+  );
 }
 
 class _LinkButton extends StatelessWidget {
@@ -898,7 +1750,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                             ),
                             TextSpan(
                               text:
-                                  'This is an in-app digital coin used only within the ETA Network ecosystem. It is not a cryptocurrency, has no monetary value, and cannot be traded, exchanged, or redeemed for money. Any potential future use, integration, or evolution of ETA Network features will depend on platform policies, legal requirements, and community-driven decisions. No guarantees are made regarding future value or external usage.',
+                                  'This coin is an in-app digital point used only within the ETA Network ecosystem. It is not a cryptocurrency, has no monetary value, and cannot be traded, exchanged, or redeemed for money. Any potential future use, integration, or evolution of ETA Network features will depend on platform policies, legal requirements, and community-driven decisions. No guarantees are made regarding future value or external usage.',
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontWeight: FontWeight.w700,
@@ -911,67 +1763,77 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                       ),
                     ),
                     SizedBox(height: s(14)),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                    Row(
                       children: [
-                        SizedBox(
-                          height: s(50),
-                          child: ElevatedButton(
-                            onPressed: _submitting ? null : _submit,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: buttonBlue,
-                              foregroundColor: Colors.white,
-                              disabledBackgroundColor: buttonBlue.withValues(
-                                alpha: 0.35,
-                              ),
-                              disabledForegroundColor: Colors.white.withValues(
-                                alpha: 0.8,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              elevation: 0,
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  _submitting
-                                      ? Icons.hourglass_top_rounded
-                                      : (_isEditing
-                                            ? Icons.save_rounded
-                                            : Icons.rocket_launch_rounded),
-                                  size: s(18),
-                                  color: Colors.white,
+                        Expanded(
+                          child: SizedBox(
+                            height: s(50),
+                            child: OutlinedButton(
+                              onPressed: _submitting
+                                  ? null
+                                  : () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.white70,
+                                side: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.18),
                                 ),
-                                SizedBox(width: s(10)),
-                                Text(
-                                  _submitting
-                                      ? 'Please wait…'
-                                      : (_isEditing ? 'Save' : 'Create Coin'),
-                                  style: TextStyle(
-                                    fontSize: s(14.5),
-                                    fontWeight: FontWeight.w900,
-                                  ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(s(16)),
                                 ),
-                              ],
+                              ),
+                              child: Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: s(14.2),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                        SizedBox(height: s(8)),
-                        Align(
-                          alignment: Alignment.center,
-                          child: TextButton(
-                            onPressed: _submitting
-                                ? null
-                                : () => Navigator.of(context).pop(),
-                            child: Text(
-                              'Cancel',
-                              style: TextStyle(
-                                color: Colors.white60,
-                                fontWeight: FontWeight.w800,
-                                fontSize: s(13.5),
+                        SizedBox(width: s(12)),
+                        Expanded(
+                          child: SizedBox(
+                            height: s(50),
+                            child: ElevatedButton(
+                              onPressed: _submitting ? null : _submit,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: buttonBlue,
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor: buttonBlue.withValues(
+                                  alpha: 0.35,
+                                ),
+                                disabledForegroundColor: Colors.white
+                                    .withValues(alpha: 0.8),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(s(16)),
+                                ),
+                                elevation: 0,
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _submitting
+                                        ? Icons.hourglass_top_rounded
+                                        : (_isEditing
+                                              ? Icons.save_rounded
+                                              : Icons.rocket_launch_rounded),
+                                    size: s(18),
+                                    color: Colors.white,
+                                  ),
+                                  SizedBox(width: s(10)),
+                                  Text(
+                                    _submitting
+                                        ? 'Please wait…'
+                                        : (_isEditing ? 'Save' : 'Create Coin'),
+                                    style: TextStyle(
+                                      fontSize: s(14.5),
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ),
@@ -1074,14 +1936,22 @@ class _LinkRow {
 class CoinMiningControls extends StatefulWidget {
   final String coinOwnerId;
   final Map<String, dynamic>? miningData;
+  final double? baseRate;
+  final String? symbol;
+  final CoinMiningControlsVariant variant;
   const CoinMiningControls({
     super.key,
     required this.coinOwnerId,
     this.miningData,
+    this.baseRate,
+    this.symbol,
+    this.variant = CoinMiningControlsVariant.compact,
   });
   @override
   State<CoinMiningControls> createState() => _CoinMiningControlsState();
 }
+
+enum CoinMiningControlsVariant { compact, detailed, myCoinCard }
 
 class _CoinMiningControlsState extends State<CoinMiningControls> {
   Timer? _timer;
@@ -1163,10 +2033,385 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
 
   Widget _buildUI() {
     final active = _timer != null; // or use _end check
-    final remaining = _formatRemaining(_end);
     const activeGreen = Color(0xFF2ECC71);
     const buttonBlue = Color(0xFF1677FF);
+    final remaining = _formatRemaining(_end);
     final statusColor = active ? activeGreen : Colors.white38;
+
+    if (widget.variant == CoinMiningControlsVariant.myCoinCard) {
+      String fmtRate(double v) {
+        final str = v.toStringAsFixed(3);
+        return str.replaceFirst(RegExp(r'\.?0+$'), '');
+      }
+
+      String fmtDisplay(double v) {
+        final str = v.toStringAsFixed(2);
+        return str.replaceFirst(RegExp(r'\.?0+$'), '');
+      }
+
+      final sym = (widget.symbol ?? '').trim();
+      final rate = widget.baseRate ?? _rate;
+      final baseSuffix = sym.isEmpty ? '—/hr' : '$sym/hr';
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Mined Coins',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          fmtDisplay(_display),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            sym.isEmpty ? '—' : sym,
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Container(width: 1, height: 44, color: Colors.white12),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Base Rate',
+                      style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          fmtRate(rate),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            baseSuffix,
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 50,
+            child: ElevatedButton(
+              onPressed: active
+                  ? null
+                  : () async {
+                      try {
+                        final devId = await DeviceId.get();
+                        await CoinService.startCoinMining(
+                          widget.coinOwnerId,
+                          deviceId: devId,
+                        );
+                        if (mounted) setState(() {});
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Start failed: $e')),
+                          );
+                        }
+                      }
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: buttonBlue,
+                disabledBackgroundColor: buttonBlue.withValues(alpha: 0.35),
+                foregroundColor: Colors.white,
+                disabledForegroundColor: Colors.white.withValues(alpha: 0.7),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: 0,
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.power_settings_new_rounded, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    active ? 'Mining' : 'Mine',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 15,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            active ? 'Mining… • $remaining' : 'Inactive',
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (widget.variant == CoinMiningControlsVariant.detailed) {
+      const surface = Color(0xFF17222C);
+      const border = Color(0xFF24303B);
+
+      String formatClock(Timestamp? end) {
+        if (end == null) return '00 : 00 : 00';
+        final now = DateTime.now();
+        final e = end.toDate();
+        Duration rem = e.difference(now);
+        if (rem.isNegative) rem = Duration.zero;
+        final h = rem.inHours;
+        final m = rem.inMinutes % 60;
+        final s = rem.inSeconds % 60;
+        String p2(int v) => v.toString().padLeft(2, '0');
+        return '${p2(h)} : ${p2(m)} : ${p2(s)}';
+      }
+
+      double sessionProgress() {
+        final end = _end?.toDate();
+        final start = _start?.toDate();
+        if (end == null || start == null) return 0.0;
+        final total = end.difference(start).inSeconds.toDouble();
+        if (total <= 0) return 0.0;
+        final elapsed = DateTime.now().difference(start).inSeconds.toDouble();
+        return (elapsed / total).clamp(0.0, 1.0);
+      }
+
+      final p = active ? sessionProgress() : 0.0;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Session Progress',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              Text(
+                formatClock(_end),
+                style: TextStyle(
+                  color: buttonBlue,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'remaining',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            height: 14,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: Stack(
+                children: [
+                  FractionallySizedBox(
+                    widthFactor: p,
+                    alignment: Alignment.centerLeft,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            buttonBlue.withValues(alpha: 0.85),
+                            buttonBlue,
+                          ],
+                        ),
+                      ),
+                      child: DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.16),
+                              Colors.white.withValues(alpha: 0.02),
+                              Colors.white.withValues(alpha: 0.16),
+                              Colors.white.withValues(alpha: 0.02),
+                            ],
+                            stops: const [0.0, 0.25, 0.5, 0.75],
+                            tileMode: TileMode.repeated,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: active
+                        ? null
+                        : () async {
+                            try {
+                              final devId = await DeviceId.get();
+                              await CoinService.startCoinMining(
+                                widget.coinOwnerId,
+                                deviceId: devId,
+                              );
+                              if (mounted) setState(() {});
+                            } catch (e) {
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('Start failed: $e')),
+                                );
+                              }
+                            }
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: surface,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: surface.withValues(alpha: 0.65),
+                      disabledForegroundColor: Colors.white.withValues(
+                        alpha: 0.55,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        side: const BorderSide(color: border),
+                      ),
+                      elevation: 0,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.bolt_rounded,
+                          size: 20,
+                          color: active ? Colors.white38 : Colors.white,
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Boost Rate',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 18,
+                            color: active ? Colors.white38 : Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 56,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: () {},
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: surface,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                      side: const BorderSide(color: border),
+                    ),
+                    elevation: 0,
+                    padding: EdgeInsets.zero,
+                  ),
+                  child: const Icon(Icons.settings_rounded, size: 26),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            active ? 'Mining… • $remaining' : 'Inactive',
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      );
+    }
+
     return Row(
       children: [
         Expanded(

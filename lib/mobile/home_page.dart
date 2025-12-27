@@ -777,13 +777,120 @@ class _MobileHomePageState extends State<MobileHomePage>
             const SizedBox(height: 4),
             Padding(
               padding: EdgeInsets.symmetric(horizontal: hPad),
-              child: MyCoinBlock(variant: MyCoinBlockVariant.home),
+              child: _myCreatedCoinCard(),
             ),
             const SizedBox(height: 10),
             _coinTabs(),
             const SizedBox(height: 6),
             if (_tab.index == 0) _minedCoinsTab() else _liveCoinsTab(),
             const SizedBox(height: 14),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _myCreatedCoinCard() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return const SizedBox.shrink();
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: CoinService.watchUserCoin(uid),
+      builder: (context, snap) {
+        final d = snap.data?.data();
+        final active =
+            d != null && (d[FirestoreUserCoinFields.isActive] == true);
+        if (!active) {
+          return const MyCoinBlock(variant: MyCoinBlockVariant.home);
+        }
+        return _createdCoinCardAsMined(d);
+      },
+    );
+  }
+
+  Widget _createdCoinCardAsMined(Map<String, dynamic> data) {
+    final ownerId = (data[FirestoreUserCoinFields.ownerId] as String?) ?? '';
+    final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
+    final symbol = (data[FirestoreUserCoinFields.symbol] as String?) ?? '';
+    final imageUrl = (data[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
+    final rate =
+        (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+        0.0;
+
+    const card = Color(0xFF17222C);
+    const border = Color(0xFF24303B);
+    return GestureDetector(
+      onTap: () => _showCoinDetailsDialog(context, data),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        decoration: BoxDecoration(
+          color: card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: border),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: Colors.white10,
+                  backgroundImage: imageUrl.isNotEmpty
+                      ? NetworkImage(imageUrl)
+                      : null,
+                  child: imageUrl.isEmpty
+                      ? Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : '?',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        symbol.isNotEmpty ? symbol : '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.white54,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  '${rate.toStringAsFixed(3)}/h',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            CoinMiningControls(coinOwnerId: ownerId),
           ],
         ),
       ),
@@ -1430,6 +1537,33 @@ class _MobileHomePageState extends State<MobileHomePage>
         (data['rateChangePct'] as num?)?.toDouble() ??
         (data['changePct'] as num?)?.toDouble();
 
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final isCreator = uid != null && uid == ownerId;
+
+    Future<double?> fetchTotalMinedAll() async {
+      if (ownerId.isEmpty) return null;
+      try {
+        final qs = await FirebaseFirestore.instance
+            .collectionGroup(FirestoreUserSubCollections.coins)
+            .where(FirestoreUserCoinMiningFields.ownerId, isEqualTo: ownerId)
+            .get();
+        double sum = 0.0;
+        for (final doc in qs.docs) {
+          final v =
+              (doc.data()[FirestoreUserCoinMiningFields.totalPoints] as num?)
+                  ?.toDouble();
+          if (v != null && v.isFinite) {
+            sum += v;
+          }
+        }
+        return sum;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    final totalMinedAllFuture = isCreator ? fetchTotalMinedAll() : null;
+
     showDialog(
       context: context,
       builder: (ctx) {
@@ -1848,7 +1982,30 @@ class _MobileHomePageState extends State<MobileHomePage>
                                         ),
                                         SizedBox(width: s(12)),
                                         Expanded(
-                                          child: const SizedBox.shrink(),
+                                          child: isCreator
+                                              ? FutureBuilder<double?>(
+                                                  future: totalMinedAllFuture,
+                                                  builder: (context, snap) {
+                                                    final done =
+                                                        snap.connectionState ==
+                                                        ConnectionState.done;
+                                                    final v = done
+                                                        ? snap.data
+                                                        : null;
+                                                    return metricCard(
+                                                      icon:
+                                                          Icons.layers_rounded,
+                                                      iconBg: const Color(
+                                                        0xFF8B5CF6,
+                                                      ).withValues(alpha: 0.28),
+                                                      title: 'Total mined',
+                                                      value: done
+                                                          ? compactNum(v)
+                                                          : '…',
+                                                    );
+                                                  },
+                                                )
+                                              : const SizedBox.shrink(),
                                         ),
                                       ],
                                     ),
