@@ -16,6 +16,7 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
 
   @override
   Widget build(BuildContext context) {
+    const navBg = Color(0xFF141E28);
     final pages = const [
       MobileHomePage(),
       BalancePage(),
@@ -25,13 +26,15 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
     return Scaffold(
       body: pages[index],
       bottomNavigationBar: NavigationBar(
+        backgroundColor: navBg,
+        indicatorColor: Colors.transparent,
         selectedIndex: index,
         onDestinationSelected: (i) => setState(() => index = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.bolt_rounded), label: 'Home'),
+          NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Home'),
           NavigationDestination(
-            icon: Icon(Icons.history_toggle_off_rounded),
-            label: 'Balance',
+            icon: Icon(Icons.account_balance_wallet_rounded),
+            label: 'Wallet',
           ),
           NavigationDestination(
             icon: Icon(Icons.group_add_rounded),

@@ -12,8 +12,11 @@ import '../../shared/pick_image_io.dart'
     as picker;
 import 'dart:typed_data';
 
+enum MyCoinBlockVariant { standard, home }
+
 class MyCoinBlock extends StatelessWidget {
-  const MyCoinBlock({super.key});
+  final MyCoinBlockVariant variant;
+  const MyCoinBlock({super.key, this.variant = MyCoinBlockVariant.standard});
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +30,7 @@ class MyCoinBlock extends StatelessWidget {
         final data = snap.data?.data();
         if (data == null || (data[FirestoreUserCoinFields.isActive] != true)) {
           return _NoCoinCard(
+            variant: variant,
             onCreate: () {
               showDialog(
                 context: context,
@@ -37,6 +41,7 @@ class MyCoinBlock extends StatelessWidget {
         }
         return _CoinCard(
           data: data,
+          variant: variant,
           onEdit: () {
             showDialog(
               context: context,
@@ -51,9 +56,114 @@ class MyCoinBlock extends StatelessWidget {
 
 class _NoCoinCard extends StatelessWidget {
   final VoidCallback onCreate;
-  const _NoCoinCard({required this.onCreate});
+  final MyCoinBlockVariant variant;
+  const _NoCoinCard({required this.onCreate, required this.variant});
+
+  Widget _homeCard(BuildContext context) {
+    const g1 = Color(0xFF5A46FF);
+    const g2 = Color(0xFF8A2BFF);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale = (constraints.maxWidth / 360).clamp(0.7, 1.0);
+        double s(double v) => v * scale;
+        return GestureDetector(
+          onTap: onCreate,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(s(22)),
+            child: Container(
+              height: s(114),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [g1, g2],
+                ),
+              ),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _DotPatternPainter(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.all(s(12)),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              FractionallySizedBox(
+                                widthFactor: 0.75,
+                                alignment: Alignment.centerLeft,
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'Create Community Coin',
+                                    maxLines: 1,
+                                    style: TextStyle(
+                                      fontSize: s(20),
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      height: 1.1,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: s(6)),
+                              FractionallySizedBox(
+                                widthFactor: 0.88,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  'Launch your own coin on ETA Network instantly.',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: s(13.4),
+                                    color: Colors.white70,
+                                    height: 1.15,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: s(10)),
+                        Container(
+                          width: s(50),
+                          height: s(50),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.22),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.add,
+                            size: s(28),
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (variant == MyCoinBlockVariant.home) {
+      return _homeCard(context);
+    }
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -88,9 +198,110 @@ class _NoCoinCard extends StatelessWidget {
 class _CoinCard extends StatelessWidget {
   final Map<String, dynamic> data;
   final VoidCallback onEdit;
-  const _CoinCard({required this.data, required this.onEdit});
+  final MyCoinBlockVariant variant;
+  const _CoinCard({
+    required this.data,
+    required this.onEdit,
+    required this.variant,
+  });
+
+  Widget _homeCard(BuildContext context) {
+    const g1 = Color(0xFF5A46FF);
+    const g2 = Color(0xFF8A2BFF);
+    final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
+    final symbol = (data[FirestoreUserCoinFields.symbol] as String?) ?? '';
+    final rate =
+        (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+        0.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale = (constraints.maxWidth / 360).clamp(0.7, 1.0);
+        double s(double v) => v * scale;
+        return GestureDetector(
+          onTap: onEdit,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(s(22)),
+            child: Container(
+              height: s(110),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [g1, g2],
+                ),
+              ),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _DotPatternPainter(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.all(s(14)),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                name,
+                                style: TextStyle(
+                                  fontSize: s(20),
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  height: 1.1,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              SizedBox(height: s(6)),
+                              Text(
+                                'Base rate: ${rate.toStringAsFixed(3)}/h${symbol.isNotEmpty ? ' • $symbol' : ''}',
+                                style: TextStyle(
+                                  fontSize: s(14),
+                                  color: Colors.white70,
+                                  height: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: s(10)),
+                        Container(
+                          width: s(50),
+                          height: s(50),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.22),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.edit_rounded,
+                            size: s(26),
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (variant == MyCoinBlockVariant.home) {
+      return _homeCard(context);
+    }
     final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
     final symbol = (data[FirestoreUserCoinFields.symbol] as String?) ?? '';
     final rate =
@@ -247,6 +458,29 @@ class _LinkButton extends StatelessWidget {
         }
       },
     );
+  }
+}
+
+class _DotPatternPainter extends CustomPainter {
+  final Color color;
+  const _DotPatternPainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = color;
+    const gap = 22.0;
+    const r = 1.3;
+    for (double y = 0; y < size.height + gap; y += gap) {
+      final shift = ((y ~/ gap) % 2) * (gap / 2);
+      for (double x = -gap; x < size.width + gap; x += gap) {
+        canvas.drawCircle(Offset(x + shift, y), r, p);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DotPatternPainter oldDelegate) {
+    return oldDelegate.color != color;
   }
 }
 
@@ -672,37 +906,83 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
   Widget _buildUI() {
     final active = _timer != null; // or use _end check
     final remaining = _formatRemaining(_end);
+    const activeGreen = Color(0xFF2ECC71);
+    const buttonBlue = Color(0xFF1677FF);
+    final statusColor = active ? activeGreen : Colors.white38;
     return Row(
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Mined: ${_display.toStringAsFixed(3)}'),
-              Text(active ? 'Active • $remaining' : 'Inactive'),
+              const Text(
+                'Mined',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _display.toStringAsFixed(3),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                active ? 'Mining… • $remaining' : 'Inactive',
+                style: TextStyle(
+                  color: statusColor,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
         ),
-        ElevatedButton(
-          onPressed: active
-              ? null
-              : () async {
-                  try {
-                    final devId = await DeviceId.get();
-                    await CoinService.startCoinMining(
-                      widget.coinOwnerId,
-                      deviceId: devId,
-                    );
-                    if (mounted) setState(() {});
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Start failed: $e')),
+        const SizedBox(width: 10),
+        SizedBox(
+          height: 34,
+          child: ElevatedButton(
+            onPressed: active
+                ? null
+                : () async {
+                    try {
+                      final devId = await DeviceId.get();
+                      await CoinService.startCoinMining(
+                        widget.coinOwnerId,
+                        deviceId: devId,
                       );
+                      if (mounted) setState(() {});
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Start failed: $e')),
+                        );
+                      }
                     }
-                  }
-                },
-          child: const Text('Start Mining'),
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: buttonBlue,
+              disabledBackgroundColor: buttonBlue.withValues(alpha: 0.35),
+              foregroundColor: Colors.white,
+              disabledForegroundColor: Colors.white.withValues(alpha: 0.7),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(999),
+              ),
+              elevation: 0,
+              minimumSize: const Size(64, 34),
+            ),
+            child: Text(
+              active ? 'Mining' : 'Mine',
+              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+            ),
+          ),
         ),
       ],
     );

@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import '../shared/theme/colors.dart';
-import 'widgets/glowing_button.dart';
-import 'widgets/progress_ring.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../shared/firestore_constants.dart';
@@ -50,6 +47,11 @@ class _MobileHomePageState extends State<MobileHomePage>
     super.initState();
     _miningService.addListener(_handleServiceUpdate);
     _adsService.addListener(_handleAdsUpdate);
+    _tab.addListener(() {
+      if (!mounted) return;
+      if (_tab.indexIsChanging) return;
+      setState(() {});
+    });
     unawaited(_adsService.init());
     unawaited(_loadRewardedSessionLimiter());
     _miningService.init().then((_) {
@@ -222,10 +224,6 @@ class _MobileHomePageState extends State<MobileHomePage>
     await _tryShowRewardedAd(silentUnavailable: true);
   }
 
-  Future<void> _showRewardedAd() async {
-    await _tryShowRewardedAd(silentUnavailable: false);
-  }
-
   void _handleServiceUpdate() {
     if (!mounted) return;
     unawaited(_syncRewardedSessionWithMiningState());
@@ -349,26 +347,375 @@ class _MobileHomePageState extends State<MobileHomePage>
     return p.clamp(0.0, 1.0);
   }
 
+  String _formatHms(Duration d) {
+    var sec = d.inSeconds;
+    if (sec < 0) sec = 0;
+    final h = (sec ~/ 3600).toString().padLeft(2, '0');
+    final m = ((sec % 3600) ~/ 60).toString().padLeft(2, '0');
+    final s = (sec % 60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
+  }
+
+  Widget _miningSummaryCard({
+    required double totalEta,
+    required double hourlyRate,
+    required bool miningActive,
+    required int streakDays,
+    required double progress,
+    required Duration remaining,
+    required VoidCallback onStart,
+    required bool showRewarded,
+    required bool rewardedLoading,
+    required bool rewardedLimitReached,
+    required int rewardedWatchedThisSession,
+    required int rewardedMaxPerSession,
+    required double rewardedBonusPercent,
+    required VoidCallback onShowRewarded,
+  }) {
+    const cardBg = Color(0xFF1B2632);
+    const cardBg2 = Color(0xFF141E28);
+    const timeBlue = Color(0xFF2D8CFF);
+    const buttonBlue = Color(0xFF1677FF);
+    const pillBorder = Color(0xFF3C4A57);
+    const pillText = Color(0xFFE6EDF5);
+    const streakOrange = Color(0xFFFF8A00);
+
+    final streakText = streakDays == 1
+        ? '1 Day Streak'
+        : '$streakDays Day Streak';
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale = (constraints.maxWidth / 380).clamp(0.72, 1.0);
+        double s(double v) => v * scale;
+
+        final rewardedLabel = rewardedLoading
+            ? 'Loading ad…'
+            : rewardedMaxPerSession > 0
+            ? 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}% • $rewardedWatchedThisSession/$rewardedMaxPerSession'
+            : 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}%';
+
+        return Container(
+          padding: EdgeInsets.all(s(14)),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(s(26)),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [cardBg, cardBg2],
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black54,
+                blurRadius: 24,
+                offset: Offset(0, 14),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.center,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: s(12),
+                    vertical: s(7),
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: pillBorder),
+                    color: Colors.white.withValues(alpha: 0.02),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.local_fire_department_rounded,
+                        color: streakOrange,
+                        size: s(20),
+                      ),
+                      SizedBox(width: s(8)),
+                      Text(
+                        streakText,
+                        style: TextStyle(
+                          color: pillText,
+                          fontWeight: FontWeight.w600,
+                          fontSize: s(14.5),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: s(12)),
+              Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        totalEta.toStringAsFixed(2),
+                        style: TextStyle(
+                          fontSize: s(50),
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          height: 1.0,
+                        ),
+                      ),
+                      SizedBox(width: s(10)),
+                      Padding(
+                        padding: EdgeInsets.only(bottom: s(8)),
+                        child: Text(
+                          'ETA',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: s(20),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: s(8)),
+              Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: s(10),
+                        height: s(10),
+                        decoration: BoxDecoration(
+                          color: miningActive
+                              ? const Color(0xFF2ECC71)
+                              : Colors.white38,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      SizedBox(width: s(10)),
+                      Text(
+                        '+${hourlyRate.toStringAsFixed(1)} ETA/hr',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: s(16),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      SizedBox(width: s(10)),
+                      Text(
+                        '•',
+                        style: TextStyle(
+                          color: Colors.white38,
+                          fontSize: s(17),
+                        ),
+                      ),
+                      SizedBox(width: s(10)),
+                      Text(
+                        miningActive ? 'Mining Active' : 'Inactive',
+                        style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: s(16),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: s(12)),
+              Row(
+                children: [
+                  Text(
+                    'Session ends in',
+                    style: TextStyle(color: Colors.white38, fontSize: s(14)),
+                  ),
+                  const Spacer(),
+                  Text(
+                    _formatHms(remaining),
+                    style: TextStyle(
+                      color: timeBlue,
+                      fontSize: s(18),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: s(10)),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: SizedBox(
+                  height: s(10),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: Colors.white12,
+                    valueColor: const AlwaysStoppedAnimation<Color>(timeBlue),
+                  ),
+                ),
+              ),
+              SizedBox(height: s(12)),
+              SizedBox(
+                height: s(56),
+                child: ElevatedButton.icon(
+                  onPressed: miningActive ? null : onStart,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: buttonBlue,
+                    disabledBackgroundColor: buttonBlue.withValues(alpha: 0.35),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(s(20)),
+                    ),
+                    elevation: 0,
+                  ),
+                  icon: Icon(
+                    Icons.rocket_launch_rounded,
+                    color: Colors.white,
+                    size: s(24),
+                  ),
+                  label: Text(
+                    'Start Earning',
+                    style: TextStyle(
+                      fontSize: s(19),
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              if (showRewarded && miningActive) ...[
+                SizedBox(height: s(8)),
+                Center(
+                  child: InkWell(
+                    onTap: (rewardedLoading || rewardedLimitReached)
+                        ? null
+                        : onShowRewarded,
+                    borderRadius: BorderRadius.circular(999),
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: s(12),
+                        vertical: s(8),
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: Colors.white24),
+                        color: Colors.white.withValues(alpha: 0.04),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.ondemand_video_rounded,
+                            size: s(16),
+                            color: Colors.white70,
+                          ),
+                          SizedBox(width: s(8)),
+                          Text(
+                            rewardedLabel,
+                            style: TextStyle(
+                              fontSize: s(13.5),
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _coinTabs() {
+    const bg = Color(0xFF202A34);
+    const active = Color(0xFF2A3642);
+    const inactiveText = Colors.white54;
+    const activeText = Colors.white;
+
+    final selected = _tab.index;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _tab.animateTo(0),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: selected == 0 ? active : Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    'Mined Coins',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: selected == 0 ? activeText : inactiveText,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _tab.animateTo(1),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                    color: selected == 1 ? active : Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                    'Live Coins',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: selected == 1 ? activeText : inactiveText,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final double ringHeight = (size.height * 0.28).clamp(140.0, 220.0);
-
+    final hPad = (size.width * 0.04).clamp(12.0, 16.0);
+    final vPad = (size.width * 0.03).clamp(8.0, 12.0);
     final progress = _computeProgress();
     final miningActive = _miningService.miningActive;
     final hourlyRate = _miningService.hourlyRate;
     final displayTotal = _miningService.displayTotal;
     final streakDays = _miningService.streakDays;
 
-    String remainingText = '';
+    Duration remaining = Duration.zero;
     if (miningActive && _miningService.lastEnd != null) {
       final end = _miningService.lastEnd!.toDate();
       final now = DateTime.now();
-      Duration rem = end.difference(now);
-      if (rem.isNegative) rem = Duration.zero;
-      final h = rem.inHours;
-      final m = rem.inMinutes % 60;
-      remainingText = '${h}h ${m}m remaining';
+      remaining = end.difference(now);
+      if (remaining.isNegative) remaining = Duration.zero;
     }
 
     return Scaffold(
@@ -383,153 +730,55 @@ class _MobileHomePageState extends State<MobileHomePage>
           TextButton(onPressed: _openCoinSelector, child: const Text('Coins')),
         ],
       ),
-      body: Column(
-        children: [
-          Flexible(
-            fit: FlexFit.loose,
-            child: SingleChildScrollView(
-              padding: EdgeInsets.zero,
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryBackground,
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      child: Column(
-                        children: [
-                          const SizedBox(height: 8),
-                          Text(
-                            displayTotal.toStringAsFixed(3),
-                            style: const TextStyle(
-                              fontSize: 36,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const Text(
-                            'Total ETA',
-                            style: TextStyle(color: AppColors.secondaryAccent),
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            height: ringHeight,
-                            child: ProgressRing(
-                              progress: progress,
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '${hourlyRate.toStringAsFixed(2)} ETA/hr',
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    miningActive ? 'Mining Active' : 'Inactive',
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    remainingText.isNotEmpty
-                                        ? remainingText
-                                        : (miningActive ? '—' : 'Tap to start'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          GlowingButton(
-                            label: miningActive ? 'Mining…' : 'START EARNING',
-                            onPressed: miningActive
-                                ? null
-                                : () async {
-                                    try {
-                                      await _miningService.startMining();
-                                      await _syncRewardedSessionWithMiningState();
-                                      await _maybeAutoShowRewardedOnMiningStart();
-                                    } catch (e) {
-                                      if (!mounted) return;
-                                      // ignore: use_build_context_synchronously
-                                      ScaffoldMessenger.of(
-                                        context, // ignore: use_build_context_synchronously
-                                      ).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Start failed: $e'),
-                                        ),
-                                      );
-                                    }
-                                  },
-                          ),
-                          if (_adsService.config.enableRewarded && miningActive)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: TextButton.icon(
-                                onPressed:
-                                    (_rewardedLoading || _rewardedLimitReached)
-                                    ? null
-                                    : _showRewardedAd,
-                                icon: const Icon(Icons.ondemand_video_rounded),
-                                label: Text(
-                                  _rewardedLoading
-                                      ? 'Loading ad…'
-                                      : _adsService
-                                                .config
-                                                .maxRewardedPerMiningSession >
-                                            0
-                                      ? 'Watch ad (rewarded) $_rewardedWatchedThisSession/${_adsService.config.maxRewardedPerMiningSession}'
-                                      : 'Watch ad (rewarded)',
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.primaryBackground,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: Text(
-                        'Streak Days: $streakDays',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 12),
-                    child: MyCoinBlock(),
-                  ),
-                  const SizedBox(height: 8),
-                ],
+      body: SingleChildScrollView(
+        padding: EdgeInsets.only(bottom: vPad),
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(hPad, vPad, hPad, vPad),
+              child: _miningSummaryCard(
+                totalEta: displayTotal,
+                hourlyRate: hourlyRate,
+                miningActive: miningActive,
+                streakDays: streakDays,
+                progress: progress,
+                remaining: remaining,
+                onStart: () async {
+                  try {
+                    await _miningService.startMining();
+                    await _syncRewardedSessionWithMiningState();
+                    await _maybeAutoShowRewardedOnMiningStart();
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(
+                      this.context,
+                    ).showSnackBar(SnackBar(content: Text('Start failed: $e')));
+                  }
+                },
+                showRewarded: _adsService.config.enableRewarded,
+                rewardedLoading: _rewardedLoading,
+                rewardedLimitReached: _rewardedLimitReached,
+                rewardedWatchedThisSession: _rewardedWatchedThisSession,
+                rewardedMaxPerSession:
+                    _adsService.config.maxRewardedPerMiningSession,
+                rewardedBonusPercent: _adsService.config.rewardBonusPercent,
+                onShowRewarded: () {
+                  unawaited(_tryShowRewardedAd(silentUnavailable: false));
+                },
               ),
             ),
-          ),
-          TabBar(
-            controller: _tab,
-            isScrollable: true,
-            tabs: const [
-              Tab(text: 'Mined Coins'),
-              Tab(text: 'Live Coins'),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tab,
-              children: [_minedCoinsTab(), _liveCoinsTab()],
+            const SizedBox(height: 4),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: hPad),
+              child: MyCoinBlock(variant: MyCoinBlockVariant.home),
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            _coinTabs(),
+            const SizedBox(height: 6),
+            if (_tab.index == 0) _minedCoinsTab() else _liveCoinsTab(),
+            const SizedBox(height: 14),
+          ],
+        ),
       ),
     );
   }
@@ -614,13 +863,32 @@ class _MobileHomePageState extends State<MobileHomePage>
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(child: Text('Mined Coins')),
+              const Expanded(
+                child: Text(
+                  'ASSET',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              const Text(
+                'STATUS',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
               PopupMenuButton<String>(
                 onSelected: (v) => setState(() => _minedSort = v),
                 itemBuilder: (context) => [
@@ -642,42 +910,43 @@ class _MobileHomePageState extends State<MobileHomePage>
                     child: Text('New → Old'),
                   ),
                 ],
-                child: const Icon(Icons.filter_list),
+                child: const Icon(Icons.tune_rounded, size: 18),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection(FirestoreConstants.users)
-                  .doc(uid)
-                  .collection(FirestoreUserSubCollections.coins)
-                  .snapshots(),
-              builder: (context, snap) {
-                final uid = FirebaseAuth.instance.currentUser?.uid;
-                var docs = snap.data?.docs ?? const [];
-                if (uid != null) {
-                  docs = docs
-                      .where(
-                        (d) =>
-                            (d.data()[FirestoreUserCoinMiningFields.ownerId]
-                                as String?) !=
-                            uid,
-                      )
-                      .toList();
-                }
-                docs = _sortMinedDocs(docs);
-                if (docs.isEmpty) {
-                  return const Center(
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection(FirestoreConstants.users)
+                .doc(uid)
+                .collection(FirestoreUserSubCollections.coins)
+                .snapshots(),
+            builder: (context, snap) {
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              var docs = snap.data?.docs ?? const [];
+              if (uid != null) {
+                docs = docs
+                    .where(
+                      (d) =>
+                          (d.data()[FirestoreUserCoinMiningFields.ownerId]
+                              as String?) !=
+                          uid,
+                    )
+                    .toList();
+              }
+              docs = _sortMinedDocs(docs);
+              if (docs.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
                     child: Text('No coins yet. Add from Live Coins.'),
-                  );
-                }
-                return ListView(
-                  children: [for (final d in docs) _minedCoinCard(d.data())],
+                  ),
                 );
-              },
-            ),
+              }
+              return Column(
+                children: [for (final d in docs) _minedCoinCard(d.data())],
+              );
+            },
           ),
         ],
       ),
@@ -686,13 +955,32 @@ class _MobileHomePageState extends State<MobileHomePage>
 
   Widget _liveCoinsTab() {
     return Padding(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Expanded(child: Text('Live Coins')),
+              const Expanded(
+                child: Text(
+                  'ASSET',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              const Text(
+                'RATE',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.2,
+                ),
+              ),
               PopupMenuButton<String>(
                 onSelected: (v) => setState(() => _liveSort = v),
                 itemBuilder: (context) => [
@@ -715,37 +1003,38 @@ class _MobileHomePageState extends State<MobileHomePage>
                     child: Text('New → Old'),
                   ),
                 ],
-                child: const Icon(Icons.filter_list),
+                child: const Icon(Icons.tune_rounded, size: 18),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: FirebaseFirestore.instance
-                  .collection(FirestoreConstants.userCoins)
-                  .where(FirestoreUserCoinFields.isActive, isEqualTo: true)
-                  .limit(20)
-                  .snapshots(),
-              builder: (context, snap) {
-                final uid = FirebaseAuth.instance.currentUser?.uid;
-                var docs = (snap.data?.docs ?? const [])
-                    .where(
-                      (doc) =>
-                          (doc.data()[FirestoreUserCoinFields.ownerId]
-                              as String?) !=
-                          uid,
-                    )
-                    .toList();
-                docs = _sortLiveDocs(docs);
-                if (docs.isEmpty) {
-                  return const Center(child: Text('No live community coins'));
-                }
-                return ListView(
-                  children: [for (final doc in docs) _liveCoinCard(doc.data())],
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection(FirestoreConstants.userCoins)
+                .where(FirestoreUserCoinFields.isActive, isEqualTo: true)
+                .limit(20)
+                .snapshots(),
+            builder: (context, snap) {
+              final uid = FirebaseAuth.instance.currentUser?.uid;
+              var docs = (snap.data?.docs ?? const [])
+                  .where(
+                    (doc) =>
+                        (doc.data()[FirestoreUserCoinFields.ownerId]
+                            as String?) !=
+                        uid,
+                  )
+                  .toList();
+              docs = _sortLiveDocs(docs);
+              if (docs.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Center(child: Text('No live community coins')),
                 );
-              },
-            ),
+              }
+              return Column(
+                children: [for (final doc in docs) _liveCoinCard(doc.data())],
+              );
+            },
           ),
         ],
       ),
@@ -912,75 +1201,107 @@ class _MobileHomePageState extends State<MobileHomePage>
   Widget _liveCoinCard(Map<String, dynamic> data) {
     final ownerId = (data[FirestoreUserCoinFields.ownerId] as String?) ?? '';
     final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
+    final symbol = (data[FirestoreUserCoinFields.symbol] as String?) ?? '';
     final imageUrl = (data[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
     final rate =
         (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
         0.0;
-    final links =
-        (data[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ??
-        const [];
+    const card = Color(0xFF17222C);
+    const border = Color(0xFF24303B);
     return GestureDetector(
       onTap: () => _showCoinDetailsDialog(context, data),
       child: Container(
-        padding: const EdgeInsets.all(12),
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
-          color: AppColors.primaryBackground,
-          borderRadius: BorderRadius.circular(12),
+          color: card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: border),
         ),
         child: Row(
           children: [
-            Container(
-              width: 40,
-              height: 40,
-              margin: const EdgeInsets.only(right: 12),
-              decoration: BoxDecoration(
-                color: Colors.white10,
-                shape: BoxShape.circle,
-                image: imageUrl.isNotEmpty
-                    ? DecorationImage(
-                        image: NetworkImage(imageUrl),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-              ),
+            CircleAvatar(
+              radius: 22,
+              backgroundColor: Colors.white10,
+              backgroundImage: imageUrl.isNotEmpty
+                  ? NetworkImage(imageUrl)
+                  : null,
               child: imageUrl.isEmpty
-                  ? const Icon(Icons.monetization_on, color: Colors.white54)
+                  ? Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : '?',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    )
                   : null,
             ),
+            const SizedBox(width: 12),
             Expanded(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Flexible(
-                    child: Text(
-                      '$name • ${rate.toStringAsFixed(3)}/h',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                  Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
                     ),
                   ),
-                  if (links.isNotEmpty)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (final l in links)
-                          _LinkButton(
-                            type: (l['type'] as String?) ?? 'other',
-                            url: (l['url'] as String?) ?? '',
-                          ),
-                      ],
+                  const SizedBox(height: 3),
+                  Text(
+                    symbol.isNotEmpty ? symbol : '—',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      color: Colors.white54,
+                      fontWeight: FontWeight.w700,
                     ),
+                  ),
                 ],
               ),
             ),
-            IconButton(
-              onPressed: ownerId.isEmpty
-                  ? null
-                  : () async {
-                      await CoinService.addCoinForUser(ownerId);
-                    },
-              icon: const Icon(Icons.add),
-              tooltip: 'Add coin',
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${rate.toStringAsFixed(3)}/h',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                InkWell(
+                  onTap: ownerId.isEmpty
+                      ? null
+                      : () async {
+                          await CoinService.addCoinForUser(ownerId);
+                        },
+                  borderRadius: BorderRadius.circular(999),
+                  child: Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.06),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.add,
+                      size: 18,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -992,73 +1313,87 @@ class _MobileHomePageState extends State<MobileHomePage>
     final ownerId =
         (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
     final name = (data[FirestoreUserCoinMiningFields.name] as String?) ?? '—';
+    final symbol =
+        (data[FirestoreUserCoinMiningFields.symbol] as String?) ?? '';
     final imageUrl =
         (data[FirestoreUserCoinMiningFields.imageUrl] as String?) ?? '';
     final rate =
         (data[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
         0.0;
-    final links =
-        (data[FirestoreUserCoinMiningFields.socialLinks] as List<dynamic>?) ??
-        const [];
+    const card = Color(0xFF17222C);
+    const border = Color(0xFF24303B);
     return GestureDetector(
       onTap: () => _showCoinDetailsDialog(context, data),
       child: Container(
-        padding: const EdgeInsets.all(12),
-        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        margin: const EdgeInsets.symmetric(vertical: 6),
         decoration: BoxDecoration(
-          color: AppColors.primaryBackground,
-          borderRadius: BorderRadius.circular(12),
+          color: card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white10,
-                    shape: BoxShape.circle,
-                    image: imageUrl.isNotEmpty
-                        ? DecorationImage(
-                            image: NetworkImage(imageUrl),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
+                CircleAvatar(
+                  radius: 22,
+                  backgroundColor: Colors.white10,
+                  backgroundImage: imageUrl.isNotEmpty
+                      ? NetworkImage(imageUrl)
+                      : null,
                   child: imageUrl.isEmpty
-                      ? const Icon(Icons.monetization_on, color: Colors.white54)
+                      ? Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : '?',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        )
                       : null,
                 ),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          '$name • ${rate.toStringAsFixed(3)}/h',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
                         ),
                       ),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final l in links)
-                            _LinkButton(
-                              type: (l['type'] as String?) ?? 'other',
-                              url: (l['url'] as String?) ?? '',
-                            ),
-                        ],
+                      const SizedBox(height: 3),
+                      Text(
+                        symbol.isNotEmpty ? symbol : '—',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: Colors.white54,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 10),
+                Text(
+                  '${rate.toStringAsFixed(3)}/h',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             CoinMiningControls(coinOwnerId: ownerId, miningData: data),
           ],
         ),
