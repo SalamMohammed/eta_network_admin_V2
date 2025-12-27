@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../shared/theme/colors.dart';
 import '../../services/mining_state_service.dart';
 import 'my_coin_block.dart';
 
@@ -12,11 +10,8 @@ class BalancePage extends StatefulWidget {
   State<BalancePage> createState() => _BalancePageState();
 }
 
-class _BalancePageState extends State<BalancePage>
-    with SingleTickerProviderStateMixin {
-  late final TabController _tab = TabController(length: 2, vsync: this);
+class _BalancePageState extends State<BalancePage> {
   final _miningService = MiningStateService();
-  String filter = 'All';
   DateTime? _lastUiUpdate;
   Timer? _debounceTimer;
 
@@ -31,7 +26,6 @@ class _BalancePageState extends State<BalancePage>
   @override
   void dispose() {
     _miningService.removeListener(_handleServiceUpdate);
-    _tab.dispose();
     _debounceTimer?.cancel();
     super.dispose();
   }
@@ -53,82 +47,201 @@ class _BalancePageState extends State<BalancePage>
     });
   }
 
+  Widget _walletSummaryCard(BuildContext context) {
+    const cardBg = Color(0xFF1B2632);
+    const cardBg2 = Color(0xFF141E28);
+    const buttonBlue = Color(0xFF1677FF);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale = (constraints.maxWidth / 380).clamp(0.78, 1.0);
+        double s(double v) => v * scale;
+        final total = _miningService.displayTotal;
+        final maxAmountWidth = constraints.maxWidth * 0.75;
+
+        return Container(
+          padding: EdgeInsets.all(s(18)),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(s(22)),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [cardBg, cardBg2],
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.black54,
+                blurRadius: 22,
+                offset: Offset(0, 12),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Total Balance',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: s(16),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        SizedBox(height: s(10)),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxAmountWidth),
+                          child: SizedBox(
+                            height: s(46),
+                            child: FittedBox(
+                              fit: BoxFit.contain,
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    total.toStringAsFixed(3),
+                                    style: TextStyle(
+                                      fontSize: s(40),
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                      height: 1.0,
+                                    ),
+                                  ),
+                                  SizedBox(width: s(10)),
+                                  Padding(
+                                    padding: EdgeInsets.only(bottom: s(6)),
+                                    child: Text(
+                                      'ETA',
+                                      style: TextStyle(
+                                        fontSize: s(20),
+                                        fontWeight: FontWeight.w700,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: s(10)),
+                  Container(
+                    width: s(56),
+                    height: s(56),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.06),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: Icon(
+                      Icons.account_balance_wallet_rounded,
+                      color: buttonBlue,
+                      size: s(26),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: s(18)),
+              Container(height: 1, color: Colors.white12),
+              SizedBox(height: s(16)),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: s(46),
+                      child: ElevatedButton(
+                        onPressed: () {},
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: buttonBlue,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(s(14)),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          'Transfer',
+                          style: TextStyle(
+                            fontSize: s(16),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: s(12)),
+                  Expanded(
+                    child: SizedBox(
+                      height: s(46),
+                      child: ElevatedButton(
+                        onPressed: () {},
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white.withValues(alpha: 0.10),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(s(14)),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          'Receive',
+                          style: TextStyle(
+                            fontSize: s(16),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final hPad = (size.width * 0.04).clamp(12.0, 16.0);
+    final vPad = (size.width * 0.03).clamp(8.0, 12.0);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const Text('Your ETA Balance'),
+        title: const Text('Wallet'),
       ),
-      body: Column(
-        children: [
-          const Padding(padding: EdgeInsets.all(12), child: MyCoinBlock()),
-          Builder(
-            builder: (context) {
-              final uid = FirebaseAuth.instance.currentUser?.uid;
-              if (uid == null) {
-                return const SizedBox.shrink();
-              }
-
-              final total = _miningService.displayTotal;
-
-              return Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.primaryBackground,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      total.toStringAsFixed(3),
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    const Text('ETA total'),
-                  ],
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-          TabBar(
-            controller: _tab,
-            tabs: const [
-              Tab(text: 'History'),
-              Tab(text: 'Daily Summary'),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
-              controller: _tab,
-              children: [_history(), _summary()],
+      body: SingleChildScrollView(
+        padding: EdgeInsets.only(bottom: vPad),
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.fromLTRB(hPad, vPad, hPad, vPad),
+              child: _walletSummaryCard(context),
             ),
-          ),
-        ],
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: hPad),
+              child: MyCoinBlock(variant: MyCoinBlockVariant.home),
+            ),
+            const SizedBox(height: 14),
+          ],
+        ),
       ),
     );
   }
-
-  Widget _history() {
-    return const Center(child: Text('Moved to Home page'));
-  }
-
-  Widget _summary() {
-    return const Center(child: Text('Moved to Home page'));
-  }
-
-  // deprecated
-  // ignore: unused_element
-  Widget _card(String title, String value) {
-    return const SizedBox.shrink();
-  }
-
-  // sections moved to Home page
 }

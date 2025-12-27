@@ -450,34 +450,41 @@ class _MobileHomePageState extends State<MobileHomePage>
               ),
               SizedBox(height: s(12)),
               Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        totalEta.toStringAsFixed(2),
-                        style: TextStyle(
-                          fontSize: s(50),
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          height: 1.0,
-                        ),
-                      ),
-                      SizedBox(width: s(10)),
-                      Padding(
-                        padding: EdgeInsets.only(bottom: s(8)),
-                        child: Text(
-                          'ETA',
-                          style: TextStyle(
-                            color: Colors.white54,
-                            fontSize: s(20),
-                            fontWeight: FontWeight.w600,
+                child: FractionallySizedBox(
+                  widthFactor: 0.75,
+                  child: SizedBox(
+                    height: s(56),
+                    child: FittedBox(
+                      fit: BoxFit.contain,
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            totalEta.toStringAsFixed(3),
+                            style: TextStyle(
+                              fontSize: s(50),
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              height: 1.0,
+                            ),
                           ),
-                        ),
+                          SizedBox(width: s(10)),
+                          Padding(
+                            padding: EdgeInsets.only(bottom: s(8)),
+                            child: Text(
+                              'ETA',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: s(20),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
