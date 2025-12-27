@@ -18,6 +18,8 @@ class FirestoreUserFields {
   static const String uid = 'uid';
   static const String email = 'email';
   static const String username = 'username';
+  static const String name = 'name';
+  static const String age = 'age';
   static const String referralCode = 'referralCode';
   static const String invitedBy = 'invitedBy';
   static const String referralLocked = 'referralLocked';
@@ -32,6 +34,8 @@ class FirestoreUserFields {
   static const String streakDays = 'streakDays';
   static const String streakLastUpdatedDay = 'streakLastUpdatedDay';
   static const String country = 'country';
+  static const String address = 'address';
+  static const String gender = 'gender';
   static const String deviceId = 'deviceId';
   static const String createdAt = 'createdAt';
   static const String updatedAt = 'updatedAt';

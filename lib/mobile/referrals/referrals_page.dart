@@ -535,24 +535,32 @@ class _ReferralsPageState extends State<ReferralsPage> {
                           color: buttonBlue,
                         ),
                         SizedBox(height: s(10)),
-                        Text(
-                          'Invite & Earn',
-                          style: TextStyle(
-                            fontSize: s(26),
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
+                        SizedBox(
+                          width: double.infinity,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              'Invite & Earn',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: s(24),
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                         ),
                         SizedBox(height: s(8)),
                         FractionallySizedBox(
-                          widthFactor: 0.92,
+                          widthFactor: 0.95,
                           child: Text(
-                            'Share your unique code with friends to boost your mining rate by 25%.',
+                            'Share your unique code with friends to boost your mining rate by 10%.',
                             maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                            overflow: TextOverflow.clip,
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: s(14.5),
+                              fontSize: s(13),
                               color: muted,
                               fontWeight: FontWeight.w600,
                               height: 1.25,
@@ -571,13 +579,21 @@ class _ReferralsPageState extends State<ReferralsPage> {
                             border: Border.all(color: Colors.white12),
                           ),
                           child: Center(
-                            child: Text(
-                              codeText,
-                              style: TextStyle(
-                                letterSpacing: 2.0,
-                                fontSize: s(22),
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  codeText,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    letterSpacing: 2.0,
+                                    fontSize: s(20),
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -770,7 +786,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
     const cardBg = Color(0xFF1B2632);
     const cardBg2 = Color(0xFF141E28);
     return Container(
-      padding: EdgeInsets.all(scale(14)),
+      padding: EdgeInsets.all(scale(12)),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(scale(18)),
         gradient: const LinearGradient(
@@ -791,24 +807,28 @@ class _ReferralsPageState extends State<ReferralsPage> {
         children: [
           Row(
             children: [
-              Icon(icon, size: scale(16), color: accent),
-              SizedBox(width: scale(8)),
+              Icon(icon, size: scale(15), color: accent),
+              SizedBox(width: scale(7)),
               Expanded(
-                child: Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white54,
-                    letterSpacing: 1.1,
-                    fontSize: scale(12),
-                    fontWeight: FontWeight.w800,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white54,
+                      letterSpacing: 0.9,
+                      fontSize: scale(11),
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
               Container(
-                width: scale(8),
-                height: scale(8),
+                width: scale(7),
+                height: scale(7),
                 decoration: BoxDecoration(
                   color: accent.withValues(alpha: 0.9),
                   shape: BoxShape.circle,
@@ -816,14 +836,23 @@ class _ReferralsPageState extends State<ReferralsPage> {
               ),
             ],
           ),
-          SizedBox(height: scale(10)),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: scale(28),
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              height: 1.0,
+          SizedBox(height: scale(9)),
+          SizedBox(
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: scale(24),
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  height: 1.0,
+                ),
+              ),
             ),
           ),
         ],

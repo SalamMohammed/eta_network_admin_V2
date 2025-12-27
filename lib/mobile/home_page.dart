@@ -1423,132 +1423,553 @@ class _MobileHomePageState extends State<MobileHomePage>
         (data[FirestoreUserCoinMiningFields.totalPoints] as num?)?.toDouble() ??
         0.0;
     final links = (data['socialLinks'] as List<dynamic>?) ?? const [];
+    final holders =
+        (data['holdersCount'] as num?)?.toDouble() ??
+        (data['holders'] as num?)?.toDouble();
+    final changePct =
+        (data['rateChangePct'] as num?)?.toDouble() ??
+        (data['changePct'] as num?)?.toDouble();
 
     showDialog(
       context: context,
-      builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white10,
-                  image: imageUrl.isNotEmpty
-                      ? DecorationImage(
-                          image: NetworkImage(imageUrl),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                ),
-                child: imageUrl.isEmpty
-                    ? const Icon(
-                        Icons.monetization_on,
-                        size: 40,
-                        color: Colors.white54,
-                      )
-                    : null,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                '$name ($symbol)',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              if (ownerId.isNotEmpty)
-                FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-                  future: FirebaseFirestore.instance
-                      .collection(FirestoreConstants.users)
-                      .doc(ownerId)
-                      .get(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const SizedBox.shrink();
-                    final u = snapshot.data!.data();
-                    final username =
-                        (u?[FirestoreUserFields.username] as String?) ??
-                        'Unknown';
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        'Created by @$username',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 13,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              const SizedBox(height: 8),
-              Text(
-                '${rate.toStringAsFixed(3)}/h${total > 0 ? ' • Total: ${total.toStringAsFixed(3)}' : ''}',
-                style: const TextStyle(color: Colors.white70),
-              ),
-              const SizedBox(height: 24),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  // ignore: deprecated_member_use
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Description',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      description,
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ],
-                ),
-              ),
-              if (links.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                const Text(
-                  'Links',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    for (final l in links)
-                      _LinkButton(
-                        type: (l['type'] as String?) ?? 'other',
-                        url: (l['url'] as String?) ?? '',
-                      ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Close'),
-                ),
-              ),
-            ],
+      builder: (ctx) {
+        const cardBg = Color(0xFF0F1A24);
+        const cardBg2 = Color(0xFF0B121A);
+        const surface = Color(0xFF17222C);
+        const border = Color(0xFF24303B);
+        const buttonBlue = Color(0xFF1677FF);
+        const accentOrange = Color(0xFFFFB020);
+
+        String compactNum(num? v) {
+          if (v == null) {
+            return '—';
+          }
+          final n = v.toDouble();
+          if (!n.isFinite) {
+            return '—';
+          }
+          final abs = n.abs();
+          if (abs >= 1000000000) {
+            return '${(n / 1000000000).toStringAsFixed(1)}B';
+          }
+          if (abs >= 1000000) {
+            return '${(n / 1000000).toStringAsFixed(1)}M';
+          }
+          if (abs >= 1000) {
+            return '${(n / 1000).toStringAsFixed(1)}k';
+          }
+          if (abs >= 100) {
+            return n.toStringAsFixed(0);
+          }
+          if (abs >= 10) {
+            return n.toStringAsFixed(1);
+          }
+          return n.toStringAsFixed(2);
+        }
+
+        String fmtRate(double v) {
+          final s = v.toStringAsFixed(3);
+          return s.replaceFirst(RegExp(r'\.?0+$'), '');
+        }
+
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 22,
           ),
-        ),
-      ),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final scale = (constraints.maxWidth / 420).clamp(0.82, 1.0);
+              double s(double v) => v * scale;
+              var expanded = false;
+
+              Widget metricCard({
+                required IconData icon,
+                required Color iconBg,
+                required String title,
+                required String value,
+                String? suffix,
+                String? footnote,
+                Color? footnoteColor,
+              }) {
+                return Container(
+                  padding: EdgeInsets.all(s(14)),
+                  decoration: BoxDecoration(
+                    color: surface,
+                    borderRadius: BorderRadius.circular(s(18)),
+                    border: Border.all(color: border),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: s(34),
+                            height: s(34),
+                            decoration: BoxDecoration(
+                              color: iconBg,
+                              borderRadius: BorderRadius.circular(s(12)),
+                            ),
+                            child: Icon(icon, size: s(18), color: Colors.white),
+                          ),
+                          SizedBox(width: s(10)),
+                          Expanded(
+                            child: Text(
+                              title.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: s(11.5),
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.9,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: s(12)),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            value,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: s(20),
+                              fontWeight: FontWeight.w900,
+                              height: 1.0,
+                            ),
+                          ),
+                          if (suffix != null) ...[
+                            SizedBox(width: s(6)),
+                            Padding(
+                              padding: EdgeInsets.only(bottom: s(2)),
+                              child: Text(
+                                suffix,
+                                style: TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: s(12.5),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (footnote != null) ...[
+                        SizedBox(height: s(6)),
+                        Text(
+                          footnote,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: footnoteColor ?? Colors.white54,
+                            fontSize: s(12.5),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              }
+
+              return ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(s(26)),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [cardBg, cardBg2],
+                    ),
+                    border: Border.all(color: Colors.white10),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black54,
+                        blurRadius: 24,
+                        offset: Offset(0, 12),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(s(26)),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(height: s(10)),
+                        Container(
+                          width: s(54),
+                          height: s(5),
+                          decoration: BoxDecoration(
+                            color: Colors.white24,
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                        SizedBox(height: s(10)),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: s(18)),
+                          child: Row(
+                            children: [
+                              const Spacer(),
+                              IconButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                icon: Icon(
+                                  Icons.close_rounded,
+                                  color: Colors.white70,
+                                  size: s(22),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Flexible(
+                          child: SingleChildScrollView(
+                            padding: EdgeInsets.fromLTRB(
+                              s(18),
+                              0,
+                              s(18),
+                              s(16),
+                            ),
+                            child: StatefulBuilder(
+                              builder: (context, setLocal) {
+                                void toggle() =>
+                                    setLocal(() => expanded = !expanded);
+
+                                final showReadMore = description.length > 140;
+                                final aboutText = description;
+
+                                return Column(
+                                  children: [
+                                    Stack(
+                                      clipBehavior: Clip.none,
+                                      children: [
+                                        Container(
+                                          width: s(112),
+                                          height: s(112),
+                                          padding: EdgeInsets.all(s(4)),
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            border: Border.all(
+                                              color: accentOrange,
+                                              width: s(2),
+                                            ),
+                                          ),
+                                          child: CircleAvatar(
+                                            backgroundColor: Colors.white10,
+                                            backgroundImage: imageUrl.isNotEmpty
+                                                ? NetworkImage(imageUrl)
+                                                : null,
+                                            child: imageUrl.isEmpty
+                                                ? Icon(
+                                                    Icons
+                                                        .monetization_on_rounded,
+                                                    size: s(42),
+                                                    color: Colors.white54,
+                                                  )
+                                                : null,
+                                          ),
+                                        ),
+                                        Positioned(
+                                          right: s(4),
+                                          bottom: s(6),
+                                          child: Container(
+                                            width: s(26),
+                                            height: s(26),
+                                            decoration: BoxDecoration(
+                                              shape: BoxShape.circle,
+                                              color: buttonBlue,
+                                              border: Border.all(
+                                                color: cardBg,
+                                                width: s(2),
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              Icons.check_rounded,
+                                              color: Colors.white,
+                                              size: s(16),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: s(12)),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        Flexible(
+                                          child: Text(
+                                            name,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: s(26),
+                                              fontWeight: FontWeight.w900,
+                                              height: 1.05,
+                                            ),
+                                          ),
+                                        ),
+                                        if (symbol.isNotEmpty) ...[
+                                          SizedBox(width: s(8)),
+                                          Text(
+                                            '(\$$symbol)',
+                                            style: TextStyle(
+                                              color: Colors.white54,
+                                              fontSize: s(16),
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                    if (ownerId.isNotEmpty) ...[
+                                      SizedBox(height: s(8)),
+                                      FutureBuilder<
+                                        DocumentSnapshot<Map<String, dynamic>>
+                                      >(
+                                        future: FirebaseFirestore.instance
+                                            .collection(
+                                              FirestoreConstants.users,
+                                            )
+                                            .doc(ownerId)
+                                            .get(),
+                                        builder: (context, snapshot) {
+                                          final u = snapshot.data?.data();
+                                          final username =
+                                              (u?[FirestoreUserFields.username]
+                                                  as String?) ??
+                                              'Unknown';
+                                          return Container(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: s(12),
+                                              vertical: s(8),
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.06,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                              border: Border.all(
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.12,
+                                                ),
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                CircleAvatar(
+                                                  radius: s(10),
+                                                  backgroundColor:
+                                                      Colors.white12,
+                                                  child: Icon(
+                                                    Icons.person_rounded,
+                                                    size: s(14),
+                                                    color: Colors.white70,
+                                                  ),
+                                                ),
+                                                SizedBox(width: s(8)),
+                                                Text(
+                                                  'Created by @$username',
+                                                  style: TextStyle(
+                                                    color: Colors.white70,
+                                                    fontSize: s(13.5),
+                                                    fontWeight: FontWeight.w800,
+                                                  ),
+                                                ),
+                                                SizedBox(width: s(8)),
+                                                Icon(
+                                                  Icons.chevron_right_rounded,
+                                                  color: Colors.white54,
+                                                  size: s(18),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                    SizedBox(height: s(18)),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: metricCard(
+                                            icon: Icons.bolt_rounded,
+                                            iconBg: const Color(
+                                              0xFF1B4BFF,
+                                            ).withValues(alpha: 0.35),
+                                            title: 'Mining rate',
+                                            value: fmtRate(rate),
+                                            suffix: 'ETA/hr',
+                                            footnote: changePct == null
+                                                ? null
+                                                : '${changePct >= 0 ? '+' : ''}${changePct.toStringAsFixed(1)}%',
+                                            footnoteColor: changePct == null
+                                                ? null
+                                                : (changePct >= 0
+                                                      ? const Color(0xFF2ECC71)
+                                                      : const Color(
+                                                          0xFFFF5A5F,
+                                                        )),
+                                          ),
+                                        ),
+                                        SizedBox(width: s(12)),
+                                        Expanded(
+                                          child: metricCard(
+                                            icon: Icons.layers_rounded,
+                                            iconBg: const Color(
+                                              0xFF8B5CF6,
+                                            ).withValues(alpha: 0.28),
+                                            title: 'Total mined',
+                                            value: compactNum(total),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: s(12)),
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: metricCard(
+                                            icon: Icons.groups_rounded,
+                                            iconBg: const Color(
+                                              0xFFFF4D9D,
+                                            ).withValues(alpha: 0.22),
+                                            title: 'Holders',
+                                            value: compactNum(holders),
+                                          ),
+                                        ),
+                                        SizedBox(width: s(12)),
+                                        Expanded(
+                                          child: const SizedBox.shrink(),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: s(18)),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        'About $name',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: s(16),
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
+                                    SizedBox(height: s(8)),
+                                    Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        aboutText,
+                                        maxLines: showReadMore && !expanded
+                                            ? 4
+                                            : 999,
+                                        overflow: showReadMore && !expanded
+                                            ? TextOverflow.ellipsis
+                                            : TextOverflow.visible,
+                                        style: TextStyle(
+                                          color: Colors.white60,
+                                          fontSize: s(13.5),
+                                          fontWeight: FontWeight.w700,
+                                          height: 1.35,
+                                        ),
+                                      ),
+                                    ),
+                                    if (showReadMore) ...[
+                                      SizedBox(height: s(8)),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: GestureDetector(
+                                          onTap: toggle,
+                                          child: Text(
+                                            expanded
+                                                ? 'Read Less'
+                                                : 'Read More',
+                                            style: TextStyle(
+                                              color: buttonBlue,
+                                              fontSize: s(13.5),
+                                              fontWeight: FontWeight.w900,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                    if (links.isNotEmpty) ...[
+                                      SizedBox(height: s(18)),
+                                      Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          'Project Links',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: s(14),
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                      SizedBox(height: s(10)),
+                                      Wrap(
+                                        spacing: s(8),
+                                        runSpacing: s(8),
+                                        children: [
+                                          for (final l in links)
+                                            _LinkButton(
+                                              type:
+                                                  (l['type'] as String?) ??
+                                                  'other',
+                                              url: (l['url'] as String?) ?? '',
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                    SizedBox(height: s(18)),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      height: s(52),
+                                      child: ElevatedButton(
+                                        onPressed: () => Navigator.pop(ctx),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: buttonBlue,
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
+                                          ),
+                                          elevation: 0,
+                                        ),
+                                        child: Text(
+                                          'Close',
+                                          style: TextStyle(
+                                            fontSize: s(15),
+                                            fontWeight: FontWeight.w900,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
     );
   }
 }

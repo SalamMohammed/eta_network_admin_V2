@@ -557,175 +557,433 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
 
   @override
   Widget build(BuildContext context) {
+    const cardBg = Color(0xFF1B2632);
+    const cardBg2 = Color(0xFF141E28);
+    const buttonBlue = Color(0xFF1677FF);
+
     return Dialog(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Create your coin',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final scale = (constraints.maxWidth / 420).clamp(0.82, 1.0);
+          double s(double v) => v * scale;
+
+          final fieldBorder = OutlineInputBorder(
+            borderRadius: BorderRadius.circular(s(14)),
+            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+          );
+          final focusedBorder = OutlineInputBorder(
+            borderRadius: BorderRadius.circular(s(14)),
+            borderSide: const BorderSide(color: AppColors.primaryAccent),
+          );
+
+          InputDecoration deco(String label, {String? helperText}) {
+            return InputDecoration(
+              labelText: label,
+              helperText: helperText,
+              filled: true,
+              fillColor: Colors.white.withValues(alpha: 0.06),
+              border: fieldBorder,
+              enabledBorder: fieldBorder,
+              focusedBorder: focusedBorder,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: s(14),
+                vertical: s(12),
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'This coin will be visible in the network and can be mined by other users. These are app points, not a real cryptocurrency.',
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 28,
-                    backgroundImage: _thumbBytes != null
-                        ? MemoryImage(_thumbBytes!)
-                        : (_initialImageUrl != null &&
-                              _initialImageUrl!.isNotEmpty)
-                        ? NetworkImage(_initialImageUrl!)
-                        : null,
-                    child:
-                        (_thumbBytes == null &&
-                            (_initialImageUrl == null ||
-                                _initialImageUrl!.isEmpty))
-                        ? const Icon(Icons.token)
-                        : null,
+            );
+          }
+
+          final ImageProvider<Object>? avatarImage = _thumbBytes != null
+              ? MemoryImage(_thumbBytes!)
+              : (_initialImageUrl != null && _initialImageUrl!.isNotEmpty)
+              ? NetworkImage(_initialImageUrl!)
+              : null;
+
+          return ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Container(
+              padding: EdgeInsets.fromLTRB(s(18), s(18), s(18), s(14)),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(s(22)),
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [cardBg, cardBg2],
+                ),
+                border: Border.all(color: Colors.white12),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.black54,
+                    blurRadius: 22,
+                    offset: Offset(0, 12),
                   ),
-                  const SizedBox(width: 12),
-                  if (_allowImageUpload)
-                    ElevatedButton(
-                      onPressed: _submitting ? null : _pickImage,
-                      child: const Text('Upload image'),
-                    ),
                 ],
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameCtrl,
-                decoration: const InputDecoration(labelText: 'Coin name'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: symbolCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Symbol (optional)',
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: descCtrl,
-                maxLines: 4,
-                decoration: InputDecoration(
-                  labelText: 'Description',
-                  helperText: '${descCtrl.text.length}/$_maxDesc',
-                ),
-                onChanged: (_) => setState(() {}),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            _isEditing
+                                ? 'Edit Community Coin'
+                                : 'Create Community Coin',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: s(20),
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              height: 1.1,
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: s(8)),
+                        IconButton(
+                          onPressed: _submitting
+                              ? null
+                              : () => Navigator.of(context).pop(),
+                          icon: Icon(
+                            Icons.close_rounded,
+                            color: Colors.white70,
+                            size: s(22),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: s(6)),
+                    Text(
+                      'Launch your own coin inside ETA ecosystem for your community.',
+                      style: TextStyle(
+                        fontSize: s(13.4),
+                        color: Colors.white70,
+                        height: 1.2,
+                      ),
+                    ),
+                    SizedBox(height: s(16)),
+                    Center(
+                      child: Column(
+                        children: [
+                          Material(
+                            color: Colors.transparent,
+                            shape: const CircleBorder(),
+                            child: InkWell(
+                              onTap: (!_allowImageUpload || _submitting)
+                                  ? null
+                                  : _pickImage,
+                              customBorder: const CircleBorder(),
+                              child: Container(
+                                width: s(92),
+                                height: s(92),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withValues(alpha: 0.08),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.18),
+                                  ),
+                                ),
+                                child: CircleAvatar(
+                                  radius: s(46),
+                                  backgroundColor: Colors.transparent,
+                                  backgroundImage: avatarImage,
+                                  child: avatarImage == null
+                                      ? Icon(
+                                          Icons.token_rounded,
+                                          color: Colors.white70,
+                                          size: s(28),
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                          if (_allowImageUpload) ...[
+                            SizedBox(height: s(8)),
+                            Text(
+                              'Upload',
+                              style: TextStyle(
+                                fontSize: s(13.5),
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: s(2)),
+                            Text(
+                              'Recommended 200×200px',
+                              style: TextStyle(
+                                fontSize: s(12.2),
+                                color: Colors.white54,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: s(16)),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: nameCtrl,
+                            decoration: deco('Coin name'),
+                          ),
+                        ),
+                        SizedBox(width: s(10)),
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: symbolCtrl,
+                            decoration: deco('Symbol'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: s(10)),
+                    TextField(
+                      controller: descCtrl,
+                      minLines: 4,
+                      maxLines: 6,
+                      onChanged: (_) => setState(() {}),
+                      decoration: deco(
+                        'Description',
+                        helperText: '${descCtrl.text.length}/$_maxDesc',
+                      ),
+                    ),
+                    SizedBox(height: s(10)),
+                    TextField(
                       controller: rateCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Mining rate (coins/hour)',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: deco(
+                        'Base mining rate (coins/hour)',
                         helperText: 'Allowed range: $_minRate – $_maxRate',
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Text('Social & project links (optional)'),
-                  const Spacer(),
-                  IconButton(
-                    onPressed: () {
-                      if (_rows.length >= _maxLinks) return;
-                      setState(() => _rows.add(_LinkRow()));
-                    },
-                    icon: const Icon(Icons.add_link),
-                  ),
-                ],
-              ),
-              Column(
-                children: [
-                  for (int i = 0; i < _rows.length; i++)
+                    SizedBox(height: s(14)),
                     Row(
                       children: [
-                        DropdownButton<String>(
-                          value: _rows[i].type,
-                          onChanged: (v) =>
-                              setState(() => _rows[i].type = v ?? 'website'),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'website',
-                              child: Text('Website'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'youtube',
-                              child: Text('YouTube'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'facebook',
-                              child: Text('Facebook'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'twitter',
-                              child: Text('X / Twitter'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'instagram',
-                              child: Text('Instagram'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'telegram',
-                              child: Text('Telegram'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'other',
-                              child: Text('Other'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 8),
                         Expanded(
-                          child: TextField(
-                            controller: _rows[i].urlCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Paste URL',
+                          child: Text(
+                            'Social & project links (optional)',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontWeight: FontWeight.w800,
+                              fontSize: s(13.5),
                             ),
                           ),
                         ),
                         IconButton(
-                          onPressed: () => setState(() => _rows.removeAt(i)),
-                          icon: const Icon(Icons.delete_outline),
+                          onPressed: () {
+                            if (_rows.length >= _maxLinks) return;
+                            setState(() => _rows.add(_LinkRow()));
+                          },
+                          icon: Icon(
+                            Icons.add_link_rounded,
+                            color: Colors.white70,
+                            size: s(22),
+                          ),
                         ),
                       ],
                     ),
-                ],
+                    SizedBox(height: s(6)),
+                    Column(
+                      children: [
+                        for (int i = 0; i < _rows.length; i++)
+                          Padding(
+                            padding: EdgeInsets.only(bottom: s(8)),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: s(10),
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.06),
+                                    borderRadius: BorderRadius.circular(s(14)),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                    ),
+                                  ),
+                                  child: DropdownButtonHideUnderline(
+                                    child: DropdownButton<String>(
+                                      value: _rows[i].type,
+                                      dropdownColor: cardBg,
+                                      iconEnabledColor: Colors.white70,
+                                      onChanged: (v) => setState(
+                                        () => _rows[i].type = v ?? 'website',
+                                      ),
+                                      items: const [
+                                        DropdownMenuItem(
+                                          value: 'website',
+                                          child: Text('Website'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'youtube',
+                                          child: Text('YouTube'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'facebook',
+                                          child: Text('Facebook'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'twitter',
+                                          child: Text('X / Twitter'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'instagram',
+                                          child: Text('Instagram'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'telegram',
+                                          child: Text('Telegram'),
+                                        ),
+                                        DropdownMenuItem(
+                                          value: 'other',
+                                          child: Text('Other'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: s(10)),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _rows[i].urlCtrl,
+                                    decoration: deco('Paste URL'),
+                                  ),
+                                ),
+                                SizedBox(width: s(6)),
+                                IconButton(
+                                  onPressed: () =>
+                                      setState(() => _rows.removeAt(i)),
+                                  icon: Icon(
+                                    Icons.delete_outline_rounded,
+                                    color: Colors.white54,
+                                    size: s(22),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    SizedBox(height: s(12)),
+                    Container(
+                      padding: EdgeInsets.all(s(12)),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(s(16)),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
+                        ),
+                      ),
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            TextSpan(
+                              text: 'Important Notice ',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w900,
+                                fontSize: s(12.6),
+                                height: 1.25,
+                              ),
+                            ),
+                            TextSpan(
+                              text:
+                                  'This is an in-app digital coin used only within the ETA Network ecosystem. It is not a cryptocurrency, has no monetary value, and cannot be traded, exchanged, or redeemed for money. Any potential future use, integration, or evolution of ETA Network features will depend on platform policies, legal requirements, and community-driven decisions. No guarantees are made regarding future value or external usage.',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w700,
+                                fontSize: s(12.6),
+                                height: 1.25,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: s(14)),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          height: s(50),
+                          child: ElevatedButton(
+                            onPressed: _submitting ? null : _submit,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: buttonBlue,
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: buttonBlue.withValues(
+                                alpha: 0.35,
+                              ),
+                              disabledForegroundColor: Colors.white.withValues(
+                                alpha: 0.8,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              elevation: 0,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _submitting
+                                      ? Icons.hourglass_top_rounded
+                                      : (_isEditing
+                                            ? Icons.save_rounded
+                                            : Icons.rocket_launch_rounded),
+                                  size: s(18),
+                                  color: Colors.white,
+                                ),
+                                SizedBox(width: s(10)),
+                                Text(
+                                  _submitting
+                                      ? 'Please wait…'
+                                      : (_isEditing ? 'Save' : 'Create Coin'),
+                                  style: TextStyle(
+                                    fontSize: s(14.5),
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: s(8)),
+                        Align(
+                          alignment: Alignment.center,
+                          child: TextButton(
+                            onPressed: _submitting
+                                ? null
+                                : () => Navigator.of(context).pop(),
+                            child: Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontWeight: FontWeight.w800,
+                                fontSize: s(13.5),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 12),
-              const Text(
-                'Your coin is an in-app points system only. It is not a cryptocurrency, cannot be traded for money, and we do not guarantee any financial value.',
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  ElevatedButton(
-                    onPressed: _submitting ? null : _submit,
-                    child: Text(_isEditing ? 'Save' : 'Create Coin'),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }

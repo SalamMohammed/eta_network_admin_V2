@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import '../../shared/theme/colors.dart';
 import '../../auth/auth_gate.dart';
 import '../../shared/firestore_constants.dart';
 import '../../services/referral_engine.dart';
@@ -100,6 +99,15 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    const pageBgTop = Color(0xFF0B1620);
+    const pageBgBottom = Color(0xFF0E1618);
+    const cardBg = Color(0xFF1B2632);
+    const cardBg2 = Color(0xFF141E28);
+    const buttonBlue = Color(0xFF1677FF);
+
+    final canEnterReferral =
+        !referralLocked && (invitedBy == null || invitedBy!.isEmpty);
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -107,151 +115,491 @@ class _ProfilePageState extends State<ProfilePage> {
           onPressed: () => Navigator.maybePop(context),
         ),
         title: const Text('Profile'),
+        centerTitle: true,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.primaryBackground,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [pageBgTop, pageBgBottom],
+          ),
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final scale = (constraints.maxWidth / 380).clamp(0.78, 1.0);
+            double s(double v) => v * scale;
+
+            final displayName = username.isNotEmpty ? username : '—';
+            final displayRank = rank.isNotEmpty ? rank : '—';
+
+            return SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(s(16), s(16), s(16), s(18)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  GestureDetector(
-                    onTap: _uploadProfileImage,
-                    child: CircleAvatar(
-                      radius: 28,
-                      backgroundColor: AppColors.secondaryAccent,
-                      backgroundImage:
-                          (thumbnailUrl != null && thumbnailUrl!.isNotEmpty)
-                          ? NetworkImage(thumbnailUrl!)
-                          : null,
-                      child: (thumbnailUrl == null || thumbnailUrl!.isEmpty)
-                          ? const Icon(Icons.person)
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(username.isNotEmpty ? username : '—'),
-                      const SizedBox(height: 6),
-                      Text(rank.isNotEmpty ? rank : '—'),
-                    ],
-                  ),
-                  const Spacer(),
-                  const Icon(Icons.qr_code_2_rounded),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            _section('Account Info', [
-              _kv('Username', username.isNotEmpty ? username : '—'),
-              _kv('Email', email.isNotEmpty ? email : '—'),
-            ]),
-            _section('Performance', [
-              _kv('StreakDays', '$streakDays'),
-              _kv('Referral count', '$referralCount'),
-              _kv('Total mining sessions', '$totalSessions'),
-              _toggle('Mining Manager Enabled', _miningService.managerEnabled),
-            ]),
-            if (!referralLocked && (invitedBy == null || invitedBy!.isEmpty))
-              _section('Add Referral Code', [
-                TextField(
-                  controller: _referralCtrl,
-                  decoration: const InputDecoration(labelText: 'Referral code'),
-                ),
-                const SizedBox(height: 8),
-                ElevatedButton(
-                  onPressed: _submitReferral,
-                  child: const Text('Confirm'),
-                ),
-              ]),
-            _section('Notifications', [
-              _toggle('Enable notifications', true),
-              _toggle('Streak reminders', true),
-            ]),
-            _section('Legal', [
-              _button(
-                context,
-                'FAQ',
-                () => _openLegal(context, 'FAQ', [FirestoreLegalFields.faq]),
-              ),
-              _button(
-                context,
-                'White Paper',
-                () => _openLegal(context, 'White Paper', [
-                  FirestoreLegalFields.whitePaper,
-                ]),
-              ),
-              _button(
-                context,
-                'Contact Us',
-                () => _openLegal(context, 'Contact Us', [
-                  FirestoreLegalFields.contactUs,
-                ]),
-              ),
-            ]),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: () async {
-                final ok = await showDialog<bool>(
-                  context: context,
-                  barrierDismissible: true,
-                  builder: (ctx) {
-                    return AlertDialog(
-                      title: const Text('Delete account?'),
-                      content: const Text(
-                        'This will permanently delete your account, data, and sessions. This action cannot be undone.',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Cancel'),
+                  Center(
+                    child: Column(
+                      children: [
+                        SizedBox(height: s(6)),
+                        Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              width: s(92),
+                              height: s(92),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.14),
+                                  width: s(3),
+                                ),
+                              ),
+                              child: GestureDetector(
+                                onTap: _uploadProfileImage,
+                                child: CircleAvatar(
+                                  backgroundColor: Colors.white.withValues(
+                                    alpha: 0.10,
+                                  ),
+                                  backgroundImage:
+                                      (thumbnailUrl != null &&
+                                          thumbnailUrl!.isNotEmpty)
+                                      ? NetworkImage(thumbnailUrl!)
+                                      : null,
+                                  child:
+                                      (thumbnailUrl == null ||
+                                          thumbnailUrl!.isEmpty)
+                                      ? Icon(
+                                          Icons.person_rounded,
+                                          size: s(44),
+                                          color: Colors.white70,
+                                        )
+                                      : null,
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              right: s(0),
+                              bottom: s(0),
+                              child: Container(
+                                width: s(32),
+                                height: s(32),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: buttonBlue,
+                                  border: Border.all(
+                                    color: const Color(0xFF0E1618),
+                                    width: s(2),
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.photo_camera_rounded,
+                                  size: s(16),
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Delete'),
+                        SizedBox(height: s(12)),
+                        Text(
+                          displayName,
+                          style: TextStyle(
+                            fontSize: s(22),
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                        SizedBox(height: s(8)),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: s(12),
+                            vertical: s(7),
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: Colors.white12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.emoji_events_rounded,
+                                size: s(16),
+                                color: const Color(0xFFFFC44D),
+                              ),
+                              SizedBox(width: s(8)),
+                              Text(
+                                displayRank,
+                                style: TextStyle(
+                                  fontSize: s(12.5),
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white70,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                    );
-                  },
-                );
-                if (ok != true) return;
-                await _deleteAccount();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
+                    ),
+                  ),
+                  SizedBox(height: s(16)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _statCard(
+                          icon: Icons.local_fire_department_rounded,
+                          value: '$streakDays',
+                          label: 'STREAK',
+                          scale: s,
+                          cardBg: cardBg,
+                          cardBg2: cardBg2,
+                          accent: const Color(0xFFFF8A00),
+                        ),
+                      ),
+                      SizedBox(width: s(12)),
+                      Expanded(
+                        child: _statCard(
+                          icon: Icons.groups_rounded,
+                          value: '$referralCount',
+                          label: 'REFERRALS',
+                          scale: s,
+                          cardBg: cardBg,
+                          cardBg2: cardBg2,
+                          accent: buttonBlue,
+                        ),
+                      ),
+                      SizedBox(width: s(12)),
+                      Expanded(
+                        child: _statCard(
+                          icon: Icons.bolt_rounded,
+                          value: '$totalSessions',
+                          label: 'SESSIONS',
+                          scale: s,
+                          cardBg: cardBg,
+                          cardBg2: cardBg2,
+                          accent: const Color(0xFF8B5CF6),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: s(18)),
+                  _sectionTitle('Account Info', scale: s),
+                  SizedBox(height: s(10)),
+                  _settingsCard(
+                    scale: s,
+                    cardBg: cardBg,
+                    cardBg2: cardBg2,
+                    child: _settingsTile(
+                      scale: s,
+                      icon: Icons.person_rounded,
+                      title: 'Account Info',
+                      subtitle: null,
+                      trailing: Icon(
+                        Icons.chevron_right_rounded,
+                        color: Colors.white54,
+                        size: s(24),
+                      ),
+                      onTap: () => _showAccountInfoSheet(
+                        context,
+                        scale: s,
+                        cardBg: cardBg,
+                        cardBg2: cardBg2,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: s(18)),
+                  _sectionTitle('Preferences', scale: s),
+                  SizedBox(height: s(10)),
+                  _settingsCard(
+                    scale: s,
+                    cardBg: cardBg,
+                    cardBg2: cardBg2,
+                    child: Column(
+                      children: [
+                        _settingsTile(
+                          scale: s,
+                          icon: Icons.admin_panel_settings_rounded,
+                          title: 'Manager Mode',
+                          subtitle: 'Access advanced mining tools',
+                          trailing: Theme(
+                            data: Theme.of(context).copyWith(
+                              switchTheme: SwitchThemeData(
+                                trackColor: WidgetStateProperty.resolveWith((
+                                  states,
+                                ) {
+                                  final selected = states.contains(
+                                    WidgetState.selected,
+                                  );
+                                  if (selected) return buttonBlue;
+                                  return Colors.white24;
+                                }),
+                                thumbColor: WidgetStateProperty.resolveWith((
+                                  states,
+                                ) {
+                                  final selected = states.contains(
+                                    WidgetState.selected,
+                                  );
+                                  if (selected) return Colors.white;
+                                  return Colors.white70;
+                                }),
+                              ),
+                            ),
+                            child: Switch(
+                              value: _miningService.managerEnabled,
+                              onChanged: null,
+                            ),
+                          ),
+                          onTap: null,
+                        ),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: s(14)),
+                          child: Container(
+                            height: 1,
+                            color: Colors.white.withValues(alpha: 0.06),
+                          ),
+                        ),
+                        _settingsTile(
+                          scale: s,
+                          icon: Icons.notifications_rounded,
+                          title: 'Notifications',
+                          subtitle: null,
+                          trailing: Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white54,
+                            size: s(24),
+                          ),
+                          onTap: () {},
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: s(18)),
+                  _sectionTitle('Invited by someone?', scale: s),
+                  SizedBox(height: s(10)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: s(12)),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(s(14)),
+                            color: Colors.white.withValues(alpha: 0.06),
+                            border: Border.all(color: Colors.white12),
+                          ),
+                          child: TextField(
+                            controller: _referralCtrl,
+                            enabled: canEnterReferral,
+                            decoration: InputDecoration(
+                              hintText: canEnterReferral
+                                  ? 'Enter referral code'
+                                  : (invitedBy != null && invitedBy!.isNotEmpty)
+                                  ? 'Invited'
+                                  : 'Locked',
+                              border: InputBorder.none,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: s(12)),
+                      SizedBox(
+                        height: s(46),
+                        child: ElevatedButton(
+                          onPressed: canEnterReferral ? _submitReferral : null,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: buttonBlue,
+                            disabledBackgroundColor: buttonBlue.withValues(
+                              alpha: 0.30,
+                            ),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(s(14)),
+                            ),
+                          ),
+                          child: Text(
+                            'Apply',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: s(15),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: s(18)),
+                  _sectionTitle('Support', scale: s),
+                  SizedBox(height: s(10)),
+                  _settingsCard(
+                    scale: s,
+                    cardBg: cardBg,
+                    cardBg2: cardBg2,
+                    child: Column(
+                      children: [
+                        _settingsTile(
+                          scale: s,
+                          icon: Icons.help_outline_rounded,
+                          title: 'FAQ',
+                          subtitle: null,
+                          trailing: Icon(
+                            Icons.open_in_new_rounded,
+                            color: Colors.white54,
+                            size: s(18),
+                          ),
+                          onTap: () => _openLegal(context, 'FAQ', [
+                            FirestoreLegalFields.faq,
+                          ]),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: s(14)),
+                          child: Container(
+                            height: 1,
+                            color: Colors.white.withValues(alpha: 0.06),
+                          ),
+                        ),
+                        _settingsTile(
+                          scale: s,
+                          icon: Icons.description_rounded,
+                          title: 'White Paper',
+                          subtitle: null,
+                          trailing: Icon(
+                            Icons.description_outlined,
+                            color: Colors.white54,
+                            size: s(18),
+                          ),
+                          onTap: () => _openLegal(context, 'White Paper', [
+                            FirestoreLegalFields.whitePaper,
+                          ]),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: s(14)),
+                          child: Container(
+                            height: 1,
+                            color: Colors.white.withValues(alpha: 0.06),
+                          ),
+                        ),
+                        _settingsTile(
+                          scale: s,
+                          icon: Icons.mail_outline_rounded,
+                          title: 'Contact Us',
+                          subtitle: null,
+                          trailing: Icon(
+                            Icons.mail_outline_rounded,
+                            color: Colors.white54,
+                            size: s(18),
+                          ),
+                          onTap: () => _openLegal(context, 'Contact Us', [
+                            FirestoreLegalFields.contactUs,
+                          ]),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: s(18)),
+                  SizedBox(
+                    height: s(52),
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        MiningStateService().reset();
+                        try {
+                          await GoogleSignIn().signOut();
+                        } catch (_) {}
+                        await FirebaseAuth.instance.signOut();
+                        if (context.mounted) {
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(builder: (_) => const AuthGate()),
+                            (route) => false,
+                          );
+                        }
+                      },
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(
+                          color: Colors.white.withValues(alpha: 0.22),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(s(14)),
+                        ),
+                      ),
+                      icon: Icon(Icons.logout_rounded, size: s(18)),
+                      label: Text(
+                        'Log Out',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: s(15),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: s(8)),
+                  TextButton(
+                    onPressed: () async {
+                      final ok = await showDialog<bool>(
+                        context: context,
+                        barrierDismissible: true,
+                        builder: (ctx) {
+                          return AlertDialog(
+                            title: const Text('Delete account?'),
+                            content: const Text(
+                              'This will permanently delete your account, data, and sessions. This action cannot be undone.',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancel'),
+                              ),
+                              ElevatedButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                child: const Text('Delete'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                      if (ok != true) return;
+                      await _deleteAccount();
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                    ),
+                    child: Text(
+                      'Delete Account',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: s(13.5),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: s(8)),
+                  Center(
+                    child: Text(
+                      'App Version 2.4.1 (Build 890)',
+                      style: TextStyle(
+                        fontSize: s(12),
+                        color: Colors.white38,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: s(6)),
+                  Center(
+                    child: Text(
+                      '© 2024 ETA Network',
+                      style: TextStyle(
+                        fontSize: s(12),
+                        color: Colors.white38,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: s(10)),
+                ],
               ),
-              child: const Text('Delete Account'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                MiningStateService().reset();
-                try {
-                  await GoogleSignIn().signOut();
-                } catch (_) {}
-                await FirebaseAuth.instance.signOut();
-                if (context.mounted) {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (_) => const AuthGate()),
-                    (route) => false,
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.vipAccent,
-              ),
-              child: const Text('Logout'),
-            ),
-            const SizedBox(height: 24),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -406,57 +754,683 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _section(String title, List<Widget> children) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: AppColors.primaryBackground,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [Text(title), const SizedBox(height: 8), ...children],
-        ),
-      ),
-    );
-  }
-
-  Widget _kv(String k, String v) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Expanded(child: Text(k)),
-          Text(v, style: const TextStyle(fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
-
-  Widget _toggle(String label, bool value) {
-    return Row(
-      children: [
-        Expanded(child: Text(label)),
-        Switch(value: value, onChanged: (_) {}),
-      ],
-    );
-  }
-
-  Widget _button(BuildContext context, String label, VoidCallback onTap) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: ElevatedButton(onPressed: onTap, child: Text(label)),
-    );
-  }
-
   void _openLegal(BuildContext context, String title, List<String> keys) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => LegalContentPage(title: title, fieldKeys: keys),
       ),
+    );
+  }
+
+  Widget _sectionTitle(String title, {required double Function(double) scale}) {
+    return Text(
+      title,
+      style: TextStyle(
+        fontSize: scale(14),
+        fontWeight: FontWeight.w800,
+        color: Colors.white70,
+      ),
+    );
+  }
+
+  Widget _settingsCard({
+    required Widget child,
+    required double Function(double) scale,
+    required Color cardBg,
+    required Color cardBg2,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(scale(18)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [cardBg, cardBg2],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black38,
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _settingsTile({
+    required double Function(double) scale,
+    required IconData icon,
+    required String title,
+    required String? subtitle,
+    required Widget trailing,
+    required VoidCallback? onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(scale(18)),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: scale(14),
+          vertical: scale(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: scale(40),
+              height: scale(40),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(scale(12)),
+                border: Border.all(color: Colors.white12),
+              ),
+              child: Icon(icon, color: Colors.white70, size: scale(20)),
+            ),
+            SizedBox(width: scale(12)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: scale(14.5),
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    SizedBox(height: scale(2)),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: scale(12.5),
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white54,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            trailing,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _statCard({
+    required IconData icon,
+    required String value,
+    required String label,
+    required double Function(double) scale,
+    required Color cardBg,
+    required Color cardBg2,
+    required Color accent,
+  }) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: scale(12), vertical: scale(14)),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(scale(18)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [cardBg, cardBg2],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black38,
+            blurRadius: 18,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: scale(34),
+            height: scale(34),
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(scale(12)),
+              border: Border.all(color: Colors.white12),
+            ),
+            child: Icon(icon, color: accent, size: scale(18)),
+          ),
+          SizedBox(height: scale(10)),
+          SizedBox(
+            height: scale(24),
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.contain,
+              alignment: Alignment.center,
+              child: Text(
+                value,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: scale(22),
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  height: 1.0,
+                ),
+              ),
+            ),
+          ),
+          SizedBox(height: scale(4)),
+          SizedBox(
+            height: scale(14),
+            width: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.center,
+              child: Text(
+                label,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: scale(11.5),
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.1,
+                  color: Colors.white54,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAccountInfoSheet(
+    BuildContext context, {
+    required double Function(double) scale,
+    required Color cardBg,
+    required Color cardBg2,
+  }) {
+    final uidLocal = FirebaseAuth.instance.currentUser?.uid;
+    if (uidLocal == null || uidLocal.isEmpty) return;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      backgroundColor: const Color(0xFF141E28),
+      isScrollControlled: true,
+      builder: (context) {
+        return _AccountInfoSheet(
+          uid: uidLocal,
+          initialUsername: username,
+          email: email,
+          cardBg: cardBg,
+          cardBg2: cardBg2,
+          scale: scale,
+          onUsernameUpdated: (v) {
+            if (!mounted) return;
+            setState(() {
+              username = v;
+            });
+          },
+        );
+      },
+    );
+  }
+}
+
+class _AccountInfoSheet extends StatefulWidget {
+  final String uid;
+  final String initialUsername;
+  final String email;
+  final Color cardBg;
+  final Color cardBg2;
+  final double Function(double) scale;
+  final ValueChanged<String> onUsernameUpdated;
+
+  const _AccountInfoSheet({
+    required this.uid,
+    required this.initialUsername,
+    required this.email,
+    required this.cardBg,
+    required this.cardBg2,
+    required this.scale,
+    required this.onUsernameUpdated,
+  });
+
+  @override
+  State<_AccountInfoSheet> createState() => _AccountInfoSheetState();
+}
+
+class _AccountInfoSheetState extends State<_AccountInfoSheet> {
+  late final DocumentReference<Map<String, dynamic>> _userRef;
+
+  late final TextEditingController _usernameCtrl;
+  late final TextEditingController _emailCtrl;
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _ageCtrl;
+  late final TextEditingController _countryCtrl;
+  late final TextEditingController _addressCtrl;
+  late final TextEditingController _genderCtrl;
+
+  bool _isEditing = false;
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _userRef = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(widget.uid);
+
+    _usernameCtrl = TextEditingController(text: widget.initialUsername);
+    _emailCtrl = TextEditingController(text: widget.email);
+    _nameCtrl = TextEditingController();
+    _ageCtrl = TextEditingController();
+    _countryCtrl = TextEditingController();
+    _addressCtrl = TextEditingController();
+    _genderCtrl = TextEditingController();
+
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _usernameCtrl.dispose();
+    _emailCtrl.dispose();
+    _nameCtrl.dispose();
+    _ageCtrl.dispose();
+    _countryCtrl.dispose();
+    _addressCtrl.dispose();
+    _genderCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final snap = await _userRef.get();
+      final d = snap.data() ?? {};
+      _usernameCtrl.text =
+          (d[FirestoreUserFields.username] as String?) ?? _usernameCtrl.text;
+      _nameCtrl.text = (d[FirestoreUserFields.name] as String?) ?? '';
+      _ageCtrl.text =
+          (d[FirestoreUserFields.age] as num?)?.toInt().toString() ?? '';
+      _countryCtrl.text = (d[FirestoreUserFields.country] as String?) ?? '';
+      _addressCtrl.text = (d[FirestoreUserFields.address] as String?) ?? '';
+      _genderCtrl.text = (d[FirestoreUserFields.gender] as String?) ?? '';
+    } catch (_) {
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  InputDecoration _inputDecoration(String hint) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: TextStyle(
+        color: Colors.white38,
+        fontSize: widget.scale(13),
+        fontWeight: FontWeight.w700,
+      ),
+      border: InputBorder.none,
+    );
+  }
+
+  Widget _field({
+    required String label,
+    required TextEditingController controller,
+    required String hint,
+    TextInputType? keyboardType,
+    bool enabled = true,
+    int maxLines = 1,
+  }) {
+    final fieldBg = enabled
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.white.withValues(alpha: 0.03);
+    final fieldFg = enabled ? Colors.white : Colors.white54;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: widget.scale(12.5),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        SizedBox(height: widget.scale(6)),
+        Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: widget.scale(12),
+            vertical: maxLines > 1 ? widget.scale(10) : widget.scale(0),
+          ),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(widget.scale(14)),
+            color: fieldBg,
+            border: Border.all(color: Colors.white12),
+          ),
+          child: TextField(
+            controller: controller,
+            enabled: enabled,
+            keyboardType: keyboardType,
+            maxLines: maxLines,
+            style: TextStyle(
+              color: fieldFg,
+              fontSize: widget.scale(14.5),
+              fontWeight: FontWeight.w700,
+            ),
+            decoration: _inputDecoration(hint),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _save() async {
+    final newUsername = _usernameCtrl.text.trim();
+    if (newUsername.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Username cannot be empty')));
+      return;
+    }
+
+    final ageStr = _ageCtrl.text.trim();
+    final ageNum = ageStr.isEmpty ? null : int.tryParse(ageStr);
+    if (ageStr.isNotEmpty && (ageNum == null || ageNum < 0 || ageNum > 150)) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Invalid age value')));
+      return;
+    }
+
+    Map<String, Object?> upd(String key, String value) {
+      final v = value.trim();
+      if (v.isEmpty) return {key: FieldValue.delete()};
+      return {key: v};
+    }
+
+    setState(() {
+      _saving = true;
+    });
+
+    try {
+      final payload = <String, Object?>{
+        FirestoreUserFields.username: newUsername,
+        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+        ...upd(FirestoreUserFields.name, _nameCtrl.text),
+        ...upd(FirestoreUserFields.country, _countryCtrl.text),
+        ...upd(FirestoreUserFields.address, _addressCtrl.text),
+        ...upd(FirestoreUserFields.gender, _genderCtrl.text),
+      };
+
+      if (ageNum == null) {
+        payload[FirestoreUserFields.age] = FieldValue.delete();
+      } else {
+        payload[FirestoreUserFields.age] = ageNum;
+      }
+
+      await _userRef.set(payload, SetOptions(merge: true));
+
+      widget.onUsernameUpdated(newUsername);
+      if (!mounted) return;
+      setState(() {
+        _isEditing = false;
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Failed to save changes')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    Widget content() {
+      if (_loading) {
+        return const Center(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 28),
+            child: CircularProgressIndicator(),
+          ),
+        );
+      }
+
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [widget.cardBg, widget.cardBg2],
+          ),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Account Info',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: _saving
+                      ? null
+                      : () => setState(() {
+                          _isEditing = !_isEditing;
+                        }),
+                  icon: Icon(
+                    _isEditing ? Icons.close_rounded : Icons.edit_rounded,
+                    size: widget.scale(18),
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: widget.scale(8)),
+            if (!_isEditing) ...[
+              Text(
+                'Username',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: widget.scale(12.5),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(height: widget.scale(6)),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _usernameCtrl.text.trim().isNotEmpty
+                          ? _usernameCtrl.text.trim()
+                          : '—',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: widget.scale(15.5),
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: widget.scale(12)),
+              Text(
+                'Email',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: widget.scale(12.5),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(height: widget.scale(6)),
+              Text(
+                widget.email.isNotEmpty ? widget.email : '—',
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontSize: widget.scale(15.5),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              SizedBox(height: widget.scale(14)),
+              _labelValue('Name', _nameCtrl.text),
+              SizedBox(height: widget.scale(12)),
+              _labelValue('Age', _ageCtrl.text),
+              SizedBox(height: widget.scale(12)),
+              _labelValue('Country', _countryCtrl.text),
+              SizedBox(height: widget.scale(12)),
+              _labelValue('Address', _addressCtrl.text),
+              SizedBox(height: widget.scale(12)),
+              _labelValue('Gender', _genderCtrl.text),
+            ] else ...[
+              _field(
+                label: 'Username',
+                controller: _usernameCtrl,
+                hint: 'Enter username',
+              ),
+              SizedBox(height: widget.scale(12)),
+              _field(
+                label: 'Email',
+                controller: _emailCtrl,
+                hint: '—',
+                enabled: false,
+              ),
+              SizedBox(height: widget.scale(12)),
+              _field(
+                label: 'Name (optional)',
+                controller: _nameCtrl,
+                hint: 'Enter name',
+              ),
+              SizedBox(height: widget.scale(12)),
+              _field(
+                label: 'Age (optional)',
+                controller: _ageCtrl,
+                hint: 'Enter age',
+                keyboardType: TextInputType.number,
+              ),
+              SizedBox(height: widget.scale(12)),
+              _field(
+                label: 'Country (optional)',
+                controller: _countryCtrl,
+                hint: 'Enter country',
+              ),
+              SizedBox(height: widget.scale(12)),
+              _field(
+                label: 'Address (optional)',
+                controller: _addressCtrl,
+                hint: 'Enter address',
+                maxLines: 2,
+              ),
+              SizedBox(height: widget.scale(12)),
+              _field(
+                label: 'Gender (optional)',
+                controller: _genderCtrl,
+                hint: 'Enter gender',
+              ),
+              SizedBox(height: widget.scale(14)),
+              SizedBox(
+                height: widget.scale(46),
+                child: ElevatedButton(
+                  onPressed: _saving ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1677FF),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(widget.scale(14)),
+                    ),
+                  ),
+                  child: Text(
+                    _saving ? 'Saving...' : 'Save',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: widget.scale(15),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    }
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(16, 0, 16, 16 + bottomInset),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              content(),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: _saving ? null : () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF1677FF),
+                  ),
+                  child: const Text(
+                    'Close',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _labelValue(String label, String value) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white54,
+            fontSize: widget.scale(12.5),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        SizedBox(height: widget.scale(6)),
+        Text(
+          value.trim().isNotEmpty ? value.trim() : '—',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: widget.scale(15.5),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
     );
   }
 }
