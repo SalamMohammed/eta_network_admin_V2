@@ -412,219 +412,124 @@ class _MobileHomePageState extends State<MobileHomePage>
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          child: Stack(
             children: [
-              Align(
-                alignment: Alignment.center,
-                child: Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: s(12),
-                    vertical: s(7),
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: pillBorder),
-                    color: Colors.white.withValues(alpha: 0.02),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.local_fire_department_rounded,
-                        color: streakOrange,
-                        size: s(20),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Align(
+                    alignment: Alignment.center,
+                    child: Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: s(12),
+                        vertical: s(7),
                       ),
-                      SizedBox(width: s(8)),
-                      Text(
-                        streakText,
-                        style: TextStyle(
-                          color: pillText,
-                          fontWeight: FontWeight.w600,
-                          fontSize: s(14.5),
-                        ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: pillBorder),
+                        color: Colors.white.withValues(alpha: 0.02),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(height: s(12)),
-              Center(
-                child: FractionallySizedBox(
-                  widthFactor: 0.75,
-                  child: SizedBox(
-                    height: s(56),
-                    child: FittedBox(
-                      fit: BoxFit.contain,
-                      alignment: Alignment.center,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text(
-                            totalEta.toStringAsFixed(3),
-                            style: TextStyle(
-                              fontSize: s(50),
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              height: 1.0,
-                            ),
+                          Icon(
+                            Icons.local_fire_department_rounded,
+                            color: streakOrange,
+                            size: s(20),
                           ),
-                          SizedBox(width: s(10)),
-                          Padding(
-                            padding: EdgeInsets.only(bottom: s(8)),
-                            child: Text(
-                              'ETA',
-                              style: TextStyle(
-                                color: Colors.white54,
-                                fontSize: s(20),
-                                fontWeight: FontWeight.w600,
-                              ),
+                          SizedBox(width: s(8)),
+                          Text(
+                            streakText,
+                            style: TextStyle(
+                              color: pillText,
+                              fontWeight: FontWeight.w600,
+                              fontSize: s(14.5),
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-                ),
-              ),
-              SizedBox(height: s(8)),
-              Center(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: s(10),
-                        height: s(10),
-                        decoration: BoxDecoration(
-                          color: miningActive
-                              ? const Color(0xFF2ECC71)
-                              : Colors.white38,
-                          shape: BoxShape.circle,
+                  SizedBox(height: s(12)),
+                  Center(
+                    child: FractionallySizedBox(
+                      widthFactor: 0.75,
+                      child: SizedBox(
+                        height: s(56),
+                        child: FittedBox(
+                          fit: BoxFit.contain,
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                totalEta.toStringAsFixed(3),
+                                style: TextStyle(
+                                  fontSize: s(50),
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  height: 1.0,
+                                ),
+                              ),
+                              SizedBox(width: s(10)),
+                              Padding(
+                                padding: EdgeInsets.only(bottom: s(8)),
+                                child: Text(
+                                  'ETA',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: s(20),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      SizedBox(width: s(10)),
-                      Text(
-                        '+${hourlyRate.toStringAsFixed(1)} ETA/hr',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: s(16),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      SizedBox(width: s(10)),
-                      Text(
-                        '•',
-                        style: TextStyle(
-                          color: Colors.white38,
-                          fontSize: s(17),
-                        ),
-                      ),
-                      SizedBox(width: s(10)),
-                      Text(
-                        miningActive ? 'Mining Active' : 'Inactive',
-                        style: TextStyle(
-                          color: Colors.white54,
-                          fontSize: s(16),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              SizedBox(height: s(12)),
-              Row(
-                children: [
-                  Text(
-                    'Session ends in',
-                    style: TextStyle(color: Colors.white38, fontSize: s(14)),
-                  ),
-                  const Spacer(),
-                  Text(
-                    _formatHms(remaining),
-                    style: TextStyle(
-                      color: timeBlue,
-                      fontSize: s(18),
-                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                ],
-              ),
-              SizedBox(height: s(10)),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: SizedBox(
-                  height: s(10),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    backgroundColor: Colors.white12,
-                    valueColor: const AlwaysStoppedAnimation<Color>(timeBlue),
-                  ),
-                ),
-              ),
-              SizedBox(height: s(12)),
-              SizedBox(
-                height: s(56),
-                child: ElevatedButton.icon(
-                  onPressed: miningActive ? null : onStart,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: buttonBlue,
-                    disabledBackgroundColor: buttonBlue.withValues(alpha: 0.35),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(s(20)),
-                    ),
-                    elevation: 0,
-                  ),
-                  icon: Icon(
-                    Icons.rocket_launch_rounded,
-                    color: Colors.white,
-                    size: s(24),
-                  ),
-                  label: Text(
-                    'Start Earning',
-                    style: TextStyle(
-                      fontSize: s(19),
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-              if (showRewarded && miningActive) ...[
-                SizedBox(height: s(8)),
-                Center(
-                  child: InkWell(
-                    onTap: (rewardedLoading || rewardedLimitReached)
-                        ? null
-                        : onShowRewarded,
-                    borderRadius: BorderRadius.circular(999),
-                    child: Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: s(12),
-                        vertical: s(8),
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(color: Colors.white24),
-                        color: Colors.white.withValues(alpha: 0.04),
-                      ),
+                  SizedBox(height: s(8)),
+                  Center(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.ondemand_video_rounded,
-                            size: s(16),
-                            color: Colors.white70,
+                          Container(
+                            width: s(10),
+                            height: s(10),
+                            decoration: BoxDecoration(
+                              color: miningActive
+                                  ? const Color(0xFF2ECC71)
+                                  : Colors.white38,
+                              shape: BoxShape.circle,
+                            ),
                           ),
-                          SizedBox(width: s(8)),
+                          SizedBox(width: s(10)),
                           Text(
-                            rewardedLabel,
+                            '+${hourlyRate.toStringAsFixed(1)} ETA/hr',
                             style: TextStyle(
-                              fontSize: s(13.5),
                               color: Colors.white70,
+                              fontSize: s(16),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          SizedBox(width: s(10)),
+                          Text(
+                            '•',
+                            style: TextStyle(
+                              color: Colors.white38,
+                              fontSize: s(17),
+                            ),
+                          ),
+                          SizedBox(width: s(10)),
+                          Text(
+                            miningActive ? 'Mining Active' : 'Inactive',
+                            style: TextStyle(
+                              color: Colors.white54,
+                              fontSize: s(16),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -632,8 +537,195 @@ class _MobileHomePageState extends State<MobileHomePage>
                       ),
                     ),
                   ),
+                  SizedBox(height: s(12)),
+                  Row(
+                    children: [
+                      Text(
+                        'Session ends in',
+                        style: TextStyle(
+                          color: Colors.white38,
+                          fontSize: s(14),
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        _formatHms(remaining),
+                        style: TextStyle(
+                          color: timeBlue,
+                          fontSize: s(18),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: s(10)),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(999),
+                    child: SizedBox(
+                      height: s(10),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: Colors.white12,
+                        valueColor: const AlwaysStoppedAnimation<Color>(
+                          timeBlue,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: s(12)),
+                  SizedBox(
+                    height: s(56),
+                    child: ElevatedButton.icon(
+                      onPressed: miningActive ? null : onStart,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: buttonBlue,
+                        disabledBackgroundColor: buttonBlue.withValues(
+                          alpha: 0.35,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(s(20)),
+                        ),
+                        elevation: 0,
+                      ),
+                      icon: Icon(
+                        Icons.rocket_launch_rounded,
+                        color: Colors.white,
+                        size: s(24),
+                      ),
+                      label: Text(
+                        'Start Earning',
+                        style: TextStyle(
+                          fontSize: s(19),
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (showRewarded && miningActive) ...[
+                    SizedBox(height: s(8)),
+                    Center(
+                      child: InkWell(
+                        onTap: (rewardedLoading || rewardedLimitReached)
+                            ? null
+                            : onShowRewarded,
+                        borderRadius: BorderRadius.circular(999),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: s(12),
+                            vertical: s(8),
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: Colors.white24),
+                            color: Colors.white.withValues(alpha: 0.04),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.ondemand_video_rounded,
+                                size: s(16),
+                                color: Colors.white70,
+                              ),
+                              SizedBox(width: s(8)),
+                              Text(
+                                rewardedLabel,
+                                style: TextStyle(
+                                  fontSize: s(13.5),
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              Positioned(
+                top: s(4),
+                left: s(4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _openManagerSelector,
+                        customBorder: const CircleBorder(),
+                        child: Container(
+                          width: s(30),
+                          height: s(30),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFFFFD67A), Color(0xFFFF9E2D)],
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFFFFB34D,
+                                ).withValues(alpha: 0.55),
+                                blurRadius: s(16),
+                                spreadRadius: s(2),
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.24),
+                            ),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.workspace_premium_rounded,
+                              size: s(18),
+                              color: const Color(0xFF121820),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: s(8)),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _openCoinSelector,
+                        customBorder: const CircleBorder(),
+                        child: Container(
+                          width: s(28),
+                          height: s(28),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.08),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.35),
+                                blurRadius: s(12),
+                                offset: const Offset(0, 6),
+                              ),
+                            ],
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.16),
+                            ),
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.monetization_on_rounded,
+                              size: s(17),
+                              color: Colors.white.withValues(alpha: 0.9),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ],
           ),
         );
@@ -732,10 +824,7 @@ class _MobileHomePageState extends State<MobileHomePage>
           onPressed: () => Navigator.maybePop(context),
         ),
         title: const Text('ETA Network'),
-        actions: [
-          TextButton(onPressed: _openManagerSelector, child: const Text('VIP')),
-          TextButton(onPressed: _openCoinSelector, child: const Text('Coins')),
-        ],
+        actions: const [],
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.only(bottom: vPad),

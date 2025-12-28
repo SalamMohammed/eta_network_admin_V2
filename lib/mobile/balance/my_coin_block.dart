@@ -1853,28 +1853,75 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
   bool _validUrl(String s) =>
       s.startsWith('http://') || s.startsWith('https://');
 
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _submit() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
     // validation
     final name = nameCtrl.text.trim();
+    final rawSymbol = symbolCtrl.text.trim();
+    final symbol = rawSymbol
+        .replaceAll(RegExp(r'[^A-Za-z0-9]'), '')
+        .toUpperCase()
+        .trim();
     final desc = descCtrl.text.trim();
     final rate = double.tryParse(rateCtrl.text.trim());
     if (name.length < 3 || name.length > 30) {
+      _showError('Coin name must be 3–30 characters.');
       return;
     }
+    if (symbol.isEmpty) {
+      _showError('Symbol is required.');
+      return;
+    }
+    if (symbol.length < 2 || symbol.length > 10) {
+      _showError('Symbol must be 2–10 letters/numbers.');
+      return;
+    }
+    if (symbolCtrl.text.trim() != symbol) {
+      symbolCtrl.value = TextEditingValue(
+        text: symbol,
+        selection: TextSelection.collapsed(offset: symbol.length),
+      );
+    }
     if (desc.length > _maxDesc) {
+      _showError('Description is too long.');
       return;
     }
     if (rate == null || rate < _minRate || rate > _maxRate) {
+      _showError('Base mining rate is out of range.');
       return;
+    }
+    final checkVariants = <String>{
+      symbol,
+      rawSymbol,
+      rawSymbol.toUpperCase(),
+      rawSymbol.toLowerCase(),
+    }.where((s) => s.trim().isNotEmpty).toList();
+    for (final v in checkVariants) {
+      final qs = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.userCoins)
+          .where(FirestoreUserCoinFields.symbol, isEqualTo: v)
+          .limit(1)
+          .get();
+      if (qs.docs.isNotEmpty && qs.docs.first.id != uid) {
+        _showError('Symbol already exists. Please choose another.');
+        return;
+      }
     }
     final links = <Map<String, dynamic>>[];
     for (final r in _rows) {
       final u = r.urlCtrl.text.trim();
       if (u.isEmpty) continue;
       if (!_validUrl(u)) {
+        _showError('One of the URLs is invalid.');
         return;
       }
       links.add({'type': r.type, 'iconName': r.type, 'url': u});
@@ -1882,14 +1929,14 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
 
     setState(() => _submitting = true);
     debugPrint(
-      '[CreateCoinDialog] Submit start | isEditing=$_isEditing | name=$name | symbol=${symbolCtrl.text.trim()} | hasThumb=${_thumbBytes != null} | initialImageSet=${_initialImageUrl != null && _initialImageUrl!.isNotEmpty}',
+      '[CreateCoinDialog] Submit start | isEditing=$_isEditing | name=$name | symbol=$symbol | hasThumb=${_thumbBytes != null} | initialImageSet=${_initialImageUrl != null && _initialImageUrl!.isNotEmpty}',
     );
 
     final now = FieldValue.serverTimestamp();
     final Map<String, dynamic> coinDoc = {
       FirestoreUserCoinFields.ownerId: uid,
       FirestoreUserCoinFields.name: name,
-      FirestoreUserCoinFields.symbol: symbolCtrl.text.trim(),
+      FirestoreUserCoinFields.symbol: symbol,
       FirestoreUserCoinFields.description: desc,
       FirestoreUserCoinFields.socialLinks: links,
       FirestoreUserCoinFields.baseRatePerHour: rate,
