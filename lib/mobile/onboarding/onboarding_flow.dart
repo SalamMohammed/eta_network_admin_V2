@@ -33,7 +33,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       tagLabel: null,
       tagIcon: null,
       illustrationIcon: Icons.bolt_rounded,
-      illustrationAsset: 'android/app/src/images/Check-in daily.png',
+      illustrationAsset: null,
+      illustrationNetworkUrl:
+          'https://lh3.googleusercontent.com/aida-public/AB6AXuA-oNdccvaWMcbCv_6jW9PmkuSHfKob9_L0WmJ85X0YB_9UBVafl3v1q94SdaUtteFZn5WZAgsfIB7cD9vy52bU3THol-FveB6SCqhIdJyLDPpf7I5f7dtNda_FVVLKBKDIXuRW_H2O9qiKkMUK4We3cDYOGlncuykvGFkDQDcj_UZpPw20vzFCaRkl14XTd-1GL3WczQtiq8jhVANfFgf91BwoFqjRNDrojSdjU6HDajFwP3qVCorMhdRd3nrvMzh2SjpqF-YU39o',
     ),
     _OnboardingSlide(
       headerTitle: null,
@@ -46,7 +48,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       tagLabel: null,
       tagIcon: null,
       illustrationIcon: Icons.verified_rounded,
-      illustrationAsset: 'android/app/src/images/Secure your Position.png',
+      illustrationAsset: null,
+      illustrationNetworkUrl: null,
+      illustrationDesign: _OnboardingIllustration.securePosition,
     ),
     _OnboardingSlide(
       headerTitle: null,
@@ -59,7 +63,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       tagLabel: null,
       tagIcon: null,
       illustrationIcon: Icons.auto_awesome_rounded,
-      illustrationAsset: 'android/app/src/images/Auto Manager.png',
+      illustrationAsset: null,
+      illustrationNetworkUrl: null,
+      illustrationDesign: _OnboardingIllustration.autoCard,
     ),
     _OnboardingSlide(
       headerTitle: null,
@@ -72,7 +78,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       tagLabel: null,
       tagIcon: null,
       illustrationIcon: Icons.route_rounded,
-      illustrationAsset: 'android/app/src/images/Create & Share.png',
+      illustrationAsset: null,
+      illustrationNetworkUrl: null,
+      illustrationDesign: _OnboardingIllustration.coinPath,
     ),
     _OnboardingSlide(
       headerTitle: null,
@@ -85,7 +93,9 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       tagLabel: null,
       tagIcon: null,
       illustrationIcon: Icons.diamond_rounded,
-      illustrationAsset: 'android/app/src/images/community driven.png',
+      illustrationAsset: null,
+      illustrationNetworkUrl: null,
+      illustrationDesign: _OnboardingIllustration.diamondNetwork,
     ),
   ];
 
@@ -246,6 +256,8 @@ class _OnboardingSlide {
   final IconData? tagIcon;
   final IconData illustrationIcon;
   final String? illustrationAsset;
+  final String? illustrationNetworkUrl;
+  final _OnboardingIllustration? illustrationDesign;
 
   const _OnboardingSlide({
     required this.headerTitle,
@@ -258,6 +270,8 @@ class _OnboardingSlide {
     required this.tagIcon,
     required this.illustrationIcon,
     required this.illustrationAsset,
+    required this.illustrationNetworkUrl,
+    this.illustrationDesign,
   });
 }
 
@@ -426,7 +440,10 @@ class _SlideView extends StatelessWidget {
   Widget build(BuildContext context) {
     final blue = const Color(0xFF1B4BFF);
     final asset = (slide.illustrationAsset ?? '').trim();
+    final networkUrl = (slide.illustrationNetworkUrl ?? '').trim();
+    final hasNetworkUrl = networkUrl.isNotEmpty;
     final hasAsset = asset.isNotEmpty;
+    final design = slide.illustrationDesign;
     final screenH = MediaQuery.of(context).size.height;
     final imgH = (screenH * 0.28).clamp(scale(200), scale(260));
     final fallback = Center(
@@ -477,7 +494,24 @@ class _SlideView extends StatelessWidget {
             ),
             child: Stack(
               children: [
-                if (hasAsset)
+                if (hasNetworkUrl)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(scale(26)),
+                    child: _HtmlImageCard(
+                      imageUrl: networkUrl,
+                      icon: slide.illustrationIcon,
+                      scale: scale,
+                    ),
+                  )
+                else if (design != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(scale(26)),
+                    child: _OnboardingIllustrationView(
+                      illustration: design,
+                      scale: scale,
+                    ),
+                  )
+                else if (hasAsset)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(scale(26)),
                     child: Center(
@@ -605,6 +639,228 @@ class _SlideView extends StatelessWidget {
   }
 }
 
+class _HtmlImageCard extends StatelessWidget {
+  final String imageUrl;
+  final IconData icon;
+  final double Function(double v) scale;
+  const _HtmlImageCard({
+    required this.imageUrl,
+    required this.icon,
+    required this.scale,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final blue = const Color(0xFF1B4BFF);
+    final bg1 = const Color(0xFF1A2633);
+    final bg2 = const Color(0xFF101922);
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [bg1, bg2],
+              ),
+            ),
+          ),
+        ),
+        Positioned.fill(
+          child: Image.network(
+            imageUrl,
+            fit: BoxFit.cover,
+            color: Colors.white.withValues(alpha: 0.22),
+            colorBlendMode: BlendMode.overlay,
+            errorBuilder: (context, error, stack) {
+              return Center(
+                child: Icon(
+                  icon,
+                  size: scale(56),
+                  color: blue.withValues(alpha: 0.92),
+                ),
+              );
+            },
+          ),
+        ),
+        Center(
+          child: Transform.scale(
+            scale: 1.5,
+            child: Icon(
+              icon,
+              size: scale(46),
+              color: blue,
+              shadows: [
+                Shadow(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  blurRadius: scale(18),
+                  offset: Offset(0, scale(8)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _IllustrationStayInLoop extends StatefulWidget {
+  final double Function(double v) scale;
+  const _IllustrationStayInLoop({required this.scale});
+
+  @override
+  State<_IllustrationStayInLoop> createState() =>
+      _IllustrationStayInLoopState();
+}
+
+class _IllustrationStayInLoopState extends State<_IllustrationStayInLoop>
+    with SingleTickerProviderStateMixin {
+  static const _imgUrl =
+      'https://lh3.googleusercontent.com/aida-public/AB6AXuBlCweTwYwElGuuH8-EB_JYagzr9m8SIc3ywziKYihccPmpherjMqusR1XVxY0XJKCOkBvuadN-yyNwDJD2c1mikIxikOWy_E6BsacPRemd_KgzTTuB7YjjZaiTQVduxyiKOrVFXS9DTLpL_adiOdgo_dvZaGGpfvlq3KwQ0ARYgN_rqItsem2bZO1ib2c7CjqHwMGKyPfg_aDCFS9OosM4G8pCtH_W1pQHimwYDSC98J2opZJHipXMyEBPHPtJeSepLdNiLOA_Wn8';
+
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3000),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blue = const Color(0xFF137FEC);
+    return LayoutBuilder(
+      builder: (context, c) {
+        final w = c.maxWidth;
+        final h = c.maxHeight;
+        final base = math.min(w, h);
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [const Color(0xFF0F172A), const Color(0xFF0B1220)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _DotGridPainter(
+                  spacing: widget.scale(24),
+                  dotRadius: widget.scale(1.1),
+                  color: blue.withValues(alpha: 0.10),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      blue.withValues(alpha: 0.10),
+                      const Color(0xFF8B5CF6).withValues(alpha: 0.08),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              ),
+            ),
+            AnimatedBuilder(
+              animation: _pulse,
+              builder: (context, child) {
+                final t = 0.5 - 0.5 * math.cos(_pulse.value * math.pi * 2);
+                final size = base * (0.62 + 0.05 * t);
+                return Center(
+                  child: Container(
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: blue.withValues(alpha: 0.12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: blue.withValues(alpha: 0.40),
+                          blurRadius: widget.scale(80),
+                          spreadRadius: widget.scale(6),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.all(widget.scale(18)),
+                child: Image.network(
+                  _imgUrl,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stack) {
+                    return Center(
+                      child: Icon(
+                        Icons.notifications_active_rounded,
+                        size: widget.scale(64),
+                        color: Colors.white54,
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Positioned(
+              top: h * 0.16,
+              right: w * 0.12,
+              child: Transform.rotate(
+                angle: 0.22,
+                child: Container(
+                  width: widget.scale(56),
+                  height: widget.scale(56),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(widget.scale(16)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: widget.scale(20),
+                        offset: Offset(0, widget.scale(10)),
+                      ),
+                    ],
+                  ),
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.notifications_active_rounded,
+                    size: widget.scale(32),
+                    color: blue,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 _OnboardingIllustration _illustrationForSlide(_OnboardingSlide slide) {
   final asset = (slide.illustrationAsset ?? '').toLowerCase();
   if (asset.contains('auto manager')) return _OnboardingIllustration.autoCard;
@@ -665,25 +921,7 @@ class _NotificationsOnboardingPage extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(scale(26)),
-                child: Center(
-                  child: FractionallySizedBox(
-                    widthFactor: 1,
-                    heightFactor: 1,
-                    child: Image.asset(
-                      'android/app/src/images/Stay in The Loop.png',
-                      fit: BoxFit.fill,
-                      errorBuilder: (context, error, stack) {
-                        return Center(
-                          child: Icon(
-                            Icons.notifications_active_rounded,
-                            size: scale(64),
-                            color: Colors.white54,
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
+                child: _IllustrationStayInLoop(scale: scale),
               ),
             ),
             SizedBox(height: scale(22)),
@@ -1133,7 +1371,13 @@ class _TagPill extends StatelessWidget {
   }
 }
 
-enum _OnboardingIllustration { autoCard, diamondNetwork, coinPath, checkCard }
+enum _OnboardingIllustration {
+  autoCard,
+  diamondNetwork,
+  coinPath,
+  checkCard,
+  securePosition,
+}
 
 class _OnboardingIllustrationView extends StatelessWidget {
   final _OnboardingIllustration illustration;
@@ -1154,6 +1398,8 @@ class _OnboardingIllustrationView extends StatelessWidget {
         return _IllustrationCoinPath(scale: scale);
       case _OnboardingIllustration.checkCard:
         return _IllustrationCheckCard(scale: scale);
+      case _OnboardingIllustration.securePosition:
+        return _IllustrationSecurePosition(scale: scale);
     }
   }
 }
@@ -1199,168 +1445,561 @@ class _StarDotsPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _IllustrationAutoCard extends StatelessWidget {
+class _IllustrationAutoCard extends StatefulWidget {
   final double Function(double v) scale;
   const _IllustrationAutoCard({required this.scale});
 
   @override
+  State<_IllustrationAutoCard> createState() => _IllustrationAutoCardState();
+}
+
+class _IllustrationAutoCardState extends State<_IllustrationAutoCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final blue = const Color(0xFF1B4BFF);
-    final green = const Color(0xFF2ECC71);
-    final card = Container(
-      margin: EdgeInsets.all(scale(18)),
-      padding: EdgeInsets.all(scale(16)),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F1A24).withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(scale(22)),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: scale(44),
-                height: scale(44),
-                decoration: BoxDecoration(
-                  color: blue.withValues(alpha: 0.18),
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.smart_toy_rounded,
-                  size: scale(22),
-                  color: blue.withValues(alpha: 0.95),
+    final blue = const Color(0xFF3B82F6);
+    final green = const Color(0xFF22C55E);
+    final surface = const Color(0xFF1E293B);
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        final w = c.maxWidth;
+        final h = c.maxHeight;
+        final base = math.min(w, h);
+        final cardWidth = math.min(w * 0.78, widget.scale(240));
+        final cardPadding = widget.scale(16);
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: const Color(0xFF0F172A)),
+              ),
+            ),
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _DotGridPainter(
+                  spacing: widget.scale(24),
+                  dotRadius: widget.scale(1.1),
+                  color: blue.withValues(alpha: 0.15),
                 ),
               ),
-              const Spacer(),
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: scale(14),
-                  vertical: scale(8),
-                ),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: green.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: green.withValues(alpha: 0.30)),
+                  gradient: LinearGradient(
+                    colors: [blue.withValues(alpha: 0.08), Colors.transparent],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: scale(8),
-                      height: scale(8),
-                      decoration: BoxDecoration(
-                        color: green,
-                        shape: BoxShape.circle,
-                      ),
+              ),
+            ),
+            AnimatedBuilder(
+              animation: _pulse,
+              builder: (context, child) {
+                final t = 0.5 - 0.5 * math.cos(_pulse.value * math.pi * 2);
+                final size = base * (0.56 + 0.06 * t);
+                return Center(
+                  child: Container(
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: blue.withValues(alpha: 0.12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: blue.withValues(alpha: 0.40),
+                          blurRadius: widget.scale(90),
+                          spreadRadius: widget.scale(8),
+                        ),
+                      ],
                     ),
-                    SizedBox(width: scale(8)),
-                    Text(
-                      'AUTO',
-                      style: TextStyle(
-                        color: green,
-                        fontSize: scale(12),
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.8,
-                      ),
+                  ),
+                );
+              },
+            ),
+            Center(
+              child: Container(
+                width: cardWidth,
+                padding: EdgeInsets.all(cardPadding),
+                decoration: BoxDecoration(
+                  color: surface.withValues(alpha: 0.95),
+                  borderRadius: BorderRadius.circular(widget.scale(18)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.28),
+                      blurRadius: widget.scale(26),
+                      offset: Offset(0, widget.scale(16)),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: widget.scale(40),
+                          height: widget.scale(40),
+                          decoration: BoxDecoration(
+                            color: blue.withValues(alpha: 0.16),
+                            shape: BoxShape.circle,
+                          ),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.smart_toy_rounded,
+                            size: widget.scale(22),
+                            color: blue,
+                          ),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: widget.scale(10),
+                            vertical: widget.scale(6),
+                          ),
+                          decoration: BoxDecoration(
+                            color: green.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: green.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              AnimatedBuilder(
+                                animation: _pulse,
+                                builder: (context, child) {
+                                  final t =
+                                      0.5 -
+                                      0.5 *
+                                          math.cos(_pulse.value * math.pi * 2);
+                                  return Container(
+                                    width: widget.scale(6),
+                                    height: widget.scale(6),
+                                    decoration: BoxDecoration(
+                                      color: green.withValues(
+                                        alpha: 0.65 + 0.35 * t,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  );
+                                },
+                              ),
+                              SizedBox(width: widget.scale(8)),
+                              Text(
+                                'Auto',
+                                style: TextStyle(
+                                  color: green,
+                                  fontSize: widget.scale(11),
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: widget.scale(14)),
+                    Column(
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              'Rate',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: widget.scale(12),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              '12.5 ETA/hr',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: widget.scale(14),
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: widget.scale(8)),
+                        Container(
+                          height: widget.scale(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: FractionallySizedBox(
+                              widthFactor: 0.75,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: blue,
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: widget.scale(12)),
+                        Container(
+                          height: 1,
+                          color: Colors.white.withValues(alpha: 0.08),
+                        ),
+                        SizedBox(height: widget.scale(12)),
+                        Row(
+                          children: [
+                            Text(
+                              'Total Mined',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: widget.scale(12),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const Spacer(),
+                            Icon(
+                              Icons.monetization_on_rounded,
+                              size: widget.scale(16),
+                              color: const Color(0xFFF59E0B),
+                            ),
+                            SizedBox(width: widget.scale(6)),
+                            Text(
+                              '2,840.5',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: widget.scale(12.5),
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
-            ],
-          ),
-          SizedBox(height: scale(16)),
-          Row(
-            children: [
-              Text(
-                'Rate',
-                style: TextStyle(
-                  color: Colors.white60,
-                  fontSize: scale(14),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '12.5 ETA/hr',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: scale(18),
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: scale(10)),
-          Container(
-            height: scale(10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(999),
             ),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: FractionallySizedBox(
-                widthFactor: 0.72,
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: blue,
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SizedBox(height: scale(16)),
-          Row(
-            children: [
-              Text(
-                'Total Mined',
-                style: TextStyle(
-                  color: Colors.white60,
-                  fontSize: scale(14),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const Spacer(),
-              Container(
-                width: scale(18),
-                height: scale(18),
+            Positioned(
+              top: -widget.scale(12),
+              right: -widget.scale(12),
+              child: Container(
+                width: widget.scale(70),
+                height: widget.scale(70),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFC107),
                   shape: BoxShape.circle,
+                  color: blue.withValues(alpha: 0.12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: blue.withValues(alpha: 0.25),
+                      blurRadius: widget.scale(40),
+                    ),
+                  ],
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  '\$',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: scale(12),
-                    fontWeight: FontWeight.w900,
-                    height: 1,
+              ),
+            ),
+            Positioned(
+              bottom: h * 0.20,
+              left: w * 0.18,
+              child: Container(
+                width: widget.scale(52),
+                height: widget.scale(52),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFA855F7).withValues(alpha: 0.12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFA855F7).withValues(alpha: 0.20),
+                      blurRadius: widget.scale(34),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _IllustrationSecurePosition extends StatefulWidget {
+  final double Function(double v) scale;
+  const _IllustrationSecurePosition({required this.scale});
+
+  @override
+  State<_IllustrationSecurePosition> createState() =>
+      _IllustrationSecurePositionState();
+}
+
+class _IllustrationSecurePositionState
+    extends State<_IllustrationSecurePosition>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final blue = const Color(0xFF3B82F6);
+    final surface = const Color(0xFF1E293B);
+    return LayoutBuilder(
+      builder: (context, c) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: DecoratedBox(decoration: BoxDecoration(color: surface)),
+            ),
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _DotGridPainter(
+                  spacing: widget.scale(24),
+                  dotRadius: widget.scale(1.1),
+                  color: Colors.white.withValues(alpha: 0.07),
+                ),
+              ),
+            ),
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [blue.withValues(alpha: 0.10), Colors.transparent],
                   ),
                 ),
               ),
-              SizedBox(width: scale(8)),
-              Text(
-                '2,840.5',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: scale(18),
-                  fontWeight: FontWeight.w900,
+            ),
+            Positioned.fill(
+              child: Padding(
+                padding: EdgeInsets.all(widget.scale(14)),
+                child: Center(
+                  child: AspectRatio(
+                    aspectRatio: 240 / 200,
+                    child: CustomPaint(
+                      painter: _SecurePositionSvgPainter(pulse: _pulseCtrl),
+                    ),
+                  ),
                 ),
               ),
-            ],
-          ),
-        ],
-      ),
+            ),
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: widget.scale(12)),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: widget.scale(14),
+                    vertical: widget.scale(8),
+                  ),
+                  decoration: BoxDecoration(
+                    color: surface.withValues(alpha: 0.95),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.14),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.30),
+                        blurRadius: widget.scale(18),
+                        offset: Offset(0, widget.scale(10)),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.trending_up_rounded,
+                        size: widget.scale(18),
+                        color: blue,
+                      ),
+                      SizedBox(width: widget.scale(8)),
+                      Text(
+                        'EARLY ACCESS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: widget.scale(11.5),
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.7,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _DotGridPainter extends CustomPainter {
+  final double spacing;
+  final double dotRadius;
+  final Color color;
+  const _DotGridPainter({
+    required this.spacing,
+    required this.dotRadius,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final p = Paint()..color = color;
+    final dxCount = (size.width / spacing).ceil() + 1;
+    final dyCount = (size.height / spacing).ceil() + 1;
+    for (int y = 0; y < dyCount; y++) {
+      for (int x = 0; x < dxCount; x++) {
+        final dx = x * spacing;
+        final dy = y * spacing;
+        canvas.drawCircle(Offset(dx, dy), dotRadius, p);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DotGridPainter oldDelegate) {
+    return oldDelegate.spacing != spacing ||
+        oldDelegate.dotRadius != dotRadius ||
+        oldDelegate.color != color;
+  }
+}
+
+class _SecurePositionSvgPainter extends CustomPainter {
+  final Animation<double> pulse;
+  _SecurePositionSvgPainter({required this.pulse}) : super(repaint: pulse);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final sx = size.width / 240.0;
+    final sy = size.height / 200.0;
+    canvas.save();
+    canvas.scale(sx, sy);
+
+    final slate100 = Paint()..color = Colors.white.withValues(alpha: 0.06);
+    final slate200 = Paint()..color = Colors.white.withValues(alpha: 0.10);
+    final phoneBlue = Paint()..color = const Color(0xFF3B82F6);
+
+    canvas.drawOval(
+      Rect.fromCenter(center: const Offset(120, 160), width: 180, height: 48),
+      slate100,
     );
 
-    return _IllustrationBackground(
-      scale: scale,
-      child: Center(child: card),
+    final side1 = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(35, 115, 30, 50),
+      const Radius.circular(6),
     );
+    canvas.drawRRect(side1, slate200);
+
+    final side2 = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(175, 125, 30, 40),
+      const Radius.circular(6),
+    );
+    canvas.drawRRect(side2, slate200);
+
+    final phoneRect = RRect.fromRectAndRadius(
+      const Rect.fromLTWH(85, 60, 70, 100),
+      const Radius.circular(10),
+    );
+    canvas.drawRRect(phoneRect, phoneBlue);
+
+    final overlay = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFFFFFFFF), Color(0x00FFFFFF)],
+      ).createShader(const Rect.fromLTWH(85, 60, 70, 100))
+      ..color = Colors.white.withValues(alpha: 0.25);
+    canvas.save();
+    canvas.clipRRect(phoneRect);
+    canvas.drawRect(const Rect.fromLTWH(85, 60, 70, 100), overlay);
+    canvas.restore();
+
+    final ring = Paint()..color = Colors.white.withValues(alpha: 0.18);
+    canvas.drawCircle(const Offset(120, 100), 20, ring);
+
+    final check = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 4
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final path = Path()
+      ..moveTo(110, 100)
+      ..lineTo(116, 106)
+      ..lineTo(130, 92);
+    canvas.drawPath(path, check);
+
+    final pulseT = 0.70 + 0.30 * math.sin(pulse.value * math.pi * 2);
+    final amber = Paint()
+      ..color = const Color(0xFFFBBF24).withValues(alpha: 0.65 + 0.35 * pulseT);
+    canvas.drawCircle(const Offset(165, 50), 6 * (0.92 + 0.16 * pulseT), amber);
+
+    final amberLine = Paint()
+      ..color = const Color(0xFFF59E0B)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(const Offset(165, 56), const Offset(165, 62), amberLine);
+
+    final smallBlue = Paint()
+      ..color = const Color(0xFF93C5FD).withValues(alpha: 0.50);
+    canvas.drawCircle(const Offset(65, 70), 4, smallBlue);
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _SecurePositionSvgPainter oldDelegate) {
+    return oldDelegate.pulse != pulse;
   }
 }
 

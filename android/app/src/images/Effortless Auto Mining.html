@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Onboarding: Auto Mining</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=Noto+Sans:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#3B82F6", 
+                        "primary-dark": "#2563EB",
+                        "background-light": "#FFFFFF",
+                        "background-dark": "#0F172A",
+                        "surface-light": "#F8FAFC",
+                        "surface-dark": "#1E293B",
+                        "text-main-light": "#1E293B",
+                        "text-main-dark": "#F8FAFC",
+                        "text-secondary-light": "#64748B",
+                        "text-secondary-dark": "#94A3B8",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "body": ["Noto Sans", "sans-serif"],
+                    },
+                    boxShadow: {
+                        'glow': '0 0 20px -5px rgba(59, 130, 246, 0.5)',
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            min-height: 100vh;overscroll-behavior-y: none; 
+        }::-webkit-scrollbar {
+            display: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-text-main-light dark:text-text-main-dark font-display antialiased selection:bg-primary selection:text-white transition-colors duration-300">
+<div class="relative flex h-full min-h-screen w-full flex-col max-w-md mx-auto overflow-hidden bg-background-light dark:bg-background-dark">
+<div class="absolute top-[-10%] right-[-10%] w-64 h-64 bg-primary/10 rounded-full blur-3xl pointer-events-none"></div>
+<div class="absolute bottom-[-10%] left-[-10%] w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
+<header class="flex items-center justify-between px-6 pt-8 pb-2 w-full z-20">
+<div class="flex items-center gap-1.5">
+<div class="h-1.5 w-8 rounded-full bg-surface-light dark:bg-surface-dark overflow-hidden relative">
+<div class="absolute inset-0 bg-primary w-full"></div>
+</div>
+<div class="h-1.5 w-8 rounded-full bg-surface-light dark:bg-surface-dark overflow-hidden relative">
+<div class="absolute inset-0 bg-primary w-full"></div>
+</div>
+<div class="h-1.5 w-8 rounded-full bg-surface-light dark:bg-surface-dark overflow-hidden relative">
+<div class="absolute inset-0 bg-primary w-full"></div>
+</div>
+<div class="h-1.5 w-8 rounded-full bg-surface-light dark:bg-surface-dark overflow-hidden relative">
+<div class="absolute inset-0 bg-primary w-full animate-pulse"></div>
+</div>
+<div class="h-1.5 w-8 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+</div>
+<button class="text-text-secondary-light dark:text-text-secondary-dark hover:text-primary dark:hover:text-primary text-sm font-semibold tracking-wide transition-colors py-2 px-3 -mr-3 rounded-lg active:bg-slate-100 dark:active:bg-slate-800">
+                Skip
+            </button>
+</header>
+<main class="flex-1 flex flex-col items-center justify-center px-6 w-full relative z-10">
+<div class="w-full flex justify-center items-center mb-10 relative">
+<div class="relative w-full aspect-[4/3] rounded-3xl overflow-hidden shadow-2xl shadow-primary/10 border border-slate-100 dark:border-slate-800 bg-surface-light dark:bg-surface-dark group">
+<div class="absolute inset-0 bg-slate-50 dark:bg-slate-900">
+<div class="absolute inset-0 opacity-[0.4]" style="background-image: radial-gradient(circle at 2px 2px, rgba(59, 130, 246, 0.15) 1px, transparent 0); background-size: 24px 24px;"></div>
+</div>
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="absolute w-48 h-48 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
+<div class="relative z-10 w-56 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 p-4 transform transition-transform duration-500 hover:scale-105">
+<div class="flex items-center justify-between mb-4">
+<div class="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary text-xl">smart_toy</span>
+</div>
+<div class="px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center gap-1.5 border border-green-200 dark:border-green-800">
+<div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+<span class="text-[10px] font-bold text-green-700 dark:text-green-400 uppercase tracking-wide">Auto</span>
+</div>
+</div>
+<div class="space-y-3">
+<div>
+<div class="flex justify-between items-baseline mb-1">
+<span class="text-xs font-medium text-slate-500 dark:text-slate-400">Rate</span>
+<span class="text-sm font-bold text-slate-700 dark:text-slate-200">12.5 ETA/hr</span>
+</div>
+<div class="h-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+<div class="h-full bg-primary w-3/4 rounded-full relative">
+<div class="absolute inset-0 bg-white/20"></div>
+</div>
+</div>
+</div>
+<div class="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-700">
+<span class="text-xs text-slate-500 dark:text-slate-400">Total Mined</span>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-yellow-500 text-sm">monetization_on</span>
+<span class="text-xs font-bold text-slate-700 dark:text-slate-200">2,840.5</span>
+</div>
+</div>
+</div>
+</div>
+<div class="absolute -top-4 -right-4 w-16 h-16 bg-blue-100 dark:bg-blue-900/20 rounded-full blur-xl"></div>
+<div class="absolute bottom-8 left-8 w-12 h-12 bg-purple-100 dark:bg-purple-900/20 rounded-full blur-xl"></div>
+</div>
+</div>
+<div class="absolute -bottom-5 bg-surface-light dark:bg-surface-dark border border-slate-200 dark:border-slate-700 px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[20px]">smart_toy</span>
+<span class="text-xs font-bold uppercase tracking-wider text-text-main-light dark:text-text-main-dark">Auto Manager</span>
+</div>
+</div>
+<div class="flex flex-col items-center text-center space-y-4 mt-2">
+<h1 class="text-3xl font-extrabold text-text-main-light dark:text-text-main-dark tracking-tight leading-tight">
+                    Effortless <br/><span class="text-primary">Auto Mining</span>
+</h1>
+<p class="text-text-secondary-light dark:text-text-secondary-dark text-base font-medium leading-relaxed max-w-xs mx-auto">
+                    Set it and forget it. Automatically mine ETA and your favorite Community coins with maximum efficiency around the clock.
+                </p>
+</div>
+</main>
+<footer class="w-full px-6 pb-8 pt-4 z-20">
+<div class="w-full max-w-sm mx-auto">
+<button class="w-full bg-primary hover:bg-primary-dark text-white font-bold text-lg py-4 rounded-2xl shadow-glow active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-2 group relative overflow-hidden">
+<div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 rounded-2xl"></div>
+<span class="relative">Continue</span>
+<span class="material-symbols-outlined relative text-[24px] group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</button>
+</div>
+</footer>
+</div>
+</body></html>
