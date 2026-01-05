@@ -13,6 +13,7 @@ import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/ads_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/auth_verification_service.dart';
 
 class MobileHomePage extends StatefulWidget {
   const MobileHomePage({super.key});
@@ -2602,6 +2603,40 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     final doc = _findDocById(id);
     if (doc == null) return;
 
+    final u = FirebaseAuth.instance.currentUser;
+    if (u != null && !(u.emailVerified)) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text('Email verification required'),
+            content: const Text('Please verify your email to continue.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Close'),
+              ),
+              TextButton(
+                onPressed: () =>
+                    AuthVerificationService.sendVerificationEmail(),
+                child: const Text('Resend Email'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final ok =
+                      await AuthVerificationService.refreshAndCheckVerified();
+                  if (!ctx.mounted) return;
+                  Navigator.pop(ctx, ok);
+                },
+                child: const Text('Refresh Status'),
+              ),
+            ],
+          );
+        },
+      );
+      if (proceed != true) return;
+    }
+
     final data = doc.data();
     final storeProductId =
         (data[FirestoreManagerFields.storeProductId] as String?) ?? '';
@@ -2908,6 +2943,40 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     required String targetManagerId,
     required String targetProductId,
   }) async {
+    final u = FirebaseAuth.instance.currentUser;
+    if (u != null && !(u.emailVerified)) {
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          return AlertDialog(
+            title: const Text('Email verification required'),
+            content: const Text('Please verify your email to view plans.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Close'),
+              ),
+              TextButton(
+                onPressed: () =>
+                    AuthVerificationService.sendVerificationEmail(),
+                child: const Text('Resend Email'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final ok =
+                      await AuthVerificationService.refreshAndCheckVerified();
+                  if (!ctx.mounted) return;
+                  Navigator.pop(ctx, ok);
+                },
+                child: const Text('Refresh Status'),
+              ),
+            ],
+          );
+        },
+      );
+      if (proceed != true) return;
+    }
+
     final offs = offerings;
     if (offs == null) {
       if (!mounted) return;
@@ -2947,6 +3016,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
       return;
     }
 
+    if (!mounted) return;
     final chosen = await showDialog<Package>(
       context: context,
       builder: (ctx) {
@@ -2997,7 +3067,6 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
         );
       },
     );
-
     if (chosen == null) return;
     if (!mounted) return;
 
