@@ -142,6 +142,11 @@ class _LoginPageState extends State<LoginPage> {
         );
         final account = await googleSignIn.signIn();
         if (account == null) {
+          if (mounted) {
+            setState(() {
+              _loading = false;
+            });
+          }
           return;
         }
         final auth = await account.authentication;
@@ -167,9 +172,9 @@ class _LoginPageState extends State<LoginPage> {
       setState(() {
         _error = _friendlyAuthError(e);
       });
-    } catch (_) {
+    } catch (e) {
       setState(() {
-        _error = 'Google sign-in failed';
+        _error = 'Google sign-in failed: ${e.toString().split('\n').first}';
       });
     } finally {
       if (mounted) {

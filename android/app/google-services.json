@@ -50,6 +50,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "899853959610-ka0rhfld4t1r5f553ihbk5igihrpucoc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "net.etanetwork.app",
+            "certificate_hash": "e227978c8abf822d7b0f98c41465ba9b3eeac570"
+          }
+        },
+        {
           "client_id": "899853959610-th8ebstq66aeo174cq6r2gv0bcu5pq1b.apps.googleusercontent.com",
           "client_type": 3
         }

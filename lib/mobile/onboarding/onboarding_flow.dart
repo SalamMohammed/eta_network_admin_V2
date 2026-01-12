@@ -19,7 +19,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   bool _requestingNotifPermission = false;
   NotificationSettings? _notifSettings;
   bool _disclaimerAccepted = false;
-  double _swipeValue = 0.0;
 
   static const _slides = <_OnboardingSlide>[
     _OnboardingSlide(
@@ -176,12 +175,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                     return _DisclaimerOnboardingPage(
                       scale: s,
                       accepted: _disclaimerAccepted,
-                      swipeValue: _swipeValue,
                       onAcceptedChanged: (v) {
                         setState(() => _disclaimerAccepted = v);
-                      },
-                      onSwipeChanged: (v) {
-                        setState(() => _swipeValue = v);
                       },
                       onSwipeCompleted: () async {
                         if (!_disclaimerAccepted) {
@@ -192,7 +187,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                               ),
                             ),
                           );
-                          setState(() => _swipeValue = 0.0);
                           return;
                         }
                         await _completeOnboarding();
@@ -1083,17 +1077,13 @@ class _NotificationsOnboardingPage extends StatelessWidget {
 class _DisclaimerOnboardingPage extends StatelessWidget {
   final double Function(double v) scale;
   final bool accepted;
-  final double swipeValue;
   final ValueChanged<bool> onAcceptedChanged;
-  final ValueChanged<double> onSwipeChanged;
   final Future<void> Function() onSwipeCompleted;
 
   const _DisclaimerOnboardingPage({
     required this.scale,
     required this.accepted,
-    required this.swipeValue,
     required this.onAcceptedChanged,
-    required this.onSwipeChanged,
     required this.onSwipeCompleted,
   });
 
@@ -1219,9 +1209,7 @@ class _DisclaimerOnboardingPage extends StatelessWidget {
             SizedBox(height: scale(22)),
             _SwipeToContinue(
               scale: scale,
-              value: swipeValue,
               enabled: accepted,
-              onChanged: onSwipeChanged,
               onCompleted: onSwipeCompleted,
             ),
             SizedBox(height: scale(18)),
@@ -1232,47 +1220,90 @@ class _DisclaimerOnboardingPage extends StatelessWidget {
   }
 }
 
-class _SwipeToContinue extends StatelessWidget {
+class _SwipeToContinue extends StatefulWidget {
   final double Function(double v) scale;
-  final double value;
   final bool enabled;
-  final ValueChanged<double> onChanged;
   final Future<void> Function() onCompleted;
 
   const _SwipeToContinue({
     required this.scale,
-    required this.value,
     required this.enabled,
-    required this.onChanged,
     required this.onCompleted,
   });
+
+  @override
+  State<_SwipeToContinue> createState() => _SwipeToContinueState();
+}
+
+class _SwipeToContinueState extends State<_SwipeToContinue>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double> _anim;
+  double _value = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _anim = Tween<double>(begin: 0.0, end: 0.0).animate(_ctrl);
+    _ctrl.addListener(() {
+      setState(() => _value = _anim.value);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(_SwipeToContinue old) {
+    super.didUpdateWidget(old);
+    if (!widget.enabled && _value > 0) {
+      setState(() => _value = 0.0);
+    }
+  }
+
+  void _onDragUpdate(DragUpdateDetails d, double maxX) {
+    if (!widget.enabled || maxX <= 0) return;
+    // Stop any snap-back animation if user grabs it again
+    if (_ctrl.isAnimating) _ctrl.stop();
+    setState(() {
+      _value = (_value + (d.delta.dx / maxX)).clamp(0.0, 1.0);
+    });
+  }
+
+  void _onDragEnd() {
+    if (!widget.enabled) return;
+    if (_value >= 0.92) {
+      widget.onCompleted();
+    } else {
+      // Snap back smoothly
+      _anim = Tween<double>(
+        begin: _value,
+        end: 0.0,
+      ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOut));
+      _ctrl.reset();
+      _ctrl.forward();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final blue = const Color(0xFF1B4BFF);
     return LayoutBuilder(
       builder: (context, c) {
-        final h = scale(56);
-        final knob = scale(46);
-        final maxX = (c.maxWidth - knob - scale(6)).clamp(0.0, 99999.0);
-        final x = (value.clamp(0.0, 1.0) * maxX);
+        final h = widget.scale(56);
+        final knob = widget.scale(46);
+        final maxX = (c.maxWidth - knob - widget.scale(6)).clamp(0.0, 99999.0);
+        final x = (_value.clamp(0.0, 1.0) * maxX);
         return GestureDetector(
-          onHorizontalDragUpdate: enabled
-              ? (d) {
-                  if (maxX <= 0) return;
-                  final next = (value + (d.delta.dx / maxX)).clamp(0.0, 1.0);
-                  onChanged(next);
-                }
-              : null,
-          onHorizontalDragEnd: enabled
-              ? (_) async {
-                  if (value >= 0.92) {
-                    await onCompleted();
-                  } else {
-                    onChanged(0.0);
-                  }
-                }
-              : (_) => onChanged(0.0),
+          onHorizontalDragUpdate: (d) => _onDragUpdate(d, maxX),
+          onHorizontalDragEnd: (_) => _onDragEnd(),
           child: Container(
             height: h,
             decoration: BoxDecoration(
@@ -1287,24 +1318,24 @@ class _SwipeToContinue extends StatelessWidget {
                   'Swipe to Continue',
                   style: TextStyle(
                     color: Colors.white38,
-                    fontSize: scale(14.5),
+                    fontSize: widget.scale(14.5),
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 Positioned(
-                  left: scale(3) + x,
+                  left: widget.scale(3) + x,
                   child: Container(
                     width: knob,
                     height: knob,
                     decoration: BoxDecoration(
-                      color: enabled ? blue : Colors.white12,
+                      color: widget.enabled ? blue : Colors.white12,
                       shape: BoxShape.circle,
-                      boxShadow: enabled
+                      boxShadow: widget.enabled
                           ? [
                               BoxShadow(
                                 color: blue.withValues(alpha: 0.35),
-                                blurRadius: scale(18),
-                                offset: Offset(0, scale(10)),
+                                blurRadius: widget.scale(18),
+                                offset: Offset(0, widget.scale(10)),
                               ),
                             ]
                           : null,
@@ -1313,7 +1344,7 @@ class _SwipeToContinue extends StatelessWidget {
                     child: Icon(
                       Icons.arrow_forward_rounded,
                       color: Colors.white,
-                      size: scale(20),
+                      size: widget.scale(20),
                     ),
                   ),
                 ),
