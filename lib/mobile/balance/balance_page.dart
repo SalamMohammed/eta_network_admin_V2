@@ -224,7 +224,7 @@ class _BalancePageState extends State<BalancePage> {
           icon: const Icon(Icons.arrow_back_rounded),
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const Text('Wallet'),
+        title: const Text('Balance'),
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.only(bottom: vPad),

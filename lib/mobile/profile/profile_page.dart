@@ -145,37 +145,64 @@ class _ProfilePageState extends State<ProfilePage> {
                         Stack(
                           alignment: Alignment.center,
                           children: [
-                            Container(
+                            SizedBox(
                               width: s(92),
                               height: s(92),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.14),
-                                  width: s(3),
-                                ),
-                              ),
-                              child: GestureDetector(
-                                onTap: _uploadProfileImage,
-                                child: CircleAvatar(
-                                  backgroundColor: Colors.white.withValues(
-                                    alpha: 0.10,
+                              child: Stack(
+                                children: [
+                                  Positioned.fill(
+                                    child: GestureDetector(
+                                      onTap: _uploadProfileImage,
+                                      child: ClipOval(
+                                        child: (thumbnailUrl != null &&
+                                                thumbnailUrl!.isNotEmpty)
+                                            ? Image.network(
+                                                thumbnailUrl!,
+                                                fit: BoxFit.cover,
+                                                errorBuilder:
+                                                    (context, error, stack) {
+                                                  return Container(
+                                                    color: Colors.white
+                                                        .withValues(
+                                                      alpha: 0.10,
+                                                    ),
+                                                    alignment: Alignment.center,
+                                                    child: Icon(
+                                                      Icons.person_rounded,
+                                                      size: s(44),
+                                                      color: Colors.white70,
+                                                    ),
+                                                  );
+                                                },
+                                              )
+                                            : Container(
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.10,
+                                                ),
+                                                alignment: Alignment.center,
+                                                child: Icon(
+                                                  Icons.person_rounded,
+                                                  size: s(44),
+                                                  color: Colors.white70,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
                                   ),
-                                  backgroundImage:
-                                      (thumbnailUrl != null &&
-                                          thumbnailUrl!.isNotEmpty)
-                                      ? NetworkImage(thumbnailUrl!)
-                                      : null,
-                                  child:
-                                      (thumbnailUrl == null ||
-                                          thumbnailUrl!.isEmpty)
-                                      ? Icon(
-                                          Icons.person_rounded,
-                                          size: s(44),
-                                          color: Colors.white70,
-                                        )
-                                      : null,
-                                ),
+                                  Positioned.fill(
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.14,
+                                          ),
+                                          width: s(3),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                             Positioned(

@@ -34,6 +34,33 @@ class CoinService {
     return snap.data() ?? {};
   }
 
+  static Future<void> checkCoinUniqueness({
+    String? name,
+    String? symbol,
+    String? excludeUid,
+  }) async {
+    if (name != null && name.isNotEmpty) {
+      final q = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.userCoins)
+          .where(FirestoreUserCoinFields.name, isEqualTo: name)
+          .limit(1)
+          .get();
+      if (q.docs.any((d) => d.id != excludeUid)) {
+        throw Exception('Coin name "$name" is already taken.');
+      }
+    }
+    if (symbol != null && symbol.isNotEmpty) {
+      final q = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.userCoins)
+          .where(FirestoreUserCoinFields.symbol, isEqualTo: symbol)
+          .limit(1)
+          .get();
+      if (q.docs.any((d) => d.id != excludeUid)) {
+        throw Exception('Coin symbol "$symbol" is already taken.');
+      }
+    }
+  }
+
   static Future<void> createOrUpdateUserCoin({
     required String uid,
     required Map<String, dynamic> coin,
@@ -41,6 +68,12 @@ class CoinService {
     Uint8List? thumbnailBytes,
     String? thumbnailContentType,
   }) async {
+    await checkCoinUniqueness(
+      name: coin[FirestoreUserCoinFields.name] as String?,
+      symbol: coin[FirestoreUserCoinFields.symbol] as String?,
+      excludeUid: uid,
+    );
+
     try {
       debugPrint(
         '[CoinService] Upload start | uid=$uid | bytes=${thumbnailBytes?.length ?? 0} | ct=$thumbnailContentType | web=$kIsWeb | apps=${Firebase.apps.length}',

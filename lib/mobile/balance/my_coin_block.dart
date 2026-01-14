@@ -871,29 +871,64 @@ void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
                                   Stack(
                                     clipBehavior: Clip.none,
                                     children: [
-                                      Container(
+                                      SizedBox(
                                         width: s(112),
                                         height: s(112),
-                                        padding: EdgeInsets.all(s(4)),
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          border: Border.all(
-                                            color: accentOrange,
-                                            width: s(2),
-                                          ),
-                                        ),
-                                        child: CircleAvatar(
-                                          backgroundColor: Colors.white10,
-                                          backgroundImage: imageUrl.isNotEmpty
-                                              ? NetworkImage(imageUrl)
-                                              : null,
-                                          child: imageUrl.isEmpty
-                                              ? Icon(
-                                                  Icons.monetization_on_rounded,
-                                                  size: s(42),
-                                                  color: Colors.white54,
-                                                )
-                                              : null,
+                                        child: Stack(
+                                          children: [
+                                            Positioned.fill(
+                                              child: ClipOval(
+                                                child: imageUrl.isNotEmpty
+                                                    ? Image.network(
+                                                        imageUrl,
+                                                        fit: BoxFit.cover,
+                                                        errorBuilder:
+                                                            (
+                                                              context,
+                                                              error,
+                                                              stack,
+                                                            ) {
+                                                              return Container(
+                                                                color: Colors
+                                                                    .white10,
+                                                                alignment:
+                                                                    Alignment
+                                                                        .center,
+                                                                child: Icon(
+                                                                  Icons
+                                                                      .monetization_on_rounded,
+                                                                  size: s(42),
+                                                                  color: Colors
+                                                                      .white54,
+                                                                ),
+                                                              );
+                                                            },
+                                                      )
+                                                    : Container(
+                                                        color: Colors.white10,
+                                                        alignment:
+                                                            Alignment.center,
+                                                        child: Icon(
+                                                          Icons
+                                                              .monetization_on_rounded,
+                                                          size: s(42),
+                                                          color: Colors.white54,
+                                                        ),
+                                                      ),
+                                              ),
+                                            ),
+                                            Positioned.fill(
+                                              child: DecoratedBox(
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(
+                                                    color: accentOrange,
+                                                    width: s(2),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
                                       Positioned(
@@ -1359,6 +1394,21 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
   String? _initialImageUrl;
   String? _thumbContentType;
   bool _isEditing = false;
+
+  OverlayEntry? _errorOverlay;
+
+  @override
+  void dispose() {
+    _errorOverlay?.remove();
+    nameCtrl.dispose();
+    symbolCtrl.dispose();
+    descCtrl.dispose();
+    rateCtrl.dispose();
+    for (final r in _rows) {
+      r.urlCtrl.dispose();
+    }
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -1855,9 +1905,79 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+
+    _errorOverlay?.remove();
+    _errorOverlay = null;
+
+    final overlay = Overlay.of(context);
+    final viewInsets = MediaQuery.of(context).viewInsets;
+    final padding = MediaQuery.of(context).padding;
+    final bottomOffset = (viewInsets.bottom > 0)
+        ? viewInsets.bottom + 16
+        : padding.bottom + 20;
+
+    final entry = OverlayEntry(
+      builder: (context) => Positioned(
+        bottom: bottomOffset,
+        left: 20,
+        right: 20,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFCF6679),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black38,
+                  blurRadius: 16,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.error_outline_rounded, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () {
+                    _errorOverlay?.remove();
+                    _errorOverlay = null;
+                  },
+                  child: const Icon(
+                    Icons.close,
+                    color: Colors.white70,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlay.insert(entry);
+    _errorOverlay = entry;
+
+    Future.delayed(const Duration(seconds: 4), () {
+      if (mounted && _errorOverlay == entry) {
+        entry.remove();
+        _errorOverlay = null;
+      }
+    });
   }
 
   Future<void> _submit() async {
@@ -1899,6 +2019,26 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
       _showError('Base mining rate is out of range.');
       return;
     }
+
+    // Check name uniqueness
+    final nameVariants = <String>{
+      name,
+      name.toLowerCase(),
+      name.toUpperCase(),
+    }.where((s) => s.trim().isNotEmpty).toList();
+
+    for (final v in nameVariants) {
+      final qs = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.userCoins)
+          .where(FirestoreUserCoinFields.name, isEqualTo: v)
+          .limit(1)
+          .get();
+      if (qs.docs.isNotEmpty && qs.docs.first.id != uid) {
+        _showError('Coin name already exists. Please choose another.');
+        return;
+      }
+    }
+
     final checkVariants = <String>{
       symbol,
       rawSymbol,
@@ -1950,13 +2090,19 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
         (_initialImageUrl != null && _initialImageUrl!.isNotEmpty)) {
       coinDoc[FirestoreUserCoinFields.imageUrl] = _initialImageUrl!;
     }
-    await CoinService.createOrUpdateUserCoin(
-      uid: uid,
-      coin: coinDoc,
-      merge: _isEditing,
-      thumbnailBytes: _thumbBytes,
-      thumbnailContentType: _thumbContentType,
-    );
+    try {
+      await CoinService.createOrUpdateUserCoin(
+        uid: uid,
+        coin: coinDoc,
+        merge: _isEditing,
+        thumbnailBytes: _thumbBytes,
+        thumbnailContentType: _thumbContentType,
+      );
+    } catch (e) {
+      setState(() => _submitting = false);
+      _showError(e.toString().replaceAll('Exception: ', ''));
+      return;
+    }
     debugPrint('[CreateCoinDialog] Submit end');
     if (mounted) {
       Navigator.of(context).pop();

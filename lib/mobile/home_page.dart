@@ -1872,30 +1872,65 @@ class _MobileHomePageState extends State<MobileHomePage>
                                     Stack(
                                       clipBehavior: Clip.none,
                                       children: [
-                                        Container(
+                                        SizedBox(
                                           width: s(112),
                                           height: s(112),
-                                          padding: EdgeInsets.all(s(4)),
-                                          decoration: BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            border: Border.all(
-                                              color: accentOrange,
-                                              width: s(2),
-                                            ),
-                                          ),
-                                          child: CircleAvatar(
-                                            backgroundColor: Colors.white10,
-                                            backgroundImage: imageUrl.isNotEmpty
-                                                ? NetworkImage(imageUrl)
-                                                : null,
-                                            child: imageUrl.isEmpty
-                                                ? Icon(
-                                                    Icons
-                                                        .monetization_on_rounded,
-                                                    size: s(42),
-                                                    color: Colors.white54,
-                                                  )
-                                                : null,
+                                          child: Stack(
+                                            children: [
+                                              Positioned.fill(
+                                                child: ClipOval(
+                                                  child: imageUrl.isNotEmpty
+                                                      ? Image.network(
+                                                          imageUrl,
+                                                          fit: BoxFit.cover,
+                                                          errorBuilder:
+                                                              (
+                                                                context,
+                                                                error,
+                                                                stack,
+                                                              ) {
+                                                                return Container(
+                                                                  color: Colors
+                                                                      .white10,
+                                                                  alignment:
+                                                                      Alignment
+                                                                          .center,
+                                                                  child: Icon(
+                                                                    Icons
+                                                                        .monetization_on_rounded,
+                                                                    size: s(42),
+                                                                    color: Colors
+                                                                        .white54,
+                                                                  ),
+                                                                );
+                                                              },
+                                                        )
+                                                      : Container(
+                                                          color: Colors.white10,
+                                                          alignment:
+                                                              Alignment.center,
+                                                          child: Icon(
+                                                            Icons
+                                                                .monetization_on_rounded,
+                                                            size: s(42),
+                                                            color:
+                                                                Colors.white54,
+                                                          ),
+                                                        ),
+                                                ),
+                                              ),
+                                              Positioned.fill(
+                                                child: DecoratedBox(
+                                                  decoration: BoxDecoration(
+                                                    shape: BoxShape.circle,
+                                                    border: Border.all(
+                                                      color: accentOrange,
+                                                      width: s(2),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                         Positioned(

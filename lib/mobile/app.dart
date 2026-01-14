@@ -39,10 +39,13 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
             selectedIndex: index,
             onDestinationSelected: (i) => setState(() => index = i),
             destinations: const [
-              NavigationDestination(icon: Icon(Icons.home_rounded), label: 'Home'),
+              NavigationDestination(
+                icon: Icon(Icons.home_rounded),
+                label: 'Home',
+              ),
               NavigationDestination(
                 icon: Icon(Icons.account_balance_wallet_rounded),
-                label: 'Wallet',
+                label: 'Balance',
               ),
               NavigationDestination(
                 icon: Icon(Icons.group_add_rounded),
@@ -63,7 +66,7 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
           children: [
             scaffold,
             Material(
-              color: Colors.black.withOpacity(0.85),
+              color: Colors.black.withValues(alpha: 0.85),
               child: Center(
                 child: Container(
                   width: MediaQuery.of(context).size.width * 0.85,
@@ -73,22 +76,24 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                     borderRadius: BorderRadius.circular(28),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.5),
+                        color: Colors.black.withValues(alpha: 0.5),
                         blurRadius: 20,
                         offset: const Offset(0, 10),
-                      )
+                      ),
                     ],
                     border: Border.all(color: Colors.white10),
                   ),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 32,
+                  ),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
-                          color: Colors.blueAccent.withOpacity(0.1),
+                          color: Colors.blueAccent.withValues(alpha: 0.1),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
@@ -123,12 +128,12 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                         height: 50,
                         child: ElevatedButton(
                           onPressed: () async {
-                            await AuthVerificationService
-                                .sendVerificationEmail();
+                            await AuthVerificationService.sendVerificationEmail();
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                    content: Text('Verification email sent')),
+                                  content: Text('Verification email sent'),
+                                ),
                               );
                             }
                           },
@@ -150,18 +155,21 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                         height: 50,
                         child: OutlinedButton(
                           onPressed: () async {
-                            final ok = await AuthVerificationService
-                                .refreshAndCheckVerified();
+                            final ok =
+                                await AuthVerificationService.refreshAndCheckVerified();
                             if (ok && context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                    content: Text('Email verified successfully!')),
+                                  content: Text('Email verified successfully!'),
+                                ),
                               );
                             } else if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                    content: Text(
-                                        'Email not verified yet. Please check your inbox.')),
+                                  content: Text(
+                                    'Email not verified yet. Please check your inbox.',
+                                  ),
+                                ),
                               );
                             }
                           },

@@ -32,9 +32,8 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       tagLabel: null,
       tagIcon: null,
       illustrationIcon: Icons.bolt_rounded,
-      illustrationAsset: null,
-      illustrationNetworkUrl:
-          'https://lh3.googleusercontent.com/aida-public/AB6AXuA-oNdccvaWMcbCv_6jW9PmkuSHfKob9_L0WmJ85X0YB_9UBVafl3v1q94SdaUtteFZn5WZAgsfIB7cD9vy52bU3THol-FveB6SCqhIdJyLDPpf7I5f7dtNda_FVVLKBKDIXuRW_H2O9qiKkMUK4We3cDYOGlncuykvGFkDQDcj_UZpPw20vzFCaRkl14XTd-1GL3WczQtiq8jhVANfFgf91BwoFqjRNDrojSdjU6HDajFwP3qVCorMhdRd3nrvMzh2SjpqF-YU39o',
+      illustrationAsset: 'android/app/src/images/New Images/Check in daily.png',
+      illustrationNetworkUrl: null,
     ),
     _OnboardingSlide(
       headerTitle: null,
@@ -47,9 +46,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       tagLabel: null,
       tagIcon: null,
       illustrationIcon: Icons.verified_rounded,
-      illustrationAsset: null,
+      illustrationAsset:
+          'android/app/src/images/New Images/Secure your Position.png',
       illustrationNetworkUrl: null,
-      illustrationDesign: _OnboardingIllustration.securePosition,
+      illustrationDesign: null,
     ),
     _OnboardingSlide(
       headerTitle: null,
@@ -62,9 +62,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       tagLabel: null,
       tagIcon: null,
       illustrationIcon: Icons.auto_awesome_rounded,
-      illustrationAsset: null,
+      illustrationAsset:
+          'android/app/src/images/New Images/Effortless Auto Mining.png',
       illustrationNetworkUrl: null,
-      illustrationDesign: _OnboardingIllustration.autoCard,
+      illustrationDesign: null,
     ),
     _OnboardingSlide(
       headerTitle: null,
@@ -77,9 +78,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       tagLabel: null,
       tagIcon: null,
       illustrationIcon: Icons.route_rounded,
-      illustrationAsset: null,
+      illustrationAsset:
+          'android/app/src/images/New Images/Your Coin journey.png',
       illustrationNetworkUrl: null,
-      illustrationDesign: _OnboardingIllustration.coinPath,
+      illustrationDesign: null,
     ),
     _OnboardingSlide(
       headerTitle: null,
@@ -92,9 +94,10 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
       tagLabel: null,
       tagIcon: null,
       illustrationIcon: Icons.diamond_rounded,
-      illustrationAsset: null,
+      illustrationAsset:
+          'android/app/src/images/New Images/Mine community coins.png',
       illustrationNetworkUrl: null,
-      illustrationDesign: _OnboardingIllustration.diamondNetwork,
+      illustrationDesign: null,
     ),
   ];
 
@@ -487,6 +490,7 @@ class _SlideView extends StatelessWidget {
               border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
             ),
             child: Stack(
+              fit: StackFit.expand,
               children: [
                 if (hasNetworkUrl)
                   ClipRRect(
@@ -508,21 +512,17 @@ class _SlideView extends StatelessWidget {
                 else if (hasAsset)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(scale(26)),
-                    child: Center(
-                      child: FractionallySizedBox(
-                        widthFactor: 1,
-                        heightFactor: 1,
-                        child: Image.asset(
-                          asset,
-                          fit: BoxFit.fill,
-                          errorBuilder: (context, error, stack) {
-                            return _OnboardingIllustrationView(
-                              illustration: _illustrationForSlide(slide),
-                              scale: scale,
-                            );
-                          },
-                        ),
-                      ),
+                    child: Image.asset(
+                      asset,
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                      filterQuality: FilterQuality.high,
+                      errorBuilder: (context, error, stack) {
+                        return _OnboardingIllustrationView(
+                          illustration: _illustrationForSlide(slide),
+                          scale: scale,
+                        );
+                      },
                     ),
                   )
                 else ...[
@@ -915,7 +915,15 @@ class _NotificationsOnboardingPage extends StatelessWidget {
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(scale(26)),
-                child: _IllustrationStayInLoop(scale: scale),
+                child: Image.asset(
+                  'android/app/src/images/New Images/Stay in the loop.png',
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  filterQuality: FilterQuality.high,
+                  errorBuilder: (context, error, stack) {
+                    return _IllustrationStayInLoop(scale: scale);
+                  },
+                ),
               ),
             ),
             SizedBox(height: scale(22)),
@@ -1114,24 +1122,19 @@ class _DisclaimerOnboardingPage extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(scale(20)),
-                  child: Center(
-                    child: FractionallySizedBox(
-                      widthFactor: 1,
-                      heightFactor: 1,
-                      child: Image.asset(
-                        'android/app/src/images/Important Disclaimer.png',
-                        fit: BoxFit.fill,
-                        errorBuilder: (context, error, stack) {
-                          return Center(
-                            child: Icon(
-                              Icons.verified_user_rounded,
-                              size: scale(52),
-                              color: Colors.white54,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                  child: Image.asset(
+                    'android/app/src/images/Important Disclaimer.png',
+                    fit: BoxFit.cover,
+                    filterQuality: FilterQuality.high,
+                    errorBuilder: (context, error, stack) {
+                      return Center(
+                        child: Icon(
+                          Icons.verified_user_rounded,
+                          size: scale(52),
+                          color: Colors.white54,
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
