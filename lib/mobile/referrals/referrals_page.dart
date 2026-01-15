@@ -260,30 +260,27 @@ class _ReferralsPageState extends State<ReferralsPage> {
           .collection(FirestoreConstants.referrals)
           .where(FirestoreReferralFields.inviterId, isEqualTo: uid);
 
-      // 3. Count Aggregations (Economic)
-      final countTotalFuture = referralsRef.count().get();
-      final countActiveFuture = referralsRef
-          .where(FirestoreReferralFields.isActive, isEqualTo: true)
-          .count()
-          .get();
-
-      // 4. Fetch Recent Referrals (Economic Limit)
+      // 3. Fetch Recent Referrals (Economic Limit)
       final recentReferralsFuture = referralsRef
           .orderBy(FirestoreReferralFields.timestamp, descending: true)
           .limit(20)
           .get();
 
+      // 4. Referral stats (denormalized counts)
+      final statsDocFuture = FirebaseFirestore.instance
+          .collection(FirestoreConstants.referralStats)
+          .doc(uid)
+          .get();
+
       final results = await Future.wait([
         userDocFuture,
-        countTotalFuture,
-        countActiveFuture,
         recentReferralsFuture,
+        statsDocFuture,
       ]);
 
       final userDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>;
-      final countTotalAgg = results[1] as AggregateQuerySnapshot;
-      final countActiveAgg = results[2] as AggregateQuerySnapshot;
-      final recentSnap = results[3] as QuerySnapshot<Map<String, dynamic>>;
+      final recentSnap = results[1] as QuerySnapshot<Map<String, dynamic>>;
+      final statsDoc = results[2] as DocumentSnapshot<Map<String, dynamic>>;
 
       // Process User Doc
       String? code;
@@ -373,8 +370,9 @@ class _ReferralsPageState extends State<ReferralsPage> {
       if (mounted) {
         setState(() {
           _referralCode = code;
-          _totalInvited = countTotalAgg.count ?? 0;
-          _activeInvited = countActiveAgg.count ?? 0;
+          final statsData = statsDoc.data() ?? {};
+          _totalInvited = (statsData['totalInvited'] as num?)?.toInt() ?? 0;
+          _activeInvited = (statsData['active48hCount'] as num?)?.toInt() ?? 0;
           _referrals = finalOrderedItems;
           _loading = false;
         });

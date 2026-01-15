@@ -74,15 +74,14 @@ class _ProfilePageState extends State<ProfilePage> {
       totalSessions =
           (d[FirestoreUserFields.totalSessions] as num?)?.toInt() ?? 0;
     });
-    final countAgg = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.referrals)
-        .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
-        .where(FirestoreReferralFields.isActive, isEqualTo: true)
-        .count()
+    final statsSnap = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.referralStats)
+        .doc(uid)
         .get();
-
+    final statsData = statsSnap.data() ?? {};
     setState(() {
-      referralCount = countAgg.count ?? 0;
+      referralCount =
+          (statsData['active48hCount'] as num?)?.toInt() ?? 0;
     });
   }
 

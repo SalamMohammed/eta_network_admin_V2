@@ -452,6 +452,7 @@ exports.updateReferralStatsOnReferralCreate = onDocumentWritten(
     }
     const data = afterSnap.data() || {};
     const inviterId = (data.inviterId || '').toString().trim();
+    const inviteeId = (data.inviteeId || '').toString().trim();
     if (!inviterId) {
       return;
     }
@@ -462,6 +463,21 @@ exports.updateReferralStatsOnReferralCreate = onDocumentWritten(
       },
       { merge: true },
     );
+    // If we can determine invitee's current activity, reflect it immediately
+    if (inviteeId) {
+      try {
+        const inviteeSnap = await db.collection(USERS_COLLECTION).doc(inviteeId).get();
+        const inviteeData = inviteeSnap.exists ? inviteeSnap.data() || {} : null;
+        if (inviteeData && isUserActiveWithin48h(inviteeData)) {
+          await statsRef.set(
+            { active48hCount: admin.firestore.FieldValue.increment(1) },
+            { merge: true },
+          );
+        }
+      } catch (e) {
+        console.error('Failed to check invitee activity on referral create', e);
+      }
+    }
   },
 );
 
@@ -478,17 +494,48 @@ exports.updateReferralStatsOnUserWrite = onDocumentWritten(
 
     const beforeInviterRaw = beforeData ? beforeData[USER_INVITED_BY] : null;
     const afterInviterRaw = afterData[USER_INVITED_BY];
-    const inviterId = (afterInviterRaw || beforeInviterRaw || '').toString().trim();
-    if (!inviterId) {
-      return;
-    }
+    const beforeInviterId = (beforeInviterRaw || '').toString().trim();
+    const afterInviterId = (afterInviterRaw || '').toString().trim();
 
     const wasActive = beforeData ? isUserActiveWithin48h(beforeData) : false;
     const isActive = isUserActiveWithin48h(afterData);
-    if (wasActive === isActive) {
+
+    // Handle inviter change first (e.g., invite code added to an already-active user)
+    const inviterChanged = beforeInviterId !== afterInviterId;
+    if (inviterChanged) {
+      // Decrement old inviter if previously associated and user was active
+      if (beforeInviterId) {
+        const oldStatsRef = db.collection(REFERRAL_STATS_COLLECTION).doc(beforeInviterId);
+        if (wasActive) {
+          await oldStatsRef.set(
+            { active48hCount: admin.firestore.FieldValue.increment(-1) },
+            { merge: true },
+          );
+        }
+      }
+      // Increment new inviter if now associated and user is active
+      if (afterInviterId) {
+        const newStatsRef = db.collection(REFERRAL_STATS_COLLECTION).doc(afterInviterId);
+        if (isActive) {
+          await newStatsRef.set(
+            { active48hCount: admin.firestore.FieldValue.increment(1) },
+            { merge: true },
+          );
+        }
+      }
+      // If inviter changed, we consider work done for this write
       return;
     }
 
+    // If inviter unchanged and empty, nothing to do
+    if (!afterInviterId) {
+      return;
+    }
+
+    // Inviter unchanged: update on activity state transitions
+    if (wasActive === isActive) {
+      return;
+    }
     let delta = 0;
     if (!wasActive && isActive) {
       delta = 1;
@@ -497,12 +544,9 @@ exports.updateReferralStatsOnUserWrite = onDocumentWritten(
     } else {
       return;
     }
-
-    const statsRef = db.collection(REFERRAL_STATS_COLLECTION).doc(inviterId);
+    const statsRef = db.collection(REFERRAL_STATS_COLLECTION).doc(afterInviterId);
     await statsRef.set(
-      {
-        active48hCount: admin.firestore.FieldValue.increment(delta),
-      },
+      { active48hCount: admin.firestore.FieldValue.increment(delta) },
       { merge: true },
     );
   },

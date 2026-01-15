@@ -172,13 +172,13 @@ class EarningsEngine {
     debugPrint(
       'EarningsEngine: rank → name=${(afterRankData[FirestoreUserFields.rank] as String?) ?? ''}, multiplier=${rankMultiplier.toStringAsFixed(6)}',
     );
-    final agg = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.referrals)
-        .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
-        .where(FirestoreReferralFields.isActive, isEqualTo: true)
-        .count()
+    final statsSnap = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.referralStats)
+        .doc(uid)
         .get();
-    final int referralCount = agg.count ?? 0;
+    final statsData = statsSnap.data() ?? {};
+    final int referralCount =
+        (statsData['active48hCount'] as num?)?.toInt() ?? 0;
     debugPrint('EarningsEngine: referrals → count=$referralCount');
     final double referralMultiplier = await _referralMultiplier(referralCount);
     final double streakFrac = (streakMultiplier - 1.0).clamp(0.0, 1000.0);
@@ -306,6 +306,13 @@ class EarningsEngine {
           newStreakDays,
       FirestoreUserFields.totalPoints:
           (out[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0,
+      'debug': {
+        'baseRate': baseRate,
+        'streakBonus': streakBonus,
+        'rankBonus': rankBonus,
+        'referralBonus': referralBonus,
+        'hourlyRate': hourlyRate,
+      },
     };
   }
 

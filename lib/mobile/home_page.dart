@@ -510,7 +510,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                           ),
                           SizedBox(width: s(10)),
                           Text(
-                            '+${hourlyRate.toStringAsFixed(1)} ETA/hr',
+                            '+${hourlyRate.toStringAsFixed(2)} ETA/hr',
                             style: TextStyle(
                               color: Colors.white70,
                               fontSize: s(16),
@@ -842,13 +842,33 @@ class _MobileHomePageState extends State<MobileHomePage>
                 remaining: remaining,
                 onStart: () async {
                   try {
-                    await _miningService.startMining();
+                    final res = await _miningService.startMining();
+                    if (!context.mounted) return;
+                    final dbg = res['debug'] as Map<String, dynamic>?;
+                    if (dbg != null) {
+                      final base = (dbg['baseRate'] as num?)?.toDouble() ?? 0.0;
+                      final streak =
+                          (dbg['streakBonus'] as num?)?.toDouble() ?? 0.0;
+                      final rank =
+                          (dbg['rankBonus'] as num?)?.toDouble() ?? 0.0;
+                      final ref =
+                          (dbg['referralBonus'] as num?)?.toDouble() ?? 0.0;
+                      final total =
+                          (dbg['hourlyRate'] as num?)?.toDouble() ?? 0.0;
+                      final msg =
+                          'Rate breakdown: Base ${base.toStringAsFixed(2)}, Streak +${streak.toStringAsFixed(2)}, Rank +${rank.toStringAsFixed(2)}, Referrals +${ref.toStringAsFixed(2)} = ${total.toStringAsFixed(2)} ETA/hr';
+                      debugPrint(msg);
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(SnackBar(content: Text(msg)));
+                    }
                     await _syncRewardedSessionWithMiningState();
                     await _maybeAutoShowRewardedOnMiningStart();
                   } catch (e) {
-                    if (!mounted) return;
+                    if (!context.mounted) return;
+                    debugPrint('Start failed: $e');
                     ScaffoldMessenger.of(
-                      this.context,
+                      context,
                     ).showSnackBar(SnackBar(content: Text('Start failed: $e')));
                   }
                 },

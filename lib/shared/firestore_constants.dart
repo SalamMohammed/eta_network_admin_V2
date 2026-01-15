@@ -2,6 +2,7 @@ class FirestoreConstants {
   static const String users = 'users';
   static const String pointLogs = 'point_logs';
   static const String referrals = 'referrals';
+  static const String referralStats = 'referral_stats';
   static const String appConfig = 'app_config';
   static const String roles = 'roles';
   static const String profiles = 'profiles';

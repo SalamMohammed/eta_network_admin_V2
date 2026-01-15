@@ -382,7 +382,7 @@ class MiningStateService extends ChangeNotifier {
     });
   }
 
-  Future<void> startMining({DateTime? maxEnd}) async {
+  Future<Map<String, dynamic>> startMining({DateTime? maxEnd}) async {
     final devId = _deviceId ?? await DeviceId.get();
     try {
       final res = await EarningsEngine.startMining(
@@ -431,6 +431,7 @@ class MiningStateService extends ChangeNotifier {
 
       _startSimulationIfNeeded();
       _maybeNotify(force: true);
+      return res;
     } catch (e) {
       debugPrint('Mining start failed: $e');
       rethrow;
