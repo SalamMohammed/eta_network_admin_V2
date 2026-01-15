@@ -4,7 +4,10 @@ import 'balance/balance_page.dart';
 import 'referrals/referrals_page.dart';
 import 'profile/profile_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import '../auth/auth_gate.dart';
 import '../services/auth_verification_service.dart';
+import '../services/mining_state_service.dart';
 
 class MobileAppScaffold extends StatefulWidget {
   const MobileAppScaffold({super.key});
@@ -182,6 +185,44 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                           child: const Text(
                             'I have verified',
                             style: TextStyle(fontSize: 16, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: OutlinedButton(
+                          onPressed: () async {
+                            MiningStateService().reset();
+                            try {
+                              await GoogleSignIn().signOut();
+                            } catch (_) {}
+                            await FirebaseAuth.instance.signOut();
+                            if (context.mounted) {
+                              Navigator.pushAndRemoveUntil(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const AuthGate(),
+                                ),
+                                (route) => false,
+                              );
+                            }
+                          },
+                          style: OutlinedButton.styleFrom(
+                            side: BorderSide(
+                              color: Colors.redAccent.withValues(alpha: 0.4),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: const Text(
+                            'Logout',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.redAccent,
+                            ),
                           ),
                         ),
                       ),

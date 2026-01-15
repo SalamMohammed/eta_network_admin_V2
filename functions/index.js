@@ -17,6 +17,8 @@ const MINING_END_QUEUE = "mining-end-notifications";
 
 // Firestore Constants (matching client-side)
 const USERS_COLLECTION = 'users';
+const REFERRALS_COLLECTION = 'referrals';
+const REFERRAL_STATS_COLLECTION = 'referral_stats';
 const MANAGERS_COLLECTION = 'managers';
 const APP_CONFIG_COLLECTION = 'app_config';
 const APP_CONFIG_GENERAL_DOC = 'general';
@@ -35,6 +37,7 @@ const USER_MANAGER_ENABLED = 'managerEnabled';
 const USER_ACTIVE_MANAGER_ID = 'activeManagerId';
 const USER_FCM_TOKEN = 'fcmToken';
 const USER_LAST_MINING_END = 'lastMiningEnd';
+const USER_INVITED_BY = 'invitedBy';
 
 const USER_MINING_END_NOTIFIED_END_MS = 'miningEndNotifiedEndMs';
 const USER_MINING_END_NOTIFIED_AT = 'miningEndNotifiedAt';
@@ -59,6 +62,22 @@ const ALLOWED_APP_IDS = new Set(['com.eta.network', 'net.etanetwork.app']);
 
 const managerIdCache = new Map();
 const MANAGER_ID_CACHE_TTL_MS = 10 * 60 * 1000;
+
+function isUserActiveWithin48h(userData) {
+  if (!userData) return false;
+  const ts = userData[USER_LAST_MINING_END];
+  if (!ts || typeof ts.toDate !== 'function') {
+    return false;
+  }
+  const end = ts.toDate();
+  const now = new Date();
+  if (now < end) {
+    return true;
+  }
+  const diffMs = now.getTime() - end.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  return diffHours < 48;
+}
 
 async function getWebhookAuthToken() {
   const now = Date.now();
@@ -417,6 +436,72 @@ exports.scheduleMiningEndNotification = onDocumentWritten(
         [USER_MINING_END_TASK_SCHEDULED_END_MS]: endMs,
         [USER_MINING_END_TASK_SCHEDULED_AT]: admin.firestore.FieldValue.serverTimestamp(),
         [USER_MINING_END_TASK_NAME]: name,
+      },
+      { merge: true },
+    );
+  },
+);
+
+exports.updateReferralStatsOnReferralCreate = onDocumentWritten(
+  `${REFERRALS_COLLECTION}/{referralId}`,
+  async (event) => {
+    const beforeSnap = event.data.before;
+    const afterSnap = event.data.after;
+    if (beforeSnap.exists || !afterSnap.exists) {
+      return;
+    }
+    const data = afterSnap.data() || {};
+    const inviterId = (data.inviterId || '').toString().trim();
+    if (!inviterId) {
+      return;
+    }
+    const statsRef = db.collection(REFERRAL_STATS_COLLECTION).doc(inviterId);
+    await statsRef.set(
+      {
+        totalInvited: admin.firestore.FieldValue.increment(1),
+      },
+      { merge: true },
+    );
+  },
+);
+
+exports.updateReferralStatsOnUserWrite = onDocumentWritten(
+  `${USERS_COLLECTION}/{uid}`,
+  async (event) => {
+    const beforeSnap = event.data.before;
+    const afterSnap = event.data.after;
+    if (!afterSnap.exists) {
+      return;
+    }
+    const beforeData = beforeSnap.exists ? beforeSnap.data() || {} : null;
+    const afterData = afterSnap.data() || {};
+
+    const beforeInviterRaw = beforeData ? beforeData[USER_INVITED_BY] : null;
+    const afterInviterRaw = afterData[USER_INVITED_BY];
+    const inviterId = (afterInviterRaw || beforeInviterRaw || '').toString().trim();
+    if (!inviterId) {
+      return;
+    }
+
+    const wasActive = beforeData ? isUserActiveWithin48h(beforeData) : false;
+    const isActive = isUserActiveWithin48h(afterData);
+    if (wasActive === isActive) {
+      return;
+    }
+
+    let delta = 0;
+    if (!wasActive && isActive) {
+      delta = 1;
+    } else if (wasActive && !isActive) {
+      delta = -1;
+    } else {
+      return;
+    }
+
+    const statsRef = db.collection(REFERRAL_STATS_COLLECTION).doc(inviterId);
+    await statsRef.set(
+      {
+        active48hCount: admin.firestore.FieldValue.increment(delta),
       },
       { merge: true },
     );

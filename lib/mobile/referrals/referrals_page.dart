@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../shared/firestore_constants.dart';
+import '../../shared/constants.dart';
 
 class ReferralsPage extends StatefulWidget {
   const ReferralsPage({super.key});
@@ -291,53 +292,20 @@ class _ReferralsPageState extends State<ReferralsPage> {
       }
 
       // Process Referrals List
-      final List<_ReferralItem> items = [];
-      final List<String> missingUserIds = [];
-      final Map<String, _ReferralItem> tempItems = {};
-
+      final List<_ReferralItem> finalOrderedItems = [];
+      final Set<String> inviteeIds = {};
       for (final doc in recentSnap.docs) {
         final data = doc.data();
         final inviteeId =
             data[FirestoreReferralFields.inviteeId] as String? ?? '';
-        final ts =
-            (data[FirestoreReferralFields.timestamp] as Timestamp?)?.toDate() ??
-            DateTime.now();
-        final dateStr =
-            '${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')}';
-        final isActive =
-            (data[FirestoreReferralFields.isActive] as bool?) ?? false;
-        final status = isActive ? 'Active' : 'Not Started';
-
-        // Check if username is already in referral doc (Optimization)
-        final savedUsername =
-            data[FirestoreReferralFields.inviteeUsername] as String?;
-
-        if (savedUsername != null && savedUsername.isNotEmpty) {
-          items.add(
-            _ReferralItem(
-              username: savedUsername,
-              status: status,
-              joined: dateStr,
-            ),
-          );
-        } else if (inviteeId.isNotEmpty) {
-          // Need to fetch username
-          missingUserIds.add(inviteeId);
-          tempItems[inviteeId] = _ReferralItem(
-            username: 'Loading...', // Placeholder
-            status: status,
-            joined: dateStr,
-          );
+        if (inviteeId.isNotEmpty) {
+          inviteeIds.add(inviteeId);
         }
       }
 
-      // Fetch missing usernames if any
-      if (missingUserIds.isNotEmpty) {
-        // We can't do whereIn for > 10 easily, but for 20 items it's max 2 batches or simple loop
-        // Since we limited to 20, we can just do individual fetches or batches.
-        // For simplicity and "economic" (read count is same), let's use Future.wait
-        // Note: whereIn is cheaper on latency but same on billable reads.
-        final userFutures = missingUserIds
+      final Map<String, Map<String, dynamic>> inviteeUserData = {};
+      if (inviteeIds.isNotEmpty) {
+        final userFutures = inviteeIds
             .map(
               (id) => FirebaseFirestore.instance
                   .collection(FirestoreConstants.users)
@@ -346,53 +314,60 @@ class _ReferralsPageState extends State<ReferralsPage> {
             )
             .toList();
         final userDocs = await Future.wait(userFutures);
-
         for (final uDoc in userDocs) {
           if (!uDoc.exists) continue;
-          final uData = uDoc.data();
-          final uName =
-              (uData?[FirestoreUserFields.username] as String?) ?? 'Unknown';
-          final id = uDoc.id;
-          if (tempItems.containsKey(id)) {
-            final old = tempItems[id]!;
-            tempItems[id] = _ReferralItem(
-              username: uName,
-              status: old.status,
-              joined: old.joined,
-            );
+          final data = uDoc.data();
+          if (data != null) {
+            inviteeUserData[uDoc.id] = data;
           }
         }
       }
 
-      // Combine items (those with saved username + fetched ones)
-      // We want to maintain order from recentSnap (timestamp desc)
-      final List<_ReferralItem> finalOrderedItems = [];
       for (final doc in recentSnap.docs) {
+        final data = doc.data();
         final inviteeId =
-            doc.data()[FirestoreReferralFields.inviteeId] as String? ?? '';
-        final savedUsername =
-            doc.data()[FirestoreReferralFields.inviteeUsername] as String?;
+            data[FirestoreReferralFields.inviteeId] as String? ?? '';
+        if (inviteeId.isEmpty) continue;
 
+        final ts =
+            (data[FirestoreReferralFields.timestamp] as Timestamp?)?.toDate() ??
+            DateTime.now();
+        final dateStr =
+            '${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')}';
+
+        final savedUsername =
+            data[FirestoreReferralFields.inviteeUsername] as String?;
+        final userData = inviteeUserData[inviteeId];
+
+        String username;
         if (savedUsername != null && savedUsername.isNotEmpty) {
-          final ts =
-              (doc.data()[FirestoreReferralFields.timestamp] as Timestamp?)
-                  ?.toDate() ??
-              DateTime.now();
-          final dateStr =
-              '${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')}';
-          final isActive =
-              (doc.data()[FirestoreReferralFields.isActive] as bool?) ?? false;
-          final status = isActive ? 'Active' : 'Not Started';
-          finalOrderedItems.add(
-            _ReferralItem(
-              username: savedUsername,
-              status: status,
-              joined: dateStr,
-            ),
-          );
-        } else if (tempItems.containsKey(inviteeId)) {
-          finalOrderedItems.add(tempItems[inviteeId]!);
+          username = savedUsername;
+        } else if (userData != null) {
+          username =
+              (userData[FirestoreUserFields.username] as String?) ?? 'Unknown';
+        } else {
+          username = 'Unknown';
         }
+
+        String status;
+        if (userData != null) {
+          final activity = userActivityStatusFromUserData(userData);
+          if (activity == UserActivityStatus.active) {
+            status = 'Active';
+          } else if (activity == UserActivityStatus.notStarted) {
+            status = 'Not Started';
+          } else {
+            status = 'Inactive';
+          }
+        } else {
+          final isActive =
+              (data[FirestoreReferralFields.isActive] as bool?) ?? false;
+          status = isActive ? 'Active' : 'Not Started';
+        }
+
+        finalOrderedItems.add(
+          _ReferralItem(username: username, status: status, joined: dateStr),
+        );
       }
 
       if (mounted) {
