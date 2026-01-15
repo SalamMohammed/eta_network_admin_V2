@@ -152,6 +152,8 @@ class FirestoreReferralConfigFields {
   static const String inviteeFixedBonusPoints = 'inviteeFixedBonusPoints';
   static const String referrerPercentPerReferral = 'referrerPercentPerReferral';
   static const String referrerMaxCount = 'referrerMaxCount';
+  static const String referralBonusTiers = 'referralBonusTiers';
+  static const String rewardedReferralMaxCount = 'rewardedReferralMaxCount';
 }
 
 class FirestoreStreakConfigFields {

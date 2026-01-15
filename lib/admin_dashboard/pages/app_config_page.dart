@@ -29,6 +29,9 @@ class _AppConfigPageState extends State<AppConfigPage> {
   final inviteeFixedCtrl = TextEditingController();
   final percentPerRefCtrl = TextEditingController();
   final maxRefCountCtrl = TextEditingController();
+  final rewardedReferralMaxCountCtrl = TextEditingController();
+  final List<TextEditingController> referralTierThresholdCtrls = [];
+  final List<TextEditingController> referralTierPercentCtrls = [];
   final maxStreakDaysCtrl = TextEditingController();
   final maxStreakMultCtrl = TextEditingController();
   final rankRulesJsonCtrl = TextEditingController();
@@ -92,6 +95,28 @@ class _AppConfigPageState extends State<AppConfigPage> {
         ((r[FirestoreReferralConfigFields.referrerMaxCount] as num?)?.toInt() ??
                 100)
             .toString();
+    rewardedReferralMaxCountCtrl.text =
+        ((r[FirestoreReferralConfigFields.rewardedReferralMaxCount] as num?)
+                    ?.toInt() ??
+                (r[FirestoreReferralConfigFields.referrerMaxCount] as num?)
+                    ?.toInt() ??
+                100)
+            .toString();
+
+    final Map<String, dynamic> referralTiers =
+        (r[FirestoreReferralConfigFields.referralBonusTiers]
+            as Map<String, dynamic>?) ??
+        {};
+    referralTierThresholdCtrls.clear();
+    referralTierPercentCtrls.clear();
+    for (final e in referralTiers.entries) {
+      referralTierThresholdCtrls.add(TextEditingController(text: e.key));
+      referralTierPercentCtrls.add(
+        TextEditingController(
+          text: ((e.value as num?)?.toDouble() ?? 0.0).toString(),
+        ),
+      );
+    }
 
     final streak = await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
@@ -272,6 +297,16 @@ class _AppConfigPageState extends State<AppConfigPage> {
   }
 
   Future<void> _saveReferrals() async {
+    final Map<String, dynamic> tiers = {};
+    for (int i = 0; i < referralTierThresholdCtrls.length; i++) {
+      final key = referralTierThresholdCtrls[i].text.trim();
+      final percent =
+          double.tryParse(referralTierPercentCtrls[i].text.trim()) ?? 0.0;
+      if (key.isEmpty) continue;
+      if (percent <= 0.0) continue;
+      tiers[key] = percent;
+    }
+
     await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.referrals)
@@ -282,6 +317,10 @@ class _AppConfigPageState extends State<AppConfigPage> {
               double.tryParse(percentPerRefCtrl.text) ?? 0.0,
           FirestoreReferralConfigFields.referrerMaxCount:
               int.tryParse(maxRefCountCtrl.text) ?? 100,
+          FirestoreReferralConfigFields.rewardedReferralMaxCount:
+              int.tryParse(rewardedReferralMaxCountCtrl.text) ?? 100,
+          if (tiers.isNotEmpty)
+            FirestoreReferralConfigFields.referralBonusTiers: tiers,
         }, SetOptions(merge: true));
   }
 
@@ -523,6 +562,71 @@ class _AppConfigPageState extends State<AppConfigPage> {
                     _field('Referrer % per referral', percentPerRefCtrl),
                     const SizedBox(width: 12),
                     _field('Max referrer count', maxRefCountCtrl),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    _field(
+                      'Rewarded referrals (global cap)',
+                      rewardedReferralMaxCountCtrl,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (int i = 0; i < referralTierThresholdCtrls.length; i++)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: referralTierThresholdCtrls[i],
+                              decoration: const InputDecoration(
+                                labelText: 'Less than (active referrals)',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: referralTierPercentCtrls[i],
+                              decoration: const InputDecoration(
+                                labelText: '% per referral',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          IconButton(
+                            onPressed: () {
+                              setState(() {
+                                referralTierThresholdCtrls.removeAt(i);
+                                referralTierPercentCtrls.removeAt(i);
+                              });
+                            },
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                        ],
+                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              referralTierThresholdCtrls.add(
+                                TextEditingController(),
+                              );
+                              referralTierPercentCtrls.add(
+                                TextEditingController(text: '0'),
+                              );
+                            });
+                          },
+                          child: const Text('Add Tier'),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
                 const SizedBox(height: 8),

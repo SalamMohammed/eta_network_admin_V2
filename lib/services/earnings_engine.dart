@@ -454,23 +454,81 @@ class EarningsEngine {
         .doc(FirestoreAppConfigDocs.referrals)
         .get();
     final cfg = cfgSnap.data() ?? {};
-    final double percentPerReferralRaw =
-        (cfg[FirestoreReferralConfigFields.referrerPercentPerReferral] as num?)
-            ?.toDouble() ??
-        ((FirestoreAppConfigFields.referralBonusStep != '')
-            ? (cfg[FirestoreAppConfigFields.referralBonusStep] as num?)
-                      ?.toDouble() ??
-                  0.0
-            : 0.0);
-    final double percentPerReferral = percentPerReferralRaw / 100.0;
-    final int maxCount =
+    final Map<String, dynamic> tiersRaw =
+        (cfg[FirestoreReferralConfigFields.referralBonusTiers]
+            as Map<String, dynamic>?) ??
+        {};
+    final List<MapEntry<int, double>> tiers =
+        tiersRaw.entries
+            .map(
+              (e) => MapEntry(
+                int.tryParse(e.key) ?? 0,
+                (e.value as num?)?.toDouble() ?? 0.0,
+              ),
+            )
+            .where((e) => e.key > 0 && e.value > 0.0)
+            .toList()
+          ..sort((a, b) => a.key.compareTo(b.key));
+
+    int maxCount =
+        (cfg[FirestoreReferralConfigFields.rewardedReferralMaxCount] as num?)
+            ?.toInt() ??
         (cfg[FirestoreReferralConfigFields.referrerMaxCount] as num?)
             ?.toInt() ??
         100;
-    final int effective = count.clamp(0, maxCount);
-    final double out = 1.0 + (percentPerReferral * effective);
+    if (maxCount <= 0) {
+      maxCount = 0;
+    }
+
+    int effective = count;
+    if (maxCount > 0) {
+      effective = count.clamp(0, maxCount);
+    } else {
+      effective = count.clamp(0, 1000000);
+    }
+
+    double percentPerReferralRaw;
+    if (tiers.isNotEmpty) {
+      int thresholdForLog = 0;
+      double selectedPercent = 0.0;
+      for (final t in tiers) {
+        if (effective <= t.key) {
+          thresholdForLog = t.key;
+          selectedPercent = t.value;
+          break;
+        }
+      }
+      if (thresholdForLog == 0) {
+        final last = tiers.last;
+        thresholdForLog = last.key;
+        selectedPercent = last.value;
+      }
+      percentPerReferralRaw = selectedPercent;
+      debugPrint(
+        'EarningsEngine: referral tiers → count=$count, effective=$effective, threshold<$thresholdForLog, percentPerReferralRaw=${percentPerReferralRaw.toStringAsFixed(6)}',
+      );
+    } else {
+      percentPerReferralRaw =
+          (cfg[FirestoreReferralConfigFields.referrerPercentPerReferral]
+                  as num?)
+              ?.toDouble() ??
+          ((FirestoreAppConfigFields.referralBonusStep != '')
+              ? (cfg[FirestoreAppConfigFields.referralBonusStep] as num?)
+                        ?.toDouble() ??
+                    0.0
+              : 0.0);
+      debugPrint(
+        'EarningsEngine: referral legacy config → percentPerReferralRaw=${percentPerReferralRaw.toStringAsFixed(6)}',
+      );
+    }
+
+    final double percentPerReferral = (percentPerReferralRaw <= 0.0)
+        ? 0.0
+        : (percentPerReferralRaw / 100.0);
+    final double totalPercent = percentPerReferral * effective;
+    final double out = 1.0 + totalPercent;
     debugPrint(
-      'EarningsEngine: referral config → percentRaw=${percentPerReferralRaw.toStringAsFixed(6)}, fraction=${percentPerReferral.toStringAsFixed(6)}, maxCount=$maxCount',
+      'EarningsEngine: referral config → effective=$effective, percentPerReferralRaw=${percentPerReferralRaw.toStringAsFixed(6)}, totalPercent=${totalPercent.toStringAsFixed(6)}, maxCount=$maxCount',
     );
     debugPrint(
       'EarningsEngine: referral calc → effectiveCount=$effective, multiplier=${out.toStringAsFixed(6)}',
