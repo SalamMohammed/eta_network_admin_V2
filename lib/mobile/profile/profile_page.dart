@@ -80,8 +80,7 @@ class _ProfilePageState extends State<ProfilePage> {
         .get();
     final statsData = statsSnap.data() ?? {};
     setState(() {
-      referralCount =
-          (statsData['active48hCount'] as num?)?.toInt() ?? 0;
+      referralCount = (statsData['active48hCount'] as num?)?.toInt() ?? 0;
     });
   }
 
@@ -153,26 +152,28 @@ class _ProfilePageState extends State<ProfilePage> {
                                     child: GestureDetector(
                                       onTap: _uploadProfileImage,
                                       child: ClipOval(
-                                        child: (thumbnailUrl != null &&
+                                        child:
+                                            (thumbnailUrl != null &&
                                                 thumbnailUrl!.isNotEmpty)
                                             ? Image.network(
                                                 thumbnailUrl!,
                                                 fit: BoxFit.cover,
                                                 errorBuilder:
                                                     (context, error, stack) {
-                                                  return Container(
-                                                    color: Colors.white
-                                                        .withValues(
-                                                      alpha: 0.10,
-                                                    ),
-                                                    alignment: Alignment.center,
-                                                    child: Icon(
-                                                      Icons.person_rounded,
-                                                      size: s(44),
-                                                      color: Colors.white70,
-                                                    ),
-                                                  );
-                                                },
+                                                      return Container(
+                                                        color: Colors.white
+                                                            .withValues(
+                                                              alpha: 0.10,
+                                                            ),
+                                                        alignment:
+                                                            Alignment.center,
+                                                        child: Icon(
+                                                          Icons.person_rounded,
+                                                          size: s(44),
+                                                          color: Colors.white70,
+                                                        ),
+                                                      );
+                                                    },
                                               )
                                             : Container(
                                                 color: Colors.white.withValues(
@@ -335,72 +336,72 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                   ),
-                  SizedBox(height: s(18)),
-                  _sectionTitle('Preferences', scale: s),
-                  SizedBox(height: s(10)),
-                  _settingsCard(
-                    scale: s,
-                    cardBg: cardBg,
-                    cardBg2: cardBg2,
-                    child: Column(
-                      children: [
-                        _settingsTile(
-                          scale: s,
-                          icon: Icons.admin_panel_settings_rounded,
-                          title: 'Manager Mode',
-                          subtitle: 'Access advanced mining tools',
-                          trailing: Theme(
-                            data: Theme.of(context).copyWith(
-                              switchTheme: SwitchThemeData(
-                                trackColor: WidgetStateProperty.resolveWith((
-                                  states,
-                                ) {
-                                  final selected = states.contains(
-                                    WidgetState.selected,
-                                  );
-                                  if (selected) return buttonBlue;
-                                  return Colors.white24;
-                                }),
-                                thumbColor: WidgetStateProperty.resolveWith((
-                                  states,
-                                ) {
-                                  final selected = states.contains(
-                                    WidgetState.selected,
-                                  );
-                                  if (selected) return Colors.white;
-                                  return Colors.white70;
-                                }),
-                              ),
-                            ),
-                            child: Switch(
-                              value: _miningService.managerEnabled,
-                              onChanged: null,
-                            ),
-                          ),
-                          onTap: null,
-                        ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: s(14)),
-                          child: Container(
-                            height: 1,
-                            color: Colors.white.withValues(alpha: 0.06),
-                          ),
-                        ),
-                        _settingsTile(
-                          scale: s,
-                          icon: Icons.notifications_rounded,
-                          title: 'Notifications',
-                          subtitle: null,
-                          trailing: Icon(
-                            Icons.chevron_right_rounded,
-                            color: Colors.white54,
-                            size: s(24),
-                          ),
-                          onTap: () {},
-                        ),
-                      ],
-                    ),
-                  ),
+                  // SizedBox(height: s(18)),
+                  // _sectionTitle('Preferences', scale: s),
+                  // SizedBox(height: s(10)),
+                  // _settingsCard(
+                  //   scale: s,
+                  //   cardBg: cardBg,
+                  //   cardBg2: cardBg2,
+                  //   child: Column(
+                  //     children: [
+                  //       _settingsTile(
+                  //         scale: s,
+                  //         icon: Icons.admin_panel_settings_rounded,
+                  //         title: 'Manager Mode',
+                  //         subtitle: 'Access advanced mining tools',
+                  //         trailing: Theme(
+                  //           data: Theme.of(context).copyWith(
+                  //             switchTheme: SwitchThemeData(
+                  //               trackColor: WidgetStateProperty.resolveWith((
+                  //                 states,
+                  //               ) {
+                  //                 final selected = states.contains(
+                  //                   WidgetState.selected,
+                  //                 );
+                  //                 if (selected) return buttonBlue;
+                  //                 return Colors.white24;
+                  //               }),
+                  //               thumbColor: WidgetStateProperty.resolveWith((
+                  //                 states,
+                  //               ) {
+                  //                 final selected = states.contains(
+                  //                   WidgetState.selected,
+                  //                 );
+                  //                 if (selected) return Colors.white;
+                  //                 return Colors.white70;
+                  //               }),
+                  //             ),
+                  //           ),
+                  //           child: Switch(
+                  //             value: _miningService.managerEnabled,
+                  //             onChanged: null,
+                  //           ),
+                  //         ),
+                  //         onTap: null,
+                  //       ),
+                  //       Padding(
+                  //         padding: EdgeInsets.symmetric(horizontal: s(14)),
+                  //         child: Container(
+                  //           height: 1,
+                  //           color: Colors.white.withValues(alpha: 0.06),
+                  //         ),
+                  //       ),
+                  //       _settingsTile(
+                  //         scale: s,
+                  //         icon: Icons.notifications_rounded,
+                  //         title: 'Notifications',
+                  //         subtitle: null,
+                  //         trailing: Icon(
+                  //           Icons.chevron_right_rounded,
+                  //           color: Colors.white54,
+                  //           size: s(24),
+                  //         ),
+                  //         onTap: () {},
+                  //       ),
+                  //     ],
+                  //   ),
+                  // ),
                   SizedBox(height: s(18)),
                   _sectionTitle('Invited by someone?', scale: s),
                   SizedBox(height: s(10)),
@@ -456,8 +457,6 @@ class _ProfilePageState extends State<ProfilePage> {
                     ],
                   ),
                   SizedBox(height: s(18)),
-                  _sectionTitle('Support', scale: s),
-                  SizedBox(height: s(10)),
                   _settingsCard(
                     scale: s,
                     cardBg: cardBg,
@@ -466,17 +465,16 @@ class _ProfilePageState extends State<ProfilePage> {
                       children: [
                         _settingsTile(
                           scale: s,
-                          icon: Icons.help_outline_rounded,
-                          title: 'FAQ',
+                          icon: Icons.info_outline_rounded,
+                          title: 'About',
                           subtitle: null,
                           trailing: Icon(
-                            Icons.open_in_new_rounded,
+                            Icons.chevron_right_rounded,
                             color: Colors.white54,
-                            size: s(18),
+                            size: s(24),
                           ),
-                          onTap: () => _openLegal(context, 'FAQ', [
-                            FirestoreLegalFields.faq,
-                          ]),
+                          onTap: () =>
+                              _openAboutPage(context, s, cardBg, cardBg2),
                         ),
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: s(14)),
@@ -487,38 +485,16 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                         _settingsTile(
                           scale: s,
-                          icon: Icons.description_rounded,
-                          title: 'White Paper',
+                          icon: Icons.security_rounded,
+                          title: 'Security Settings',
                           subtitle: null,
                           trailing: Icon(
-                            Icons.description_outlined,
+                            Icons.chevron_right_rounded,
                             color: Colors.white54,
-                            size: s(18),
+                            size: s(24),
                           ),
-                          onTap: () => _openLegal(context, 'White Paper', [
-                            FirestoreLegalFields.whitePaper,
-                          ]),
-                        ),
-                        Padding(
-                          padding: EdgeInsets.symmetric(horizontal: s(14)),
-                          child: Container(
-                            height: 1,
-                            color: Colors.white.withValues(alpha: 0.06),
-                          ),
-                        ),
-                        _settingsTile(
-                          scale: s,
-                          icon: Icons.mail_outline_rounded,
-                          title: 'Contact Us',
-                          subtitle: null,
-                          trailing: Icon(
-                            Icons.mail_outline_rounded,
-                            color: Colors.white54,
-                            size: s(18),
-                          ),
-                          onTap: () => _openLegal(context, 'Contact Us', [
-                            FirestoreLegalFields.contactUs,
-                          ]),
+                          onTap: () =>
+                              _openSecurityPage(context, s, cardBg, cardBg2),
                         ),
                       ],
                     ),
@@ -560,9 +536,174 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                   ),
-                  SizedBox(height: s(8)),
-                  TextButton(
-                    onPressed: () async {
+                  SizedBox(height: s(18)),
+                  Center(
+                    child: Text(
+                      '© ${DateTime.now().year} ETA Network',
+                      style: TextStyle(
+                        fontSize: s(12),
+                        color: Colors.white38,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: s(10)),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _openAboutPage(
+    BuildContext context,
+    double Function(double) s,
+    Color cardBg,
+    Color cardBg2,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          appBar: AppBar(
+            title: const Text('About'),
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ),
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF0B1620), Color(0xFF0E1618)],
+              ),
+            ),
+            child: ListView(
+              padding: EdgeInsets.all(s(16)),
+              children: [
+                _settingsCard(
+                  scale: s,
+                  cardBg: cardBg,
+                  cardBg2: cardBg2,
+                  child: Column(
+                    children: [
+                      _settingsTile(
+                        scale: s,
+                        icon: Icons.help_outline_rounded,
+                        title: 'FAQ',
+                        subtitle: null,
+                        trailing: Icon(
+                          Icons.open_in_new_rounded,
+                          color: Colors.white54,
+                          size: s(18),
+                        ),
+                        onTap: () => _openLegal(context, 'FAQ', [
+                          FirestoreLegalFields.faq,
+                        ]),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: s(14)),
+                        child: Container(
+                          height: 1,
+                          color: Colors.white.withValues(alpha: 0.06),
+                        ),
+                      ),
+                      _settingsTile(
+                        scale: s,
+                        icon: Icons.description_rounded,
+                        title: 'White Paper',
+                        subtitle: null,
+                        trailing: Icon(
+                          Icons.description_outlined,
+                          color: Colors.white54,
+                          size: s(18),
+                        ),
+                        onTap: () => _openLegal(context, 'White Paper', [
+                          FirestoreLegalFields.whitePaper,
+                        ]),
+                      ),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: s(14)),
+                        child: Container(
+                          height: 1,
+                          color: Colors.white.withValues(alpha: 0.06),
+                        ),
+                      ),
+                      _settingsTile(
+                        scale: s,
+                        icon: Icons.mail_outline_rounded,
+                        title: 'Contact Us',
+                        subtitle: null,
+                        trailing: Icon(
+                          Icons.mail_outline_rounded,
+                          color: Colors.white54,
+                          size: s(18),
+                        ),
+                        onTap: () => _openLegal(context, 'Contact Us', [
+                          FirestoreLegalFields.contactUs,
+                        ]),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openSecurityPage(
+    BuildContext context,
+    double Function(double) s,
+    Color cardBg,
+    Color cardBg2,
+  ) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => Scaffold(
+          appBar: AppBar(
+            title: const Text('Security Settings'),
+            centerTitle: true,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ),
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0xFF0B1620), Color(0xFF0E1618)],
+              ),
+            ),
+            child: ListView(
+              padding: EdgeInsets.all(s(16)),
+              children: [
+                _settingsCard(
+                  scale: s,
+                  cardBg: cardBg,
+                  cardBg2: cardBg2,
+                  child: _settingsTile(
+                    scale: s,
+                    icon: Icons.delete_forever_rounded,
+                    title: 'Delete Account',
+                    subtitle: 'Permanently delete your account and data',
+                    textColor: Colors.redAccent,
+                    trailing: Icon(
+                      Icons.chevron_right_rounded,
+                      color: Colors.white54,
+                      size: s(24),
+                    ),
+                    onTap: () async {
                       final ok = await showDialog<bool>(
                         context: context,
                         barrierDismissible: true,
@@ -579,6 +720,10 @@ class _ProfilePageState extends State<ProfilePage> {
                               ),
                               ElevatedButton(
                                 onPressed: () => Navigator.pop(ctx, true),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.red,
+                                  foregroundColor: Colors.white,
+                                ),
                                 child: const Text('Delete'),
                               ),
                             ],
@@ -588,44 +733,11 @@ class _ProfilePageState extends State<ProfilePage> {
                       if (ok != true) return;
                       await _deleteAccount();
                     },
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.redAccent,
-                    ),
-                    child: Text(
-                      'Delete Account',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: s(13.5),
-                      ),
-                    ),
                   ),
-                  SizedBox(height: s(8)),
-                  Center(
-                    child: Text(
-                      'App Version 2.4.1 (Build 890)',
-                      style: TextStyle(
-                        fontSize: s(12),
-                        color: Colors.white38,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: s(6)),
-                  Center(
-                    child: Text(
-                      '© 2024 ETA Network',
-                      style: TextStyle(
-                        fontSize: s(12),
-                        color: Colors.white38,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: s(10)),
-                ],
-              ),
-            );
-          },
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -833,6 +945,7 @@ class _ProfilePageState extends State<ProfilePage> {
     required String? subtitle,
     required Widget trailing,
     required VoidCallback? onTap,
+    Color? textColor,
   }) {
     return InkWell(
       onTap: onTap,
@@ -864,7 +977,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     style: TextStyle(
                       fontSize: scale(14.5),
                       fontWeight: FontWeight.w800,
-                      color: Colors.white,
+                      color: textColor ?? Colors.white,
                     ),
                   ),
                   if (subtitle != null) ...[

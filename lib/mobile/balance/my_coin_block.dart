@@ -1663,7 +1663,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                       ),
                       decoration: deco(
                         'Base mining rate (coins/hour)',
-                        helperText: 'Allowed range: $_minRate – $_maxRate',
+                        helperText: 'Max Allowed : $_maxRate',
                       ),
                     ),
                     SizedBox(height: s(14)),
@@ -1800,7 +1800,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                             ),
                             TextSpan(
                               text:
-                                  'This coin is an in-app digital point used only within the ETA Network ecosystem. It is not a cryptocurrency, has no monetary value, and cannot be traded, exchanged, or redeemed for money. Any potential future use, integration, or evolution of ETA Network features will depend on platform policies, legal requirements, and community-driven decisions. No guarantees are made regarding future value or external usage.',
+                                  'This coin is part of the ETA Network ecosystem and represents participation in a growing digital community. Community coins are created by users to build, experiment, and engage within the network.ETA Network is in an early stage of development. As the ecosystem grows, new utilities, features, and integrations may be introduced based on community activity, platform evolution, and applicable guidelines.',
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontWeight: FontWeight.w700,
