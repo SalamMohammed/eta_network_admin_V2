@@ -8,14 +8,12 @@ import '../shared/firestore_constants.dart';
 import 'signup_page.dart';
 import '../entry/selector_page.dart';
 import '../firebase_options.dart';
+import 'forgot_password_page.dart';
 
 class LoginPage extends StatefulWidget {
   final bool goToSelectorAfterAuth;
 
-  const LoginPage({
-    super.key,
-    this.goToSelectorAfterAuth = true,
-  });
+  const LoginPage({super.key, this.goToSelectorAfterAuth = true});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -534,7 +532,17 @@ class _LoginPageState extends State<LoginPage> {
                                   Align(
                                     alignment: Alignment.centerRight,
                                     child: TextButton(
-                                      onPressed: _loading ? null : () {},
+                                      onPressed: _loading
+                                          ? null
+                                          : () {
+                                              Navigator.push(
+                                                context,
+                                                MaterialPageRoute(
+                                                  builder: (_) =>
+                                                      const ForgotPasswordPage(),
+                                                ),
+                                              );
+                                            },
                                       style: TextButton.styleFrom(
                                         foregroundColor: blue,
                                         padding: EdgeInsets.zero,
