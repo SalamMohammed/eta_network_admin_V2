@@ -10,7 +10,7 @@ import 'shared/constants.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  AppEntryConfig.mode = AppEntryMode.selector;
+  AppEntryConfig.mode = AppEntryMode.admin;
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   if (!kIsWeb) {
@@ -19,16 +19,16 @@ Future<void> main() async {
     await AdsService().init();
   }
 
-  runApp(const MyApp());
+  runApp(const MyAdminApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class MyAdminApp extends StatelessWidget {
+  const MyAdminApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'ETA Network',
+      title: 'ETA Network Admin',
       theme: AppTheme.dark,
       home: const AuthGate(),
     );

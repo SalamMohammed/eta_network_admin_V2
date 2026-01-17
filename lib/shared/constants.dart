@@ -6,6 +6,12 @@ const bool kIsDev = !kReleaseMode;
 
 enum UserActivityStatus { notStarted, active, inactive }
 
+enum AppEntryMode { selector, mobile, admin }
+
+class AppEntryConfig {
+  static AppEntryMode mode = AppEntryMode.selector;
+}
+
 UserActivityStatus userActivityStatusFromUserData(Map<String, dynamic> data) {
   final ts = data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
   if (ts == null) {

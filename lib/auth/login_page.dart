@@ -10,7 +10,13 @@ import '../entry/selector_page.dart';
 import '../firebase_options.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  final bool goToSelectorAfterAuth;
+
+  const LoginPage({
+    super.key,
+    this.goToSelectorAfterAuth = true,
+  });
+
   @override
   State<LoginPage> createState() => _LoginPageState();
 }
@@ -99,7 +105,7 @@ class _LoginPageState extends State<LoginPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      if (mounted) {
+      if (mounted && widget.goToSelectorAfterAuth) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const SelectorPage()),
@@ -162,7 +168,7 @@ class _LoginPageState extends State<LoginPage> {
         await _ensureUserDocExists(user);
       }
 
-      if (mounted) {
+      if (mounted && widget.goToSelectorAfterAuth) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const SelectorPage()),

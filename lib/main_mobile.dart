@@ -10,7 +10,7 @@ import 'shared/constants.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  AppEntryConfig.mode = AppEntryMode.selector;
+  AppEntryConfig.mode = AppEntryMode.mobile;
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   if (!kIsWeb) {
@@ -19,11 +19,11 @@ Future<void> main() async {
     await AdsService().init();
   }
 
-  runApp(const MyApp());
+  runApp(const MyMobileApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class MyMobileApp extends StatelessWidget {
+  const MyMobileApp({super.key});
 
   @override
   Widget build(BuildContext context) {
