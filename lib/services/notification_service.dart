@@ -38,9 +38,16 @@ class NotificationService {
   static const String _prefsStreakAtMsKey = 'localNotifStreakAtMs';
   static const String _prefsStreakResultKey = 'localNotifStreakResult';
 
-  Future<void> init() async {
-    if (_initialized) return;
+  bool get initialized => _initialized;
+  Future<void>? _initFuture;
 
+  Future<void> init() {
+    if (_initialized) return Future.value();
+    _initFuture ??= _doInit();
+    return _initFuture!;
+  }
+
+  Future<void> _doInit() async {
     // 1. Initialize Timezone
     tz_data.initializeTimeZones();
     try {

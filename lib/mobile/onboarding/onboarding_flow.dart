@@ -220,11 +220,62 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
     if (_requestingNotifPermission) return;
     setState(() => _requestingNotifPermission = true);
     try {
+      // Ensure initialized before requesting
+      if (!NotificationService().initialized) {
+        await NotificationService().init();
+      }
+
       final settings = await NotificationService().requestPermissions();
       if (!mounted) return;
       setState(() => _notifSettings = settings);
-      if (_index == _notificationsIndex) {
-        await _onContinue();
+
+      // In release mode or if denied/not determined, we might want to proceed or show message
+      // Note: In some release scenarios, the system dialog might not appear if previously denied permanently.
+
+      if (settings.authorizationStatus == AuthorizationStatus.authorized ||
+          settings.authorizationStatus == AuthorizationStatus.provisional) {
+        // If granted, auto-advance
+        if (_index == _notificationsIndex) {
+          await _onContinue();
+        }
+      } else {
+        // If denied or not determined (dismissed), show snackbar but don't block
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Notifications are disabled. You can enable them later in system settings.',
+            ),
+          ),
+        );
+        // Optionally advance even if denied, so user isn't stuck?
+        // For now, let's keep the behavior: user has to click "Maybe Later" if denied.
+        // BUT, if the user *clicks* "Enable", and it returns denied immediately (system block),
+        // we should probably just advance to not block the flow?
+        // Let's stick to the user's request: "make it green ... and go to next page"
+        // If we are here, it means the request finished.
+
+        // If the user explicitly clicked "Enable", and we got a result, 
+         // maybe we should just move on if it failed? 
+         // The user said "make it green... and go to next page". 
+         // If denied, it won't be green. 
+         // The issue is likely that in release, init() wasn't fully ready or something.
+      }
+    } catch (e, stack) {
+      debugPrint('Error requesting notifications: $e');
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Error'),
+            content: SingleChildScrollView(child: Text('Failed to request permissions:\n$e')),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _requestingNotifPermission = false);

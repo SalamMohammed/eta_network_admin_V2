@@ -14,9 +14,7 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   if (!kIsWeb) {
-    await NotificationService().init();
-    await NotificationService().ensureTokenRegistered();
-    await AdsService().init();
+    _initBackgroundServices();
   }
 
   runApp(const MyMobileApp());
@@ -33,4 +31,12 @@ class MyMobileApp extends StatelessWidget {
       home: const AuthGate(),
     );
   }
+}
+
+Future<void> _initBackgroundServices() async {
+  try {
+    await NotificationService().init();
+    await NotificationService().ensureTokenRegistered();
+    await AdsService().init();
+  } catch (_) {}
 }

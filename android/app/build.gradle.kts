@@ -58,6 +58,10 @@ android {
 
     buildTypes {
         release {
+            // Disable minification to prevent stripping of notification resources
+            isMinifyEnabled = false
+            isShrinkResources = false
+            
             if (!keystorePropertiesFile.exists()) {
                 throw GradleException(
                     "Missing android/key.properties. Configure a release upload keystore before building a Play-uploadable AAB."
