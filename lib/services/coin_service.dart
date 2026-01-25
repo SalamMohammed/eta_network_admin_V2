@@ -6,24 +6,35 @@ import 'dart:typed_data';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import '../shared/constants.dart';
+import 'sql_api_service.dart'; // Add this import
 
 class CoinService {
-  static Future<DocumentSnapshot<Map<String, dynamic>>> getUserCoin(
-    String uid,
-  ) {
-    return FirebaseFirestore.instance
+  // MASTER SWITCH: Set to true to use SQL, false for Firestore
+  static const bool useSqlBackend = true;
+
+  static Future<Map<String, dynamic>?> getUserCoin(String uid) async {
+    if (useSqlBackend) {
+      return SqlApiService.getUserCoin(uid);
+    }
+    final snap = await FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
         .doc(uid)
         .get();
+    return snap.data();
   }
 
-  static Stream<DocumentSnapshot<Map<String, dynamic>>> watchUserCoin(
-    String uid,
-  ) {
+  static Stream<Map<String, dynamic>?> watchUserCoin(String uid) {
+    if (useSqlBackend) {
+      // Simple polling every 5 seconds for SQL
+      return Stream.periodic(const Duration(seconds: 5)).asyncMap((_) async {
+        return SqlApiService.getUserCoin(uid);
+      }).asBroadcastStream();
+    }
     return FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
         .doc(uid)
-        .snapshots();
+        .snapshots()
+        .map((doc) => doc.data());
   }
 
   static Future<Map<String, dynamic>> getUserCoinConfig() async {
@@ -39,6 +50,15 @@ class CoinService {
     String? symbol,
     String? excludeUid,
   }) async {
+    // Switch to SQL if enabled
+    if (useSqlBackend) {
+      return SqlApiService.checkCoinUniqueness(
+        name: name,
+        symbol: symbol,
+        excludeUid: excludeUid ?? '',
+      );
+    }
+
     if (name != null && name.isNotEmpty) {
       final q = await FirebaseFirestore.instance
           .collection(FirestoreConstants.userCoins)
@@ -97,6 +117,33 @@ class CoinService {
     } catch (e) {
       debugPrint('[CoinService] Upload failed | error=$e');
     }
+
+    // Switch to SQL if enabled
+    if (useSqlBackend) {
+      try {
+        // Create a copy for SQL to avoid modifying the original map
+        final sqlCoin = Map<String, dynamic>.from(coin);
+
+        // Ensure ownerId is set
+        sqlCoin[FirestoreUserCoinFields.ownerId] = uid;
+
+        // Remove FieldValue objects (like serverTimestamp) which cannot be JSON encoded
+        // The PHP script handles createdAt/updatedAt using MySQL NOW()
+        sqlCoin.remove(FirestoreUserCoinFields.createdAt);
+        sqlCoin.remove(FirestoreUserCoinFields.updatedAt);
+        sqlCoin.remove(
+          FirestoreUserCoinFields.minersCount,
+        ); // If present as FieldValue
+
+        await SqlApiService.createOrUpdateCoin(sqlCoin);
+        debugPrint('[CoinService] SQL create/update success');
+        return;
+      } catch (e) {
+        debugPrint('[CoinService] SQL create/update failed | error=$e');
+        rethrow;
+      }
+    }
+
     final ref = FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
         .doc(uid);
@@ -112,6 +159,18 @@ class CoinService {
   static Future<void> addCoinForUser(String coinOwnerId) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || coinOwnerId.isEmpty) return;
+
+    // Switch to SQL if enabled
+    if (useSqlBackend) {
+      try {
+        await SqlApiService.addToMyCoins(coinOwnerId);
+        return;
+      } catch (e) {
+        debugPrint('[CoinService] SQL add to my coins failed | error=$e');
+        rethrow;
+      }
+    }
+
     final coinSnap = await FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
         .doc(coinOwnerId)

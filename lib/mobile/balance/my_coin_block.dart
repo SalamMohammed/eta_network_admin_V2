@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../shared/firestore_constants.dart';
 import '../../shared/theme/colors.dart';
 import '../../services/coin_service.dart';
+import '../../services/sql_api_service.dart';
 import '../../shared/device_id.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
@@ -24,10 +25,10 @@ class MyCoinBlock extends StatelessWidget {
     if (uid == null) {
       return const SizedBox.shrink();
     }
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<Map<String, dynamic>?>(
       stream: CoinService.watchUserCoin(uid),
       builder: (ctx, snap) {
-        final data = snap.data?.data();
+        final data = snap.data;
         if (data == null || (data[FirestoreUserCoinFields.isActive] != true)) {
           return _NoCoinCard(
             variant: variant,
@@ -211,9 +212,10 @@ class _CoinCard extends StatelessWidget {
     const border = Color(0xFF24303B);
     final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
     final symbol = (data[FirestoreUserCoinFields.symbol] as String?) ?? '';
-    final rate =
-        (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
-        0.0;
+    final rawRate = data[FirestoreUserCoinFields.baseRatePerHour];
+    final rate = (rawRate is num)
+        ? rawRate.toDouble()
+        : (rawRate is String ? double.tryParse(rawRate) ?? 0.0 : 0.0);
     final img = (data[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
     final links =
         (data[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ??
@@ -490,9 +492,10 @@ class _CoinCard extends StatelessWidget {
     }
     final name = (data[FirestoreUserCoinFields.name] as String?) ?? '—';
     final symbol = (data[FirestoreUserCoinFields.symbol] as String?) ?? '';
-    final rate =
-        (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
-        0.0;
+    final rawRate = data[FirestoreUserCoinFields.baseRatePerHour];
+    final rate = (rawRate is num)
+        ? rawRate.toDouble()
+        : (rawRate is String ? double.tryParse(rawRate) ?? 0.0 : 0.0);
     final img = (data[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
     final links =
         (data[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ??
@@ -606,8 +609,30 @@ void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
   final uid = FirebaseAuth.instance.currentUser?.uid;
   final isCreator = uid != null && uid == ownerId;
 
+  double? tryDouble(dynamic v) {
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
   Future<double?> fetchMyMined() async {
     if (uid == null || uid.isEmpty || ownerId.isEmpty) return null;
+
+    // Switch to SQL if enabled
+    if (CoinService.useSqlBackend) {
+      try {
+        final coins = await SqlApiService.getMyCoins(uid!);
+        // Find the specific coin in the list
+        final coin = coins.firstWhere(
+          (c) => c[FirestoreUserCoinMiningFields.ownerId] == ownerId,
+          orElse: () => {},
+        );
+        return tryDouble(coin[FirestoreUserCoinMiningFields.totalPoints]);
+      } catch (_) {
+        return null;
+      }
+    }
+
     try {
       final snap = await FirebaseFirestore.instance
           .collection(FirestoreConstants.users)
@@ -616,7 +641,7 @@ void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
           .doc(ownerId)
           .get();
       final d = snap.data() ?? {};
-      return (d[FirestoreUserCoinMiningFields.totalPoints] as num?)?.toDouble();
+      return tryDouble(d[FirestoreUserCoinMiningFields.totalPoints]);
     } catch (_) {
       return null;
     }
@@ -624,6 +649,15 @@ void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
 
   Future<double?> fetchTotalMinedAll() async {
     if (ownerId.isEmpty) return null;
+
+    // Switch to SQL if enabled (Optimization: Don't fetch total mined real-time if expensive)
+    if (CoinService.useSqlBackend) {
+      // For now, SQL API doesn't have a "total mined all" endpoint yet.
+      // We can return 0 or implement a new API endpoint later.
+      // Returning null keeps the UI simple.
+      return null;
+    }
+
     try {
       final qs = await FirebaseFirestore.instance
           .collectionGroup(FirestoreUserSubCollections.coins)
@@ -631,9 +665,9 @@ void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
           .get();
       double sum = 0.0;
       for (final doc in qs.docs) {
-        final v =
-            (doc.data()[FirestoreUserCoinMiningFields.totalPoints] as num?)
-                ?.toDouble();
+        final v = tryDouble(
+          doc.data()[FirestoreUserCoinMiningFields.totalPoints],
+        );
         if (v != null && v.isFinite) {
           sum += v;
         }
@@ -648,18 +682,17 @@ void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
   final totalMinedAllFuture = isCreator ? fetchTotalMinedAll() : null;
 
   final rate =
-      (data[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
-      (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
-      (data['hourlyRate'] as num?)?.toDouble() ??
-      (data['baseRatePerHour'] as num?)?.toDouble() ??
+      tryDouble(data[FirestoreUserCoinMiningFields.hourlyRate]) ??
+      tryDouble(data[FirestoreUserCoinFields.baseRatePerHour]) ??
+      tryDouble(data['hourlyRate']) ??
+      tryDouble(data['baseRatePerHour']) ??
       0.0;
   final holders =
-      (data[FirestoreUserCoinFields.minersCount] as num?)?.toDouble() ??
-      (data['holdersCount'] as num?)?.toDouble() ??
-      (data['holders'] as num?)?.toDouble();
+      tryDouble(data[FirestoreUserCoinFields.minersCount]) ??
+      tryDouble(data['holdersCount']) ??
+      tryDouble(data['holders']);
   final changePct =
-      (data['rateChangePct'] as num?)?.toDouble() ??
-      (data['changePct'] as num?)?.toDouble();
+      tryDouble(data['rateChangePct']) ?? tryDouble(data['changePct']);
 
   showDialog(
     context: context,
@@ -2189,17 +2222,31 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
     );
   }
 
+  Timestamp? _parseTimestamp(dynamic val) {
+    if (val is Timestamp) return val;
+    if (val is String) {
+      final dt = DateTime.tryParse(val);
+      if (dt != null) return Timestamp.fromDate(dt);
+    }
+    return null;
+  }
+
+  double _parseDouble(dynamic val) {
+    if (val is num) return val.toDouble();
+    if (val is String) return double.tryParse(val) ?? 0.0;
+    return 0.0;
+  }
+
   void _processData(Map<String, dynamic> d) {
-    final total =
-        (d[FirestoreUserCoinMiningFields.totalPoints] as num?)?.toDouble() ??
-        0.0;
-    final end = d[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
-    final rate =
-        (d[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
-        0.0;
-    final synced = d[FirestoreUserCoinMiningFields.lastSyncedAt] as Timestamp?;
-    final start =
-        d[FirestoreUserCoinMiningFields.lastMiningStart] as Timestamp?;
+    final total = _parseDouble(d[FirestoreUserCoinMiningFields.totalPoints]);
+    final end = _parseTimestamp(d[FirestoreUserCoinMiningFields.lastMiningEnd]);
+    final rate = _parseDouble(d[FirestoreUserCoinMiningFields.hourlyRate]);
+    final synced = _parseTimestamp(
+      d[FirestoreUserCoinMiningFields.lastSyncedAt],
+    );
+    final start = _parseTimestamp(
+      d[FirestoreUserCoinMiningFields.lastMiningStart],
+    );
     final active = end != null && DateTime.now().isBefore(end.toDate());
     _rate = rate;
     _end = end;

@@ -6,6 +6,7 @@ import '../shared/firestore_constants.dart';
 import '../shared/device_id.dart';
 import 'balance/my_coin_block.dart';
 import '../services/coin_service.dart';
+import '../services/sql_api_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/mining_state_service.dart';
 import '../services/subscription_service.dart';
@@ -903,10 +904,10 @@ class _MobileHomePageState extends State<MobileHomePage>
   Widget _myCreatedCoinCard() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return const SizedBox.shrink();
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<Map<String, dynamic>?>(
       stream: CoinService.watchUserCoin(uid),
       builder: (context, snap) {
-        final d = snap.data?.data();
+        final d = snap.data;
         final active =
             d != null && (d[FirestoreUserCoinFields.isActive] == true);
         if (!active) {
@@ -1233,12 +1234,39 @@ class _MobileHomePageState extends State<MobileHomePage>
           ),
           const SizedBox(height: 8),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection(FirestoreConstants.userCoins)
-                .where(FirestoreUserCoinFields.isActive, isEqualTo: true)
-                .limit(20)
-                .snapshots(),
+            stream: CoinService.useSqlBackend
+                ? null // No stream for SQL, we'll use FutureBuilder inside
+                : FirebaseFirestore.instance
+                      .collection(FirestoreConstants.userCoins)
+                      .where(FirestoreUserCoinFields.isActive, isEqualTo: true)
+                      .limit(20)
+                      .snapshots(),
             builder: (context, snap) {
+              if (CoinService.useSqlBackend) {
+                return FutureBuilder<List<Map<String, dynamic>>>(
+                  future: SqlApiService.getLiveCoins(sort: _liveSort),
+                  builder: (context, sqlSnap) {
+                    if (sqlSnap.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      );
+                    }
+                    final coins = sqlSnap.data ?? [];
+                    if (coins.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                          child: Text('No live community coins (SQL)'),
+                        ),
+                      );
+                    }
+                    return Column(
+                      children: [for (final coin in coins) _liveCoinCard(coin)],
+                    );
+                  },
+                );
+              }
+
               final uid = FirebaseAuth.instance.currentUser?.uid;
               var docs = (snap.data?.docs ?? const [])
                   .where(

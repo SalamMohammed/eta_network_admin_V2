@@ -1,0 +1,41 @@
+[25-Jan-2026 08:52:31 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Access denied for user 'salamya27'@'localhost' (using password: YES) in /home/jawayizc/public_html/api/db.php:7
+Stack trace:
+#0 /home/jawayizc/public_html/api/db.php(7): mysqli->__construct()
+#1 /home/jawayizc/public_html/api/get_live_coins.php(2): include('/home/jawayizc/...')
+#2 {main}
+  thrown in /home/jawayizc/public_html/api/db.php on line 7
+[25-Jan-2026 08:53:13 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Access denied for user 'salamya27'@'localhost' (using password: YES) in /home/jawayizc/public_html/api/db.php:7
+Stack trace:
+#0 /home/jawayizc/public_html/api/db.php(7): mysqli->__construct()
+#1 /home/jawayizc/public_html/api/get_live_coins.php(2): include('/home/jawayizc/...')
+#2 {main}
+  thrown in /home/jawayizc/public_html/api/db.php on line 7
+[25-Jan-2026 09:14:24 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Access denied for user 'salamya27'@'localhost' (using password: YES) in /home/jawayizc/public_html/api/db.php:7
+Stack trace:
+#0 /home/jawayizc/public_html/api/db.php(7): mysqli->__construct()
+#1 /home/jawayizc/public_html/api/get_live_coins.php(2): include('/home/jawayizc/...')
+#2 {main}
+  thrown in /home/jawayizc/public_html/api/db.php on line 7
+[25-Jan-2026 09:18:00 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Access denied for user 'salamya27'@'localhost' (using password: YES) in /home/jawayizc/public_html/api/db.php:7
+Stack trace:
+#0 /home/jawayizc/public_html/api/db.php(7): mysqli->__construct()
+#1 /home/jawayizc/public_html/api/get_live_coins.php(2): include('/home/jawayizc/...')
+#2 {main}
+  thrown in /home/jawayizc/public_html/api/db.php on line 7
+[25-Jan-2026 09:18:16 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Access denied for user 'salamya27'@'localhost' (using password: YES) in /home/jawayizc/public_html/api/db.php:7
+Stack trace:
+#0 /home/jawayizc/public_html/api/db.php(7): mysqli->__construct()
+#1 /home/jawayizc/public_html/api/check_coin_uniqueness.php(2): require_once('/home/jawayizc/...')
+#2 {main}
+  thrown in /home/jawayizc/public_html/api/db.php on line 7
+[25-Jan-2026 10:10:31 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Access denied for user 'salamya27'@'localhost' (using password: YES) in /home/jawayizc/public_html/api/db.php:7
+Stack trace:
+#0 /home/jawayizc/public_html/api/db.php(7): mysqli->__construct()
+#1 /home/jawayizc/public_html/api/check_coin_uniqueness.php(2): require_once('/home/jawayizc/...')
+#2 {main}
+  thrown in /home/jawayizc/public_html/api/db.php on line 7
+[25-Jan-2026 10:18:51 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Access denied for user 'salamya27'@'localhost' (using password: YES) in /home/jawayizc/public_html/api/db.php:7
+Stack trace:
+#0 /home/jawayizc/public_html/api/db.php(7): mysqli->__construct()
+#1 {main}
+  thrown in /home/jawayizc/public_html/api/db.php on line 7
