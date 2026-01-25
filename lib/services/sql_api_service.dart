@@ -166,6 +166,48 @@ class SqlApiService {
     }
   }
 
+  /// Start mining session
+  static Future<Map<String, dynamic>> startCoinMining({
+    required String coinOwnerId,
+    required double hourlyRate,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw Exception('Not logged in');
+
+    // Note: We do NOT explicitly sync earnings here anymore because
+    // start_mining_session.php now automatically calculates and adds
+    // the previous session's pending earnings before starting the new one.
+    // This ensures "chunk" updates as requested.
+
+    final response = await post('start_mining_session.php', {
+      'uid': uid,
+      'coinOwnerId': coinOwnerId,
+      'hourlyRate': hourlyRate,
+      'lastMiningStart': start.toIso8601String(),
+      'lastMiningEnd': end.toIso8601String(),
+      'lastSyncedAt': start.toIso8601String(),
+    });
+
+    return response;
+  }
+
+  /// Sync mining earnings
+  static Future<void> syncCoinEarnings(String coinOwnerId) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final res = await post('sync_mining_session.php', {
+        'uid': uid,
+        'coinOwnerId': coinOwnerId,
+      });
+      debugPrint('[SqlApiService] Sync response: $res');
+    } catch (e) {
+      debugPrint('[SqlApiService] Sync failed: $e');
+    }
+  }
+
   /// Check if coin name/symbol is unique
   static Future<void> checkCoinUniqueness({
     String? name,

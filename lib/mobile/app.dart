@@ -35,7 +35,7 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
         final unverified = u != null && !(u.emailVerified);
 
         final scaffold = Scaffold(
-          body: pages[index],
+          body: IndexedStack(index: index, children: pages),
           bottomNavigationBar: NavigationBar(
             backgroundColor: navBg,
             indicatorColor: Colors.transparent,

@@ -10,7 +10,20 @@ if (empty($uid)) {
 }
 
 try {
-    $stmt = $pdo->prepare("SELECT * FROM user_coins WHERE ownerId = ? LIMIT 1");
+    // Join mining_records to get mining status for the owner
+    $sql = "SELECT 
+                uc.*,
+                mr.totalPoints, 
+                mr.hourlyRate, 
+                mr.lastMiningStart, 
+                mr.lastMiningEnd, 
+                mr.lastSyncedAt
+            FROM user_coins uc
+            LEFT JOIN mining_records mr ON uc.ownerId = mr.coinOwnerId AND mr.uid = uc.ownerId
+            WHERE uc.ownerId = ? 
+            LIMIT 1";
+
+    $stmt = $pdo->prepare($sql);
     $stmt->execute([$uid]);
     $coin = $stmt->fetch();
     
@@ -19,6 +32,10 @@ try {
             $coin['isActive'] = (bool)$coin['isActive'];
             $coin['baseRatePerHour'] = (float)$coin['baseRatePerHour'];
             $coin['minersCount'] = (int)$coin['minersCount'];
+            
+            // Mining fields (might be null if LEFT JOIN fails, but shouldn't for creator)
+            if (isset($coin['totalPoints'])) $coin['totalPoints'] = (float)$coin['totalPoints'];
+            if (isset($coin['hourlyRate'])) $coin['hourlyRate'] = (float)$coin['hourlyRate'];
             
             // Decode socialLinks if it's a JSON string
             if (isset($coin['socialLinks']) && is_string($coin['socialLinks'])) {

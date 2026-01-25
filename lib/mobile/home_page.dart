@@ -1001,7 +1001,12 @@ class _MobileHomePageState extends State<MobileHomePage>
               ],
             ),
             const SizedBox(height: 10),
-            CoinMiningControls(coinOwnerId: ownerId),
+            CoinMiningControls(
+              coinOwnerId: ownerId,
+              baseRate: rate,
+              symbol: symbol,
+              miningData: data,
+            ),
           ],
         ),
       ),

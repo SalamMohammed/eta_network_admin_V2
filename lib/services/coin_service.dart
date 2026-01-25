@@ -25,10 +25,17 @@ class CoinService {
 
   static Stream<Map<String, dynamic>?> watchUserCoin(String uid) {
     if (useSqlBackend) {
-      // Simple polling every 5 seconds for SQL
-      return Stream.periodic(const Duration(seconds: 5)).asyncMap((_) async {
-        return SqlApiService.getUserCoin(uid);
-      }).asBroadcastStream();
+      // Poll every 5 seconds, but emit first value immediately
+      Stream<Map<String, dynamic>?> stream() async* {
+        // Initial fetch
+        yield await SqlApiService.getUserCoin(uid);
+        // Periodic polling
+        yield* Stream.periodic(
+          const Duration(seconds: 5),
+        ).asyncMap((_) => SqlApiService.getUserCoin(uid));
+      }
+
+      return stream().asBroadcastStream();
     }
     return FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
@@ -272,6 +279,31 @@ class CoinService {
       endDt = maxEnd;
     }
     final end = Timestamp.fromDate(endDt);
+
+    if (useSqlBackend) {
+      // 1. Fetch coin details to get the rate
+      final coinData = await SqlApiService.getUserCoin(coinOwnerId);
+      if (coinData == null) {
+        throw Exception('Coin not found');
+      }
+      final double rate =
+          (coinData[FirestoreUserCoinFields.baseRatePerHour] as num?)
+              ?.toDouble() ??
+          0.0;
+
+      // 2. Start mining session via SQL API
+      final updatedRecord = await SqlApiService.startCoinMining(
+        coinOwnerId: coinOwnerId,
+        hourlyRate: rate,
+        start: now,
+        end: endDt,
+      );
+
+      // Return the updated record in a format compatible with the app
+      // Ensure fields match what the UI expects (mapped from PHP response)
+      return updatedRecord;
+    }
+
     final coinSnap = await FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
         .doc(coinOwnerId)
@@ -325,6 +357,12 @@ class CoinService {
   static Future<void> syncCoinEarnings(String coinOwnerId) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+
+    if (useSqlBackend) {
+      await SqlApiService.syncCoinEarnings(coinOwnerId);
+      return;
+    }
+
     final ref = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid)

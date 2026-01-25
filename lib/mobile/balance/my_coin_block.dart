@@ -473,6 +473,7 @@ class _CoinCard extends StatelessWidget {
                         baseRate: rate,
                         symbol: symbol,
                         variant: CoinMiningControlsVariant.myCoinCard,
+                        miningData: data,
                       ),
                     ],
                   ),
@@ -2187,6 +2188,40 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
   Timestamp? _start;
   double _totalBase = 0.0;
   DateTime? _lastSync;
+  Map<String, dynamic>? _localOverrideData;
+
+  @override
+  void didUpdateWidget(CoinMiningControls oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isSameState(widget.miningData, oldWidget.miningData)) {
+      _localOverrideData = null;
+    }
+  }
+
+  bool _isSameState(Map<String, dynamic>? a, Map<String, dynamic>? b) {
+    if (identical(a, b)) return true;
+    if (a == null || b == null) return false;
+
+    // Key fields that define the mining state
+    const keys = [
+      FirestoreUserCoinMiningFields.lastMiningEnd,
+      FirestoreUserCoinMiningFields.lastMiningStart,
+      FirestoreUserCoinMiningFields.totalPoints,
+      FirestoreUserCoinMiningFields.hourlyRate,
+      FirestoreUserCoinFields.isActive,
+    ];
+
+    for (final k in keys) {
+      final v1 = a[k];
+      final v2 = b[k];
+      // Simple string comparison handles Timestamp vs String (SQL) differences roughly,
+      // but ideally we should compare parsed values.
+      // For preventing redundant updates, direct comparison is usually enough
+      // if the source format hasn't changed.
+      if (v1.toString() != v2.toString()) return false;
+    }
+    return true;
+  }
 
   @override
   void dispose() {
@@ -2196,8 +2231,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.miningData != null) {
-      _processData(widget.miningData!);
+    final data = _localOverrideData ?? widget.miningData;
+    if (data != null) {
+      _processData(data);
       return _buildUI();
     }
 
@@ -2225,7 +2261,12 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
   Timestamp? _parseTimestamp(dynamic val) {
     if (val is Timestamp) return val;
     if (val is String) {
-      final dt = DateTime.tryParse(val);
+      // Handle MySQL format "YYYY-MM-DD HH:MM:SS" by replacing space with T
+      String toParse = val;
+      if (val.contains(' ') && !val.contains('T')) {
+        toParse = val.replaceFirst(' ', 'T');
+      }
+      final dt = DateTime.tryParse(toParse);
       if (dt != null) return Timestamp.fromDate(dt);
     }
     return null;
@@ -2247,26 +2288,55 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
     final start = _parseTimestamp(
       d[FirestoreUserCoinMiningFields.lastMiningStart],
     );
-    final active = end != null && DateTime.now().isBefore(end.toDate());
+
+    // Check if active based on end time
+    final now = DateTime.now();
+    final active = end != null && now.isBefore(end.toDate());
+
     _rate = rate;
     _end = end;
     _start = synced ?? start;
     _totalBase = total;
 
+    // Calculate correct display value immediately to avoid UI reset/jump
+    if (_start != null && _end != null) {
+      final s = _start!.toDate();
+      final e = _end!.toDate();
+      final totalSessionSec = e.difference(s).inSeconds.toDouble();
+
+      if (active) {
+        // Currently mining: Base + Elapsed
+        final elapsedSec = now.difference(s).inSeconds.toDouble();
+        final inc = (elapsedSec * (_rate / 3600.0)).clamp(
+          0.0,
+          totalSessionSec * (_rate / 3600.0),
+        );
+        _display = _totalBase + inc;
+      } else {
+        // Finished mining (waiting for next session start to sync chunk): Base + Full Session
+        // But only if we have a valid past session recorded
+        // If the session is very old, we still show it as "unsynced earnings" until they start a new one?
+        // Yes, because DB totalPoints is not updated yet.
+        if (totalSessionSec > 0) {
+          final fullEarned = (totalSessionSec * (_rate / 3600.0));
+          _display = _totalBase + fullEarned;
+        } else {
+          _display = _totalBase;
+        }
+      }
+    } else {
+      _display = _totalBase;
+    }
+
     // Only update timer state if needed to avoid build side-effects issues
     if (active) {
       if (_timer == null) {
-        _startTimer(base: total);
+        _startTimer();
       }
     } else {
       if (_timer != null) {
         _timer?.cancel();
         _timer = null;
-        // Update display to final total when stopping
-        _display = total;
-      } else {
-        // If no timer and inactive, ensure display is correct
-        _display = total;
       }
     }
   }
@@ -2696,11 +2766,19 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
                 : () async {
                     try {
                       final devId = await DeviceId.get();
-                      await CoinService.startCoinMining(
+                      final result = await CoinService.startCoinMining(
                         widget.coinOwnerId,
                         deviceId: devId,
                       );
-                      if (mounted) setState(() {});
+                      if (mounted) {
+                        if (result.isNotEmpty) {
+                          setState(() {
+                            _localOverrideData = result;
+                          });
+                        } else {
+                          setState(() {});
+                        }
+                      }
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -2731,9 +2809,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
     );
   }
 
-  void _startTimer({required double base}) {
+  void _startTimer() {
     _timer?.cancel();
-    _display = base;
+    // _display is already set correctly in _processData, do NOT reset it here.
     _timer = Timer.periodic(const Duration(milliseconds: 1000), (_) async {
       final end = _end?.toDate();
       final start = _start?.toDate();
@@ -2742,7 +2820,11 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
       if (!now.isBefore(end)) {
         _timer?.cancel();
         _timer = null; // Ensure null is set
-        await CoinService.syncCoinEarnings(widget.coinOwnerId);
+        // Ensure final value is set correctly when timer ends naturally
+        final totalSessionSec = end.difference(start).inSeconds.toDouble();
+        final fullEarned = totalSessionSec * (_rate / 3600.0);
+        _display = _totalBase + fullEarned;
+
         if (mounted) setState(() {});
         return;
       }
@@ -2755,11 +2837,6 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
 
       final oldDisplay = _display;
       _display = _totalBase + inc;
-
-      if (_lastSync == null || now.difference(_lastSync!).inSeconds >= 60) {
-        _lastSync = now;
-        await CoinService.syncCoinEarnings(widget.coinOwnerId);
-      }
 
       // Only rebuild if the displayed value (3 decimal places) actually changes
       if (mounted &&
