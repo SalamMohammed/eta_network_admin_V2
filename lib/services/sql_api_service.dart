@@ -172,6 +172,7 @@ class SqlApiService {
     required double hourlyRate,
     required DateTime start,
     required DateTime end,
+    String? deviceId,
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) throw Exception('Not logged in');
@@ -188,19 +189,26 @@ class SqlApiService {
       'lastMiningStart': start.toIso8601String(),
       'lastMiningEnd': end.toIso8601String(),
       'lastSyncedAt': start.toIso8601String(),
+      'deviceId': deviceId,
     });
 
     return response;
   }
 
   /// Sync mining earnings
-  static Future<void> syncCoinEarnings(String coinOwnerId) async {
+  static Future<void> syncCoinEarnings({
+    required String coinOwnerId,
+    required double amount,
+    required DateTime lastSyncedAt,
+  }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
       final res = await post('sync_mining_session.php', {
         'uid': uid,
         'coinOwnerId': coinOwnerId,
+        'amount': amount,
+        'lastSyncedAt': lastSyncedAt.toIso8601String(),
       });
       debugPrint('[SqlApiService] Sync response: $res');
     } catch (e) {

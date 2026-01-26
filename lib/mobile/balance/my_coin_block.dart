@@ -2825,6 +2825,17 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
         final fullEarned = totalSessionSec * (_rate / 3600.0);
         _display = _totalBase + fullEarned;
 
+        // Trigger sync to ensure points are added to DB at the exact end time
+        try {
+          await CoinService.syncCoinEarnings(
+            coinOwnerId: widget.coinOwnerId,
+            amount: fullEarned,
+            lastSyncedAt: end,
+          );
+        } catch (e) {
+          debugPrint('Auto-sync error: $e');
+        }
+
         if (mounted) setState(() {});
         return;
       }

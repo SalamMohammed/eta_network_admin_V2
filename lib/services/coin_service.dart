@@ -297,6 +297,7 @@ class CoinService {
         hourlyRate: rate,
         start: now,
         end: endDt,
+        deviceId: deviceId,
       );
 
       // Return the updated record in a format compatible with the app
@@ -354,12 +355,20 @@ class CoinService {
     return updated.data() ?? {};
   }
 
-  static Future<void> syncCoinEarnings(String coinOwnerId) async {
+  static Future<void> syncCoinEarnings({
+    required String coinOwnerId,
+    required double amount,
+    required DateTime lastSyncedAt,
+  }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
     if (useSqlBackend) {
-      await SqlApiService.syncCoinEarnings(coinOwnerId);
+      await SqlApiService.syncCoinEarnings(
+        coinOwnerId: coinOwnerId,
+        amount: amount,
+        lastSyncedAt: lastSyncedAt,
+      );
       return;
     }
 
@@ -368,26 +377,13 @@ class CoinService {
         .doc(uid)
         .collection(FirestoreUserSubCollections.coins)
         .doc(coinOwnerId);
-    final snap = await ref.get();
-    final d = snap.data() ?? {};
-    final rate =
-        (d[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
-        0.0;
-    final start =
-        d[FirestoreUserCoinMiningFields.lastMiningStart] as Timestamp?;
-    final synced = d[FirestoreUserCoinMiningFields.lastSyncedAt] as Timestamp?;
-    final end = d[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
-    if (start == null || end == null) return;
-    final now = DateTime.now();
-    final s = (synced ?? start).toDate();
-    final e = end.toDate();
-    final until = now.isBefore(e) ? now : e;
-    final elapsed = until.difference(s).inSeconds.toDouble();
-    final inc = (elapsed / 3600.0) * rate;
-    if (inc <= 0) return;
+
+    // App-driven sync for Firestore too
     await ref.update({
-      FirestoreUserCoinMiningFields.totalPoints: FieldValue.increment(inc),
-      FirestoreUserCoinMiningFields.lastSyncedAt: Timestamp.fromDate(until),
+      FirestoreUserCoinMiningFields.totalPoints: FieldValue.increment(amount),
+      FirestoreUserCoinMiningFields.lastSyncedAt: Timestamp.fromDate(
+        lastSyncedAt,
+      ),
     });
   }
 }

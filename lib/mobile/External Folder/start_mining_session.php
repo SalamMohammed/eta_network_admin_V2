@@ -16,6 +16,8 @@ function toMysqlDate($isoDate) {
     if (empty($isoDate)) return null;
     try {
         $dt = new DateTime($isoDate);
+        // Ensure we are working with the server's timezone for storage
+        $dt->setTimezone(new DateTimeZone(date_default_timezone_get()));
         return $dt->format('Y-m-d H:i:s');
     } catch (Exception $e) {
         return null;
@@ -44,7 +46,10 @@ try {
     if ($existing) {
         $oldStart = $existing['lastMiningStart'];
         $oldEnd = $existing['lastMiningEnd'];
-        $oldRate = (float)$existing['hourlyRate'];
+        $lastSynced = $existing['lastSyncedAt'];
+        // Use the stored hourlyRate for the session being closed to ensure accuracy.
+        // Fallback to passed hourlyRate if stored is invalid.
+        $oldRate = ((float)$existing['hourlyRate'] > 0) ? (float)$existing['hourlyRate'] : (float)$hourlyRate;
         $currentTotal = (float)$existing['totalPoints'];
 
         if ($oldStart && $oldEnd) {
@@ -52,17 +57,35 @@ try {
             $s = new DateTime($oldStart);
             $e = new DateTime($oldEnd);
 
-            // Calculate overlap of [s, e] with [s, now]
-            // effectively: min(now, e) - s
-            $cutoff = ($now < $e) ? $now : $e;
-            
-            // If the session started in the past
-            if ($cutoff > $s) {
-                $seconds = $cutoff->getTimestamp() - $s->getTimestamp();
-                if ($seconds > 0) {
-                    $earned = ($seconds / 3600.0) * $oldRate;
-                    $addedPoints = $earned;
+            // If we have a sync record, use that as the starting point 
+            // to avoid double-counting points that were already synced.
+            if ($lastSynced) {
+                $ls = new DateTime($lastSynced);
+                if ($ls > $s) {
+                    $s = $ls;
                 }
+            }
+
+            // STRICT COMPLETION CHECK:
+            // User request: "I want the mined points to be added... not with the mined start but when mining ends."
+            // Points are awarded only if the session has completed (now >= end).
+            // ADDED TOLERANCE: Allow 60 seconds of clock skew/latency.
+            // If the user restarts 1 second "early" according to server time, we still count it.
+            $tolerance = new DateInterval('PT60S');
+            $e_with_tolerance = clone $e;
+            $e_with_tolerance->sub($tolerance);
+
+            if ($now >= $e_with_tolerance) {
+                 // Calculate full duration from start (or last sync) to scheduled end
+                 $seconds = $e->getTimestamp() - $s->getTimestamp();
+                 if ($seconds > 0) {
+                     $earned = ($seconds / 3600.0) * $oldRate;
+                     $addedPoints = $earned;
+                 }
+            } else {
+                // Session restarted early. 
+                // No points awarded for incomplete session.
+                $addedPoints = 0;
             }
         }
     }
@@ -75,7 +98,7 @@ try {
             (uid, coinOwnerId, hourlyRate, lastMiningStart, lastMiningEnd, lastSyncedAt, updatedAt, totalPoints)
             VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
             ON DUPLICATE KEY UPDATE
-            totalPoints = totalPoints + VALUES(totalPoints), -- Add the calculated earnings
+            totalPoints = COALESCE(totalPoints, 0) + VALUES(totalPoints), -- Add the calculated earnings
             hourlyRate = VALUES(hourlyRate),
             lastMiningStart = VALUES(lastMiningStart),
             lastMiningEnd = VALUES(lastMiningEnd),
