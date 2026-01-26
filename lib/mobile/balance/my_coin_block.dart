@@ -6,7 +6,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../shared/firestore_constants.dart';
 import '../../shared/theme/colors.dart';
 import '../../services/coin_service.dart';
-import '../../services/sql_api_service.dart';
 import '../../shared/device_id.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
@@ -616,38 +615,6 @@ void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
     return null;
   }
 
-  Future<double?> fetchMyMined() async {
-    if (uid == null || uid.isEmpty || ownerId.isEmpty) return null;
-
-    // Switch to SQL if enabled
-    if (CoinService.useSqlBackend) {
-      try {
-        final coins = await SqlApiService.getMyCoins(uid!);
-        // Find the specific coin in the list
-        final coin = coins.firstWhere(
-          (c) => c[FirestoreUserCoinMiningFields.ownerId] == ownerId,
-          orElse: () => {},
-        );
-        return tryDouble(coin[FirestoreUserCoinMiningFields.totalPoints]);
-      } catch (_) {
-        return null;
-      }
-    }
-
-    try {
-      final snap = await FirebaseFirestore.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .collection(FirestoreUserSubCollections.coins)
-          .doc(ownerId)
-          .get();
-      final d = snap.data() ?? {};
-      return tryDouble(d[FirestoreUserCoinMiningFields.totalPoints]);
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<double?> fetchTotalMinedAll() async {
     if (ownerId.isEmpty) return null;
 
@@ -679,7 +646,6 @@ void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
     }
   }
 
-  final myMinedFuture = isCreator ? fetchMyMined() : null;
   final totalMinedAllFuture = isCreator ? fetchTotalMinedAll() : null;
 
   final rate =
@@ -1109,24 +1075,20 @@ void _showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
                                       SizedBox(width: s(12)),
                                       Expanded(
                                         child: isCreator
-                                            ? FutureBuilder<double?>(
-                                                future: myMinedFuture,
-                                                builder: (context, snap) {
-                                                  final done =
-                                                      snap.connectionState ==
-                                                      ConnectionState.done;
-                                                  final v = done
-                                                      ? snap.data
-                                                      : null;
+                                            ? LiveMinedDisplay(
+                                                uid: uid,
+                                                initialData: data,
+                                                builder: (v) {
+                                                  // Show 4 decimal places to simulate real-time mining
+                                                  final valStr = v
+                                                      .toStringAsFixed(4);
                                                   return metricCard(
                                                     icon: Icons.layers_rounded,
                                                     iconBg: const Color(
                                                       0xFF8B5CF6,
                                                     ).withValues(alpha: 0.28),
                                                     title: 'Your mined',
-                                                    value: done
-                                                        ? compactNum(v)
-                                                        : '…',
+                                                    value: valStr,
                                                   );
                                                 },
                                               )
@@ -2187,7 +2149,6 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
   double _rate = 0.0;
   Timestamp? _start;
   double _totalBase = 0.0;
-  DateTime? _lastSync;
   Map<String, dynamic>? _localOverrideData;
 
   @override
@@ -2866,5 +2827,164 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
     final h = rem.inHours;
     final m = rem.inMinutes % 60;
     return '${h}h ${m}m remaining';
+  }
+}
+
+class LiveMinedDisplay extends StatefulWidget {
+  final String uid;
+  final Widget Function(double value) builder;
+  final Map<String, dynamic>? initialData;
+
+  const LiveMinedDisplay({
+    super.key,
+    required this.uid,
+    required this.builder,
+    this.initialData,
+  });
+
+  @override
+  State<LiveMinedDisplay> createState() => _LiveMinedDisplayState();
+}
+
+class _LiveMinedDisplayState extends State<LiveMinedDisplay> {
+  Timer? _timer;
+  double _display = 0.0;
+  Timestamp? _end;
+  double _rate = 0.0;
+  Timestamp? _start;
+  double _totalBase = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialData != null) {
+      _processData(widget.initialData!);
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Timestamp? _parseTimestamp(dynamic val) {
+    if (val is Timestamp) return val;
+    if (val is String) {
+      String toParse = val;
+      if (val.contains(' ') && !val.contains('T')) {
+        toParse = val.replaceFirst(' ', 'T');
+      }
+      final dt = DateTime.tryParse(toParse);
+      if (dt != null) return Timestamp.fromDate(dt);
+    }
+    return null;
+  }
+
+  double _parseDouble(dynamic val) {
+    if (val is num) return val.toDouble();
+    if (val is String) return double.tryParse(val) ?? 0.0;
+    return 0.0;
+  }
+
+  void _processData(Map<String, dynamic> d) {
+    final total = _parseDouble(d[FirestoreUserCoinMiningFields.totalPoints]);
+    final end = _parseTimestamp(d[FirestoreUserCoinMiningFields.lastMiningEnd]);
+    final rate = _parseDouble(d[FirestoreUserCoinMiningFields.hourlyRate]);
+    final synced = _parseTimestamp(
+      d[FirestoreUserCoinMiningFields.lastSyncedAt],
+    );
+    final start = _parseTimestamp(
+      d[FirestoreUserCoinMiningFields.lastMiningStart],
+    );
+
+    final now = DateTime.now();
+    final active = end != null && now.isBefore(end.toDate());
+
+    _rate = rate;
+    _end = end;
+    _start = synced ?? start;
+    _totalBase = total;
+
+    if (_start != null && _end != null) {
+      final s = _start!.toDate();
+      final e = _end!.toDate();
+      final totalSessionSec = e.difference(s).inSeconds.toDouble();
+
+      if (active) {
+        final elapsedSec = now.difference(s).inSeconds.toDouble();
+        final inc = (elapsedSec * (_rate / 3600.0)).clamp(
+          0.0,
+          totalSessionSec * (_rate / 3600.0),
+        );
+        _display = _totalBase + inc;
+      } else {
+        if (totalSessionSec > 0) {
+          final fullEarned = (totalSessionSec * (_rate / 3600.0));
+          _display = _totalBase + fullEarned;
+        } else {
+          _display = _totalBase;
+        }
+      }
+    } else {
+      _display = _totalBase;
+    }
+
+    if (active) {
+      if (_timer == null) {
+        _startTimer();
+      }
+    } else {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
+      final end = _end?.toDate();
+      final start = _start?.toDate();
+      if (end == null || start == null) return;
+      final now = DateTime.now();
+      if (!now.isBefore(end)) {
+        _timer?.cancel();
+        _timer = null;
+        final totalSessionSec = end.difference(start).inSeconds.toDouble();
+        final fullEarned = totalSessionSec * (_rate / 3600.0);
+        _display = _totalBase + fullEarned;
+        if (mounted) setState(() {});
+        return;
+      }
+      final elapsedSec = now.difference(start).inSeconds.toDouble();
+      final totalSessionSec = end.difference(start).inSeconds.toDouble();
+      final inc = (elapsedSec * (_rate / 3600.0)).clamp(
+        0.0,
+        totalSessionSec * (_rate / 3600.0),
+      );
+
+      final oldDisplay = _display;
+      _display = _totalBase + inc;
+
+      if (mounted &&
+          (_display.toStringAsFixed(3) != oldDisplay.toStringAsFixed(3))) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: CoinService.watchUserCoin(widget.uid),
+      initialData: widget.initialData,
+      builder: (context, snap) {
+        final d = snap.data;
+        if (d != null) {
+          _processData(d);
+        }
+        return widget.builder(_display);
+      },
+    );
   }
 }

@@ -2134,14 +2134,32 @@ class _MobileHomePageState extends State<MobileHomePage>
                                         ),
                                         SizedBox(width: s(12)),
                                         Expanded(
-                                          child: metricCard(
-                                            icon: Icons.layers_rounded,
-                                            iconBg: const Color(
-                                              0xFF8B5CF6,
-                                            ).withValues(alpha: 0.28),
-                                            title: 'Total mined',
-                                            value: compactNum(total),
-                                          ),
+                                          child: isCreator
+                                              ? LiveMinedDisplay(
+                                                  uid: uid,
+                                                  initialData: data,
+                                                  builder: (v) {
+                                                    final valStr = v
+                                                        .toStringAsFixed(4);
+                                                    return metricCard(
+                                                      icon:
+                                                          Icons.layers_rounded,
+                                                      iconBg: const Color(
+                                                        0xFF8B5CF6,
+                                                      ).withValues(alpha: 0.28),
+                                                      title: 'Your mined',
+                                                      value: valStr,
+                                                    );
+                                                  },
+                                                )
+                                              : metricCard(
+                                                  icon: Icons.layers_rounded,
+                                                  iconBg: const Color(
+                                                    0xFF8B5CF6,
+                                                  ).withValues(alpha: 0.28),
+                                                  title: 'Total mined',
+                                                  value: compactNum(total),
+                                                ),
                                         ),
                                       ],
                                     ),
