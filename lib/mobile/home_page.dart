@@ -924,7 +924,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     final symbol = (data[FirestoreUserCoinFields.symbol] as String?) ?? '';
     final imageUrl = (data[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
     final rate =
-        (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+        _safeDoubleNullable(data[FirestoreUserCoinFields.baseRatePerHour]) ??
         0.0;
 
     const card = Color(0xFF17222C);
@@ -1181,6 +1181,13 @@ class _MobileHomePageState extends State<MobileHomePage>
         ],
       ),
     );
+  }
+
+  double? _safeDoubleNullable(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
   }
 
   Widget _liveCoinsTab() {
@@ -1461,7 +1468,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     final symbol = (data[FirestoreUserCoinFields.symbol] as String?) ?? '';
     final imageUrl = (data[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
     final rate =
-        (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+        _safeDoubleNullable(data[FirestoreUserCoinFields.baseRatePerHour]) ??
         0.0;
     const card = Color(0xFF17222C);
     const border = Color(0xFF24303B);
@@ -1575,7 +1582,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     final imageUrl =
         (data[FirestoreUserCoinMiningFields.imageUrl] as String?) ?? '';
     final rate =
-        (data[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
+        _safeDoubleNullable(data[FirestoreUserCoinMiningFields.hourlyRate]) ??
         0.0;
     const card = Color(0xFF17222C);
     const border = Color(0xFF24303B);
@@ -1666,19 +1673,19 @@ class _MobileHomePageState extends State<MobileHomePage>
     final description =
         (data['description'] as String?) ?? 'No description available.';
     final rate =
-        (data[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
-        (data[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+        _safeDoubleNullable(data[FirestoreUserCoinMiningFields.hourlyRate]) ??
+        _safeDoubleNullable(data[FirestoreUserCoinFields.baseRatePerHour]) ??
         0.0;
     final total =
-        (data[FirestoreUserCoinMiningFields.totalPoints] as num?)?.toDouble() ??
+        _safeDoubleNullable(data[FirestoreUserCoinMiningFields.totalPoints]) ??
         0.0;
     final links = (data['socialLinks'] as List<dynamic>?) ?? const [];
     final holders =
-        (data['holdersCount'] as num?)?.toDouble() ??
-        (data['holders'] as num?)?.toDouble();
+        _safeDoubleNullable(data['holdersCount']) ??
+        _safeDoubleNullable(data['holders']);
     final changePct =
-        (data['rateChangePct'] as num?)?.toDouble() ??
-        (data['changePct'] as num?)?.toDouble();
+        _safeDoubleNullable(data['rateChangePct']) ??
+        _safeDoubleNullable(data['changePct']);
 
     final uid = FirebaseAuth.instance.currentUser?.uid;
     final isCreator = uid != null && uid == ownerId;
@@ -1692,9 +1699,9 @@ class _MobileHomePageState extends State<MobileHomePage>
             .get();
         double sum = 0.0;
         for (final doc in qs.docs) {
-          final v =
-              (doc.data()[FirestoreUserCoinMiningFields.totalPoints] as num?)
-                  ?.toDouble();
+          final v = _safeDoubleNullable(
+            doc.data()[FirestoreUserCoinMiningFields.totalPoints],
+          );
           if (v != null && v.isFinite) {
             sum += v;
           }
