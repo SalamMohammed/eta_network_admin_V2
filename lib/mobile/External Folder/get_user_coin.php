@@ -3,6 +3,7 @@ require_once 'db.php';
 header('Content-Type: application/json');
 
 $uid = $_GET['uid'] ?? '';
+$viewerId = $_GET['viewerId'] ?? '';
 
 if (empty($uid)) {
     echo json_encode(null);
@@ -10,7 +11,12 @@ if (empty($uid)) {
 }
 
 try {
-    // Join mining_records to get mining status for the owner
+    // Determine whose mining record to fetch:
+    // If viewerId is provided, fetch viewer's mining record.
+    // Otherwise, fetch the coin owner's mining record.
+    $miningUid = !empty($viewerId) ? $viewerId : $uid;
+
+    // Join mining_records to get mining status for the target user (viewer or owner)
     $sql = "SELECT 
                 uc.*,
                 mr.totalPoints, 
@@ -19,12 +25,12 @@ try {
                 mr.lastMiningEnd, 
                 mr.lastSyncedAt
             FROM user_coins uc
-            LEFT JOIN mining_records mr ON uc.ownerId = mr.coinOwnerId AND mr.uid = uc.ownerId
+            LEFT JOIN mining_records mr ON uc.ownerId = mr.coinOwnerId AND mr.uid = ?
             WHERE uc.ownerId = ? 
             LIMIT 1";
 
     $stmt = $pdo->prepare($sql);
-    $stmt->execute([$uid]);
+    $stmt->execute([$miningUid, $uid]);
     $coin = $stmt->fetch();
     
     if ($coin) {

@@ -60,8 +60,11 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
     final ownerId = (_data['ownerId'] as String?) ?? (_data['uid'] as String?);
     if (ownerId == null || ownerId.isEmpty) return;
 
+    // Pass current user ID as viewerId to fetch MY mining stats
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
     try {
-      final fresh = await SqlApiService.getUserCoin(ownerId);
+      final fresh = await SqlApiService.getUserCoin(ownerId, viewerId: uid);
       if (fresh != null && mounted) {
         setState(() {
           _data = fresh;
@@ -538,31 +541,22 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                     ),
                                     SizedBox(width: s(12)),
                                     Expanded(
-                                      child: isCreator
-                                          ? LiveMinedDisplay(
-                                              uid: uid,
-                                              initialData: _data,
-                                              builder: (v) {
-                                                final valStr = v
-                                                    .toStringAsFixed(4);
-                                                return metricCard(
-                                                  icon: Icons.layers_rounded,
-                                                  iconBg: const Color(
-                                                    0xFF8B5CF6,
-                                                  ).withValues(alpha: 0.28),
-                                                  title: 'Your mined',
-                                                  value: valStr,
-                                                );
-                                              },
-                                            )
-                                          : metricCard(
-                                              icon: Icons.layers_rounded,
-                                              iconBg: const Color(
-                                                0xFF8B5CF6,
-                                              ).withValues(alpha: 0.28),
-                                              title: 'Total mined',
-                                              value: compactNum(total),
-                                            ),
+                                      child: LiveMinedDisplay(
+                                        uid: uid ?? '',
+                                        coinOwnerId: ownerId,
+                                        initialData: _data,
+                                        builder: (v) {
+                                          final valStr = v.toStringAsFixed(4);
+                                          return metricCard(
+                                            icon: Icons.layers_rounded,
+                                            iconBg: const Color(
+                                              0xFF8B5CF6,
+                                            ).withValues(alpha: 0.28),
+                                            title: 'Your mined',
+                                            value: valStr,
+                                          );
+                                        },
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -794,12 +788,14 @@ class LinkButton extends StatelessWidget {
 
 class LiveMinedDisplay extends StatefulWidget {
   final String uid;
+  final String coinOwnerId;
   final Widget Function(double value) builder;
   final Map<String, dynamic>? initialData;
 
   const LiveMinedDisplay({
     super.key,
     required this.uid,
+    required this.coinOwnerId,
     required this.builder,
     this.initialData,
   });
@@ -937,8 +933,32 @@ class _LiveMinedDisplayState extends State<LiveMinedDisplay> {
 
   @override
   Widget build(BuildContext context) {
+    Stream<Map<String, dynamic>?> stream;
+    if (CoinService.useSqlBackend) {
+      // For SQL, we rely on initialData (fetched in dialog) or manual polling if needed.
+      // watchUserCoin(uid) returns the *created* coin, which is wrong if uid != coinOwnerId.
+      if (widget.uid == widget.coinOwnerId) {
+        stream = CoinService.watchUserCoin(widget.uid);
+      } else {
+        // No stream for mined coins in SQL yet (unless we poll getMyCoins)
+        stream = Stream.value(null);
+      }
+    } else {
+      if (widget.uid == widget.coinOwnerId) {
+        stream = CoinService.watchUserCoin(widget.uid);
+      } else {
+        stream = FirebaseFirestore.instance
+            .collection(FirestoreConstants.users)
+            .doc(widget.uid)
+            .collection(FirestoreUserSubCollections.coins)
+            .doc(widget.coinOwnerId)
+            .snapshots()
+            .map((doc) => doc.data());
+      }
+    }
+
     return StreamBuilder<Map<String, dynamic>?>(
-      stream: CoinService.watchUserCoin(widget.uid),
+      stream: stream,
       initialData: widget.initialData,
       builder: (context, snap) {
         final d = snap.data;

@@ -251,8 +251,15 @@ class SqlApiService {
   }
 
   /// Get my own coin (created by me)
-  static Future<Map<String, dynamic>?> getUserCoin(String uid) async {
-    return await getSingle('get_user_coin.php', params: {'uid': uid});
+  static Future<Map<String, dynamic>?> getUserCoin(
+    String uid, {
+    String? viewerId,
+  }) async {
+    final params = {'uid': uid};
+    if (viewerId != null && viewerId.isNotEmpty) {
+      params['viewerId'] = viewerId;
+    }
+    return await getSingle('get_user_coin.php', params: params);
   }
 
   /// Delete my coin

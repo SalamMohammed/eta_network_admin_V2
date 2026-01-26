@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../shared/firestore_constants.dart';
 import '../shared/device_id.dart';
 import 'balance/my_coin_block.dart';
@@ -1146,13 +1147,77 @@ class _MobileHomePageState extends State<MobileHomePage>
           ),
           const SizedBox(height: 8),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: FirebaseFirestore.instance
-                .collection(FirestoreConstants.users)
-                .doc(uid)
-                .collection(FirestoreUserSubCollections.coins)
-                .snapshots(),
+            stream: CoinService.useSqlBackend
+                ? null
+                : FirebaseFirestore.instance
+                      .collection(FirestoreConstants.users)
+                      .doc(uid)
+                      .collection(FirestoreUserSubCollections.coins)
+                      .snapshots(),
             builder: (context, snap) {
               final uid = FirebaseAuth.instance.currentUser?.uid;
+
+              // SQL Backend Logic
+              if (CoinService.useSqlBackend) {
+                return FutureBuilder<List<Map<String, dynamic>>>(
+                  future: SqlApiService.getMyCoins(uid ?? ''),
+                  builder: (context, sqlSnap) {
+                    if (sqlSnap.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      );
+                    }
+                    var coins = sqlSnap.data ?? [];
+                    if (coins.isEmpty) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Center(
+                          child: Text('No coins yet. Add from Live Coins.'),
+                        ),
+                      );
+                    }
+
+                    // Convert SQL types to Firestore types (String -> Timestamp, etc)
+                    final converted = coins.map((c) {
+                      final m = Map<String, dynamic>.from(c);
+
+                      double toDouble(dynamic v) {
+                        if (v is num) return v.toDouble();
+                        if (v is String) return double.tryParse(v) ?? 0.0;
+                        return 0.0;
+                      }
+
+                      m['hourlyRate'] = toDouble(m['hourlyRate']);
+                      m['totalPoints'] = toDouble(m['totalPoints']);
+
+                      void toTs(String key) {
+                        if (m[key] is String && (m[key] as String).isNotEmpty) {
+                          try {
+                            m[key] = Timestamp.fromDate(DateTime.parse(m[key]));
+                          } catch (_) {
+                            m[key] = null;
+                          }
+                        } else {
+                          m[key] = null;
+                        }
+                      }
+
+                      toTs('lastMiningStart');
+                      toTs('lastMiningEnd');
+                      toTs('lastSyncedAt');
+                      return m;
+                    }).toList();
+
+                    final sorted = _sortMinedList(converted);
+
+                    return Column(
+                      children: [for (final c in sorted) _minedCoinCard(c)],
+                    );
+                  },
+                );
+              }
+
+              // Firestore Backend Logic
               var docs = snap.data?.docs ?? const [];
               if (uid != null) {
                 docs = docs
@@ -1303,6 +1368,62 @@ class _MobileHomePageState extends State<MobileHomePage>
         ],
       ),
     );
+  }
+
+  List<Map<String, dynamic>> _sortMinedList(List<Map<String, dynamic>> list) {
+    final l = [...list];
+    int cmp(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
+    switch (_minedSort) {
+      case 'name_az':
+        l.sort(
+          (a, b) =>
+              cmp((a['name'] as String?) ?? '', (b['name'] as String?) ?? ''),
+        );
+        break;
+      case 'name_za':
+        l.sort(
+          (a, b) =>
+              cmp((b['name'] as String?) ?? '', (a['name'] as String?) ?? ''),
+        );
+        break;
+      case 'old_new':
+        l.sort((a, b) {
+          final ta =
+              (a['lastMiningStart'] as Timestamp?) ??
+              (a['lastSyncedAt'] as Timestamp?);
+          final tb =
+              (b['lastMiningStart'] as Timestamp?) ??
+              (b['lastSyncedAt'] as Timestamp?);
+          return (ta?.millisecondsSinceEpoch ?? 0).compareTo(
+            tb?.millisecondsSinceEpoch ?? 0,
+          );
+        });
+        break;
+      case 'new_old':
+        l.sort((a, b) {
+          final ta =
+              (a['lastMiningStart'] as Timestamp?) ??
+              (a['lastSyncedAt'] as Timestamp?);
+          final tb =
+              (b['lastMiningStart'] as Timestamp?) ??
+              (b['lastSyncedAt'] as Timestamp?);
+          return (tb?.millisecondsSinceEpoch ?? 0).compareTo(
+            ta?.millisecondsSinceEpoch ?? 0,
+          );
+        });
+        break;
+      case 'random':
+        l.shuffle();
+        break;
+      case 'popular':
+      default:
+        l.sort((a, b) {
+          final pa = (a['totalPoints'] as num?)?.toDouble() ?? 0.0;
+          final pb = (b['totalPoints'] as num?)?.toDouble() ?? 0.0;
+          return pb.compareTo(pa);
+        });
+    }
+    return l;
   }
 
   List<QueryDocumentSnapshot<Map<String, dynamic>>> _sortMinedDocs(
@@ -1546,7 +1667,24 @@ class _MobileHomePageState extends State<MobileHomePage>
                   onTap: ownerId.isEmpty
                       ? null
                       : () async {
-                          await CoinService.addCoinForUser(ownerId);
+                          try {
+                            await CoinService.addCoinForUser(ownerId);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Added to Mined Coins'),
+                                ),
+                              );
+                              setState(() {});
+                              _refresh();
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('Failed to add: $e')),
+                              );
+                            }
+                          }
                         },
                   borderRadius: BorderRadius.circular(999),
                   child: Container(
@@ -1574,6 +1712,10 @@ class _MobileHomePageState extends State<MobileHomePage>
   }
 
   Widget _minedCoinCard(Map<String, dynamic> data) {
+    const cardBg = Color(0xFF0F1A24);
+    const cardBg2 = Color(0xFF0B121A);
+    const border = Color(0xFF24303B);
+
     final ownerId =
         (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
     final name = (data[FirestoreUserCoinMiningFields.name] as String?) ?? '—';
@@ -1584,84 +1726,263 @@ class _MobileHomePageState extends State<MobileHomePage>
     final rate =
         _safeDoubleNullable(data[FirestoreUserCoinMiningFields.hourlyRate]) ??
         0.0;
-    const card = Color(0xFF17222C);
-    const border = Color(0xFF24303B);
-    return GestureDetector(
-      onTap: () => showCoinDetailsDialog(context, data),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          color: card,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: border),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: Colors.white10,
-                  backgroundImage: imageUrl.isNotEmpty
-                      ? NetworkImage(imageUrl)
-                      : null,
-                  child: imageUrl.isEmpty
-                      ? Text(
-                          name.isNotEmpty ? name[0].toUpperCase() : '?',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        )
-                      : null,
+
+    final links = (data['socialLinks'] as List<dynamic>?) ?? const [];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final scale = (constraints.maxWidth / 380).clamp(0.78, 1.0);
+        double s(double v) => v * scale;
+
+        Future<void> openLink(String url) async {
+          if (url.isEmpty) return;
+          final uri = Uri.tryParse(url);
+          if (uri == null) return;
+          try {
+            final ok = await canLaunchUrl(uri);
+            if (!ok) return;
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } catch (_) {}
+        }
+
+        String firstLinkUrl(String type) {
+          for (final l in links) {
+            final t = (l['type'] as String?) ?? '';
+            final u = (l['url'] as String?) ?? '';
+            if (t.toLowerCase() == type.toLowerCase() && u.isNotEmpty) {
+              return u;
+            }
+          }
+          return '';
+        }
+
+        final websiteUrl = firstLinkUrl('website');
+        final telegramUrl = firstLinkUrl('telegram');
+        final twitterUrl = firstLinkUrl('twitter');
+        final instagramUrl = firstLinkUrl('instagram');
+        final youtubeUrl = firstLinkUrl('youtube');
+        final facebookUrl = firstLinkUrl('facebook');
+
+        Widget iconPill({
+          required IconData icon,
+          required VoidCallback? onPressed,
+        }) {
+          return Container(
+            width: s(30),
+            height: s(30),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(s(10)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            ),
+            child: IconButton(
+              padding: EdgeInsets.zero,
+              onPressed: onPressed,
+              icon: Icon(icon, size: s(16), color: Colors.white70),
+            ),
+          );
+        }
+
+        final iconWidgets = <Widget>[];
+        if (websiteUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.language_rounded,
+              onPressed: () => openLink(websiteUrl),
+            ),
+          );
+        }
+        if (telegramUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.send_rounded,
+              onPressed: () => openLink(telegramUrl),
+            ),
+          );
+        }
+        if (twitterUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.close_rounded,
+              onPressed: () => openLink(twitterUrl),
+            ),
+          );
+        }
+        if (instagramUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.camera_alt_rounded,
+              onPressed: () => openLink(instagramUrl),
+            ),
+          );
+        }
+        if (youtubeUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.play_circle_fill_rounded,
+              onPressed: () => openLink(youtubeUrl),
+            ),
+          );
+        }
+        if (facebookUrl.isNotEmpty) {
+          iconWidgets.add(
+            iconPill(
+              icon: Icons.facebook_rounded,
+              onPressed: () => openLink(facebookUrl),
+            ),
+          );
+        }
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(s(22)),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () => showCoinDetailsDialog(context, data),
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [cardBg, cardBg2],
+                  ),
+                  border: Border.all(color: border),
+                  borderRadius: BorderRadius.circular(s(22)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black54,
+                      blurRadius: 18,
+                      offset: Offset(0, 10),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(
+                child: Padding(
+                  padding: EdgeInsets.all(s(16)),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: s(66),
+                            height: s(66),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(s(18)),
+                              color: Colors.white.withValues(alpha: 0.06),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.14),
+                              ),
+                              image: imageUrl.isNotEmpty
+                                  ? DecorationImage(
+                                      image: NetworkImage(imageUrl),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : null,
+                            ),
+                            child: imageUrl.isEmpty
+                                ? Icon(
+                                    Icons.token_rounded,
+                                    color: Colors.white54,
+                                    size: s(28),
+                                  )
+                                : null,
+                          ),
+                          SizedBox(width: s(14)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontSize: s(20),
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.white,
+                                          height: 1.1,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: s(8)),
+                                Row(
+                                  children: [
+                                    if (symbol.trim().isNotEmpty)
+                                      Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: s(10),
+                                          vertical: s(6),
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.08,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            s(10),
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.12,
+                                            ),
+                                          ),
+                                        ),
+                                        child: Text(
+                                          symbol.trim(),
+                                          style: TextStyle(
+                                            color: Colors.white70,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: s(12),
+                                            letterSpacing: 0.6,
+                                          ),
+                                        ),
+                                      ),
+                                    if (iconWidgets.isNotEmpty &&
+                                        symbol.trim().isNotEmpty) ...[
+                                      SizedBox(width: s(12)),
+                                      Container(
+                                        width: 1,
+                                        height: s(18),
+                                        color: Colors.white24,
+                                      ),
+                                      SizedBox(width: s(12)),
+                                    ],
+                                    if (iconWidgets.isNotEmpty)
+                                      Wrap(
+                                        spacing: s(10),
+                                        runSpacing: s(10),
+                                        children: iconWidgets,
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 3),
-                      Text(
-                        symbol.isNotEmpty ? symbol : '—',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: Colors.white54,
-                          fontWeight: FontWeight.w700,
-                        ),
+                      SizedBox(height: s(14)),
+                      Container(height: 1, color: Colors.white12),
+                      SizedBox(height: s(14)),
+                      CoinMiningControls(
+                        coinOwnerId: ownerId,
+                        miningData: data,
+                        baseRate: rate,
+                        symbol: symbol,
+                        variant: CoinMiningControlsVariant.myCoinCard,
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
-                Text(
-                  '${rate.toStringAsFixed(3)}/h',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
+              ),
             ),
-            const SizedBox(height: 10),
-            CoinMiningControls(coinOwnerId: ownerId, miningData: data),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
