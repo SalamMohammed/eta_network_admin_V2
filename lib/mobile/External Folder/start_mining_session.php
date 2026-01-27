@@ -91,34 +91,45 @@ try {
     }
 
     // 2. Insert or Update with NEW session data + ACCUMULATED points
-    // If it's a new record, addedPoints is 0.
-    // If existing, we add addedPoints to the existing totalPoints column
+    // Use explicit UPDATE then INSERT to ensure we strictly target the correct record (uid + coinOwnerId)
+    // and avoid any potential side effects of ON DUPLICATE KEY UPDATE.
     
-    $sql = "INSERT INTO mining_records 
-            (uid, coinOwnerId, hourlyRate, lastMiningStart, lastMiningEnd, lastSyncedAt, updatedAt, totalPoints)
-            VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)
-            ON DUPLICATE KEY UPDATE
-            totalPoints = COALESCE(totalPoints, 0) + VALUES(totalPoints), -- Add the calculated earnings
-            hourlyRate = VALUES(hourlyRate),
-            lastMiningStart = VALUES(lastMiningStart),
-            lastMiningEnd = VALUES(lastMiningEnd),
-            lastSyncedAt = VALUES(lastSyncedAt),
-            updatedAt = NOW()";
-
-    // Pass addedPoints as the value for totalPoints in the INSERT/UPDATE
-    // Note: On INSERT (first time), addedPoints is 0, so totalPoints starts at 0.
-    // On UPDATE, we use `totalPoints = totalPoints + VALUES(totalPoints)` so we add the new chunk.
+    $updateSql = "UPDATE mining_records 
+                  SET totalPoints = COALESCE(totalPoints, 0) + ?,
+                      hourlyRate = ?,
+                      lastMiningStart = ?,
+                      lastMiningEnd = ?,
+                      lastSyncedAt = ?,
+                      updatedAt = NOW()
+                  WHERE uid = ? AND coinOwnerId = ?";
     
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute([
-        $uid, 
-        $coinOwnerId, 
-        $hourlyRate, 
-        $mysqlStart, 
-        $mysqlEnd, 
+    $updateStmt = $pdo->prepare($updateSql);
+    $updateStmt->execute([
+        $addedPoints,
+        $hourlyRate,
+        $mysqlStart,
+        $mysqlEnd,
         $mysqlSynced,
-        $addedPoints // This goes into the VALUES list for 'totalPoints'
+        $uid,
+        $coinOwnerId
     ]);
+
+    // If no rows were updated, it means the record doesn't exist, so we INSERT.
+    if ($updateStmt->rowCount() == 0) {
+        $insertSql = "INSERT IGNORE INTO mining_records 
+                      (uid, coinOwnerId, hourlyRate, lastMiningStart, lastMiningEnd, lastSyncedAt, updatedAt, totalPoints)
+                      VALUES (?, ?, ?, ?, ?, ?, NOW(), ?)";
+        $insertStmt = $pdo->prepare($insertSql);
+        $insertStmt->execute([
+            $uid, 
+            $coinOwnerId, 
+            $hourlyRate, 
+            $mysqlStart, 
+            $mysqlEnd, 
+            $mysqlSynced, 
+            $addedPoints
+        ]);
+    }
     
     // 3. Fetch the updated record to return to the app
     $fetchStmt->execute([$uid, $coinOwnerId]);

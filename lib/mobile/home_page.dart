@@ -1168,6 +1168,11 @@ class _MobileHomePageState extends State<MobileHomePage>
                       );
                     }
                     var coins = sqlSnap.data ?? [];
+                    // Filter out own coins (already shown in home/balance)
+                    if (uid != null) {
+                      coins = coins.where((c) => c['ownerId'] != uid).toList();
+                    }
+
                     if (coins.isEmpty) {
                       return const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
@@ -1328,13 +1333,17 @@ class _MobileHomePageState extends State<MobileHomePage>
                         child: CircularProgressIndicator(color: Colors.white),
                       );
                     }
-                    final coins = sqlSnap.data ?? [];
+                    var coins = sqlSnap.data ?? [];
+                    final uid = FirebaseAuth.instance.currentUser?.uid;
+                    // Filter out own coins (already shown in home/balance)
+                    if (uid != null) {
+                      coins = coins.where((c) => c['ownerId'] != uid).toList();
+                    }
+
                     if (coins.isEmpty) {
                       return const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
-                        child: Center(
-                          child: Text('No live community coins (SQL)'),
-                        ),
+                        child: Center(child: Text('No live community coins')),
                       );
                     }
                     return Column(

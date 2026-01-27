@@ -1655,11 +1655,17 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
                   : () async {
                       try {
                         final devId = await DeviceId.get();
-                        await CoinService.startCoinMining(
+                        final res = await CoinService.startCoinMining(
                           widget.coinOwnerId,
                           deviceId: devId,
                         );
-                        if (mounted) setState(() {});
+                        if (mounted) {
+                          setState(() {
+                            if (res.isNotEmpty) {
+                              _localOverrideData = res;
+                            }
+                          });
+                        }
                       } catch (e) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
