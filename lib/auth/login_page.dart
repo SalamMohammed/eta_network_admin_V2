@@ -703,8 +703,10 @@ class _LoginPageState extends State<LoginPage> {
                                             Navigator.pushReplacement(
                                               context,
                                               MaterialPageRoute(
-                                                builder: (_) =>
-                                                    const SignupPage(),
+                                                builder: (_) => SignupPage(
+                                                  goToSelectorAfterAuth: widget
+                                                      .goToSelectorAfterAuth,
+                                                ),
                                               ),
                                             );
                                           },

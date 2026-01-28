@@ -49,14 +49,20 @@ class EarningsEngine {
     final elapsedHours =
         effectiveEnd.difference(from).inMilliseconds / (1000 * 60 * 60);
     final earned = elapsedHours * hourlyRate;
-    if (earned <= 0) {
+    
+    // Throttle writes: only write if > 0.1 points or > 10 minutes elapsed
+    // This reduces excessive Cloud Function invocations
+    final diffMinutes = effectiveEnd.difference(from).inMinutes;
+    if (earned <= 0 || (earned < 0.1 && diffMinutes < 10)) {
       return {
-        FirestoreUserFields.totalPoints: totalPoints,
+        FirestoreUserFields.totalPoints: totalPoints + earned, // Return calculated total for UI
         FirestoreUserFields.hourlyRate: hourlyRate,
         FirestoreUserFields.lastMiningStart: startTs,
         FirestoreUserFields.lastMiningEnd: endTs,
+        FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(from), // Keep old sync time
       };
     }
+    
     await userRef.update({
       FirestoreUserFields.totalPoints: FieldValue.increment(earned),
       FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),

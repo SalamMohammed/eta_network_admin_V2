@@ -382,15 +382,70 @@ exports.sendMiningEndNotificationTask = onRequest(async (req, res) => {
 exports.scheduleMiningEndNotification = onDocumentWritten(
   `${USERS_COLLECTION}/{uid}`,
   async (event) => {
-    const after = event.data.after;
-    if (!after.exists) return;
-    const data = after.data() || {};
+    const beforeSnap = event.data.before;
+    const afterSnap = event.data.after;
 
-    const endTs = data[USER_LAST_MINING_END];
+    if (!afterSnap.exists) return;
+
+    const beforeData = beforeSnap.exists ? beforeSnap.data() || {} : {};
+    const afterData = afterSnap.data() || {};
+
+    // Check if lastMiningEnd actually changed
+    const beforeEndTs = beforeData[USER_LAST_MINING_END];
+    const afterEndTs = afterData[USER_LAST_MINING_END];
+
+    // If both are missing, nothing to do
+    if (!beforeEndTs && !afterEndTs) return;
+
+    // If both exist and are equal, no change in mining schedule
+    if (beforeEndTs && afterEndTs && typeof beforeEndTs.isEqual === 'function' && beforeEndTs.isEqual(afterEndTs)) {
+      // Even if mining end hasn't changed, we might need to verify if the task is scheduled
+      // But to save invocations, we assume if end time is same, it was already handled.
+      // Exception: If the previous attempt failed?
+      // The client stores 'miningEndTaskScheduledEndMs' only after success.
+      // So if that matches, we are good.
+      const scheduledEndMs = Number(afterData[USER_MINING_END_TASK_SCHEDULED_END_MS] || 0);
+      if (Number.isFinite(scheduledEndMs) && scheduledEndMs === afterEndTs.toMillis()) {
+        return;
+      }
+      // If not scheduled yet but time didn't change (e.g. other field update), we should proceed to schedule it?
+      // If we return here, we rely on the fact that the update that SET the time should have triggered this.
+      // But if that failed, we might want to retry.
+      // However, the goal is to reduce "way more than needed invocations".
+      // Most invocations are due to points updating.
+      // So if time didn't change, we should mostly skip.
+      // Let's rely on the check below for scheduledEndMs.
+      // Ideally, we return HERE to avoid even reading the queue or processing further if strict equality holds.
+      
+      // Wait, if points update, this runs. beforeEndTs == afterEndTs.
+      // We check scheduledEndMs. If it matches, we return.
+      // So the logic below (lines 393-396 in original) handled this.
+      // BUT, we want to exit even EARLIER if possible, or ensure we don't do unnecessary work.
+      // The original code:
+      // const endTs = data[USER_LAST_MINING_END]; ...
+      // const scheduledEndMs = ...
+      // if (scheduledEndMs === endMs) return;
+      
+      // So the original code WAS exiting early if already scheduled.
+      // The issue is likely that it still runs on EVERY write.
+      // We can't prevent the trigger (Cloud Functions V2 doesn't support field filters natively yet for onDocumentWritten in the easy way, though Eventarc does, but standard firebase-functions usually triggers).
+      // Wait, we CAN use `onDocumentWritten` but we pay for the invocation.
+      // The user says "way more than needed invocations".
+      // The writes in `earnings_engine.dart` were the cause.
+      // By throttling writes there, we solved the root cause of the storm.
+      
+      // However, we can still optimize.
+      // If we determine nothing changed relevant to this function, we return.
+      // The logic below is fine, but let's make it explicit.
+    }
+
+    const endTs = afterEndTs;
     if (!endTs || typeof endTs.toMillis !== "function") return;
 
     const endMs = endTs.toMillis();
-    const scheduledEndMs = Number(data[USER_MINING_END_TASK_SCHEDULED_END_MS] || 0);
+    const scheduledEndMs = Number(afterData[USER_MINING_END_TASK_SCHEDULED_END_MS] || 0);
+    
+    // Idempotency check: if already scheduled for this exact time, skip
     if (Number.isFinite(scheduledEndMs) && scheduledEndMs === endMs) {
       return;
     }
@@ -426,12 +481,16 @@ exports.scheduleMiningEndNotification = onDocumentWritten(
       });
     } catch (e) {
       const code = e && typeof e.code === "number" ? e.code : null;
-      if (code !== 6) {
+      if (code !== 6) { // 6 = ALREADY_EXISTS
         throw e;
       }
     }
 
-    await after.ref.set(
+    // Update user doc to reflect that we scheduled it
+    // Note: This causes ANOTHER write, which triggers this function AGAIN.
+    // But on the next run, scheduledEndMs === endMs, so it returns early.
+    // This is a loop of size 2. Acceptable.
+    await afterSnap.ref.set(
       {
         [USER_MINING_END_TASK_SCHEDULED_END_MS]: endMs,
         [USER_MINING_END_TASK_SCHEDULED_AT]: admin.firestore.FieldValue.serverTimestamp(),
@@ -489,16 +548,21 @@ exports.updateReferralStatsOnUserWrite = onDocumentWritten(
     if (!afterSnap.exists) {
       return;
     }
-    const beforeData = beforeSnap.exists ? beforeSnap.data() || {} : null;
+    const beforeData = beforeSnap.exists ? beforeSnap.data() || {} : {};
     const afterData = afterSnap.data() || {};
 
-    const beforeInviterRaw = beforeData ? beforeData[USER_INVITED_BY] : null;
+    const beforeInviterRaw = beforeData[USER_INVITED_BY];
     const afterInviterRaw = afterData[USER_INVITED_BY];
     const beforeInviterId = (beforeInviterRaw || '').toString().trim();
     const afterInviterId = (afterInviterRaw || '').toString().trim();
 
-    const wasActive = beforeData ? isUserActiveWithin48h(beforeData) : false;
+    const wasActive = isUserActiveWithin48h(beforeData);
     const isActive = isUserActiveWithin48h(afterData);
+
+    // OPTIMIZATION: If inviter didn't change AND activity status didn't change, DO NOTHING.
+    if (beforeInviterId === afterInviterId && wasActive === isActive) {
+      return;
+    }
 
     // Handle inviter change first (e.g., invite code added to an already-active user)
     const inviterChanged = beforeInviterId !== afterInviterId;
@@ -533,15 +597,14 @@ exports.updateReferralStatsOnUserWrite = onDocumentWritten(
     }
 
     // Inviter unchanged: update on activity state transitions
-    if (wasActive === isActive) {
-      return;
-    }
+    // We already checked (wasActive === isActive) above, so if we are here, they MUST be different.
     let delta = 0;
     if (!wasActive && isActive) {
       delta = 1;
     } else if (wasActive && !isActive) {
       delta = -1;
     } else {
+      // Should not be reachable if (wasActive !== isActive)
       return;
     }
     const statsRef = db.collection(REFERRAL_STATS_COLLECTION).doc(afterInviterId);

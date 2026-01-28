@@ -8,6 +8,7 @@ import '../../shared/firestore_constants.dart';
 import '../../services/referral_engine.dart';
 import '../../services/earnings_engine.dart';
 import '../../services/mining_state_service.dart';
+import '../../services/sql_api_service.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
@@ -823,6 +824,24 @@ class _ProfilePageState extends State<ProfilePage> {
       final ownCoinSnap = await ownCoinRef.get();
       if (ownCoinSnap.exists) {
         await ownCoinRef.delete();
+      }
+
+      // Delete from SQL backend
+      try {
+        await SqlApiService.deleteUserCoin(uidLocal);
+      } catch (e) {
+        debugPrint('Failed to delete user coin from SQL: $e');
+      }
+
+      // Delete images from Storage
+      try {
+        final storageRef = FirebaseStorage.instance.ref();
+        // Delete profile thumbnail
+        await storageRef.child('users/$uidLocal/thumbnail').delete();
+        // Delete coin thumbnail
+        await storageRef.child('user_coins/$uidLocal/thumbnail').delete();
+      } catch (e) {
+        debugPrint('Failed to delete images from Storage: $e');
       }
 
       await users.doc(uidLocal).delete();

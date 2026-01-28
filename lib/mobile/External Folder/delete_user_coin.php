@@ -15,13 +15,17 @@ try {
     // Start transaction
     $pdo->beginTransaction();
 
-    // Delete from mining_records first (foreign key constraint usually, or just cleanup)
-    $stmt1 = $pdo->prepare("DELETE FROM mining_records WHERE coinOwnerId = ?");
-    $stmt1->execute([$uid]);
+    // 1. Delete mining sessions where this user is the MINER
+    $stmtMiner = $pdo->prepare("DELETE FROM mining_records WHERE uid = ?");
+    $stmtMiner->execute([$uid]);
 
-    // Delete from user_coins
-    $stmt2 = $pdo->prepare("DELETE FROM user_coins WHERE ownerId = ?");
-    $stmt2->execute([$uid]);
+    // 2. Delete mining sessions where this user is the COIN OWNER (users mining this user's coin)
+    $stmtOwner = $pdo->prepare("DELETE FROM mining_records WHERE coinOwnerId = ?");
+    $stmtOwner->execute([$uid]);
+
+    // 3. Delete the coin itself (if any)
+    $stmtCoin = $pdo->prepare("DELETE FROM user_coins WHERE ownerId = ?");
+    $stmtCoin->execute([$uid]);
 
     $pdo->commit();
     echo json_encode(['success' => true]);

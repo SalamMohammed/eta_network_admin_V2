@@ -9,6 +9,9 @@ $sort = $_GET['sort'] ?? 'popular';
 $allowedSorts = [
     'popular' => 'minersCount DESC',
     'name_az' => 'name ASC',
+    'name_za' => 'name DESC',
+    'old_new' => 'createdAt ASC',
+    'new_old' => 'createdAt DESC',
     'newest'  => 'createdAt DESC'
 ];
 

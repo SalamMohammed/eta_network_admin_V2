@@ -6,6 +6,7 @@ import '../shared/firestore_constants.dart';
 import 'earnings_engine.dart';
 import '../shared/device_id.dart';
 import 'subscription_service.dart';
+import 'notification_service.dart';
 
 class MiningStateService extends ChangeNotifier {
   static final MiningStateService _instance = MiningStateService._internal();
@@ -430,6 +431,14 @@ class MiningStateService extends ChangeNotifier {
       }
 
       _startSimulationIfNeeded();
+
+      // Schedule local notification as backup/primary
+      if (_lastEnd != null) {
+        unawaited(
+          NotificationService().scheduleMiningFinished(_lastEnd!.toDate()),
+        );
+      }
+
       _maybeNotify(force: true);
       return res;
     } catch (e) {

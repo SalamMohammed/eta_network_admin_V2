@@ -44,6 +44,102 @@ class CoinService {
         .map((doc) => doc.data());
   }
 
+  // Cache for SQL backend
+  static List<Map<String, dynamic>>? _cachedMyCoins;
+  static DateTime? _myCoinsFetchTime;
+  static List<Map<String, dynamic>>? _cachedLiveCoins;
+  static DateTime? _liveCoinsFetchTime;
+  static String? _lastLiveSort;
+
+  static Stream<List<Map<String, dynamic>>> watchMyCoins(String uid) {
+    if (useSqlBackend) {
+      // Poll every 30 seconds
+      Stream<List<Map<String, dynamic>>> stream() async* {
+        // Yield cached data immediately if available and fresh (< 30s)
+        if (_cachedMyCoins != null &&
+            _myCoinsFetchTime != null &&
+            DateTime.now().difference(_myCoinsFetchTime!) <
+                const Duration(seconds: 30)) {
+          yield _cachedMyCoins!;
+        }
+
+        // Fetch fresh data
+        final fresh = await SqlApiService.getMyCoins(uid);
+        if (fresh != null) {
+          _cachedMyCoins = fresh;
+          _myCoinsFetchTime = DateTime.now();
+          yield fresh;
+        }
+
+        yield* Stream.periodic(const Duration(seconds: 30)).asyncExpand((
+          _,
+        ) async* {
+          final periodicFresh = await SqlApiService.getMyCoins(uid);
+          if (periodicFresh != null) {
+            _cachedMyCoins = periodicFresh;
+            _myCoinsFetchTime = DateTime.now();
+            yield periodicFresh;
+          }
+        });
+      }
+
+      return stream().asBroadcastStream();
+    }
+    return FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .collection(FirestoreUserSubCollections.coins)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => d.data()).toList());
+  }
+
+  static Stream<List<Map<String, dynamic>>> watchLiveCoins({
+    String sort = 'popular',
+  }) {
+    if (useSqlBackend) {
+      // Poll every 60 seconds for market data
+      Stream<List<Map<String, dynamic>>> stream() async* {
+        // Yield cached data immediately if available, matches sort, and fresh (< 60s)
+        if (_cachedLiveCoins != null &&
+            _liveCoinsFetchTime != null &&
+            _lastLiveSort == sort &&
+            DateTime.now().difference(_liveCoinsFetchTime!) <
+                const Duration(seconds: 60)) {
+          yield _cachedLiveCoins!;
+        }
+
+        // Fetch fresh data
+        final fresh = await SqlApiService.getLiveCoins(sort: sort);
+        if (fresh != null) {
+          _cachedLiveCoins = fresh;
+          _liveCoinsFetchTime = DateTime.now();
+          _lastLiveSort = sort;
+          yield fresh;
+        }
+
+        yield* Stream.periodic(const Duration(seconds: 60)).asyncExpand((
+          _,
+        ) async* {
+          final periodicFresh = await SqlApiService.getLiveCoins(sort: sort);
+          if (periodicFresh != null) {
+            _cachedLiveCoins = periodicFresh;
+            _liveCoinsFetchTime = DateTime.now();
+            _lastLiveSort = sort;
+            yield periodicFresh;
+          }
+        });
+      }
+
+      return stream().asBroadcastStream();
+    }
+    return FirebaseFirestore.instance
+        .collection(FirestoreConstants.userCoins)
+        .where(FirestoreUserCoinFields.isActive, isEqualTo: true)
+        .limit(20)
+        .snapshots()
+        .map((snap) => snap.docs.map((d) => d.data()).toList());
+  }
+
   static Future<Map<String, dynamic>> getUserCoinConfig() async {
     final snap = await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)

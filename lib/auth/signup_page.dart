@@ -11,8 +11,12 @@ import '../entry/selector_page.dart';
 import '../services/referral_engine.dart';
 import '../services/auth_verification_service.dart';
 
+import 'auth_gate.dart';
+
 class SignupPage extends StatefulWidget {
-  const SignupPage({super.key});
+  final bool goToSelectorAfterAuth;
+
+  const SignupPage({super.key, this.goToSelectorAfterAuth = true});
   @override
   State<SignupPage> createState() => _SignupPageState();
 }
@@ -105,10 +109,17 @@ class _SignupPageState extends State<SignupPage> {
           });
 
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const SelectorPage()),
-        );
+        if (widget.goToSelectorAfterAuth) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const SelectorPage()),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const AuthGate()),
+          );
+        }
       }
     } on FirebaseAuthException catch (e) {
       setState(() {

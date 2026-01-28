@@ -10,6 +10,7 @@ import '../services/coin_service.dart';
 import '../services/sql_api_service.dart';
 import '../services/mining_state_service.dart';
 import '../services/subscription_service.dart';
+import '../services/notification_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/ads_service.dart';
@@ -35,6 +36,9 @@ class _MobileHomePageState extends State<MobileHomePage>
   Timer? _debounceTimer;
 
   bool _rewardedLoading = false;
+  Stream<Map<String, dynamic>?> _userCoinStream = const Stream.empty();
+  Stream<List<Map<String, dynamic>>> _minedCoinsStream = const Stream.empty();
+  Stream<List<Map<String, dynamic>>> _liveCoinsStream = const Stream.empty();
   static const String _prefsRewardedSessionStartMsKey =
       'ads_rewarded_session_start_ms';
   static const String _prefsRewardedSessionCountKey =
@@ -53,10 +57,32 @@ class _MobileHomePageState extends State<MobileHomePage>
     _tab.addListener(() {
       if (!mounted) return;
       if (_tab.indexIsChanging) return;
+
+      // Refresh streams when switching tabs to show cached data instantly
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid != null) {
+        if (_tab.index == 0) {
+          _minedCoinsStream = CoinService.watchMyCoins(uid);
+        } else if (_tab.index == 1) {
+          _liveCoinsStream = CoinService.watchLiveCoins(sort: _liveSort);
+        }
+      }
+
       setState(() {});
     });
     unawaited(_adsService.init());
     unawaited(_loadRewardedSessionLimiter());
+
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      _userCoinStream = CoinService.watchUserCoin(uid);
+      _minedCoinsStream = CoinService.watchMyCoins(uid);
+      _liveCoinsStream = CoinService.watchLiveCoins(sort: _liveSort);
+    }
+
+    // Ensure notifications are permitted and token is synced
+    unawaited(NotificationService().requestPermissions());
+
     _miningService.init().then((_) {
       if (mounted) _manageCommunityCoins();
       unawaited(_syncRewardedSessionWithMiningState());
@@ -906,7 +932,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return const SizedBox.shrink();
     return StreamBuilder<Map<String, dynamic>?>(
-      stream: CoinService.watchUserCoin(uid),
+      stream: _userCoinStream,
       builder: (context, snap) {
         final d = snap.data;
         final active =
@@ -1146,96 +1172,30 @@ class _MobileHomePageState extends State<MobileHomePage>
             ],
           ),
           const SizedBox(height: 8),
-          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: CoinService.useSqlBackend
-                ? null
-                : FirebaseFirestore.instance
-                      .collection(FirestoreConstants.users)
-                      .doc(uid)
-                      .collection(FirestoreUserSubCollections.coins)
-                      .snapshots(),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _minedCoinsStream,
             builder: (context, snap) {
-              final uid = FirebaseAuth.instance.currentUser?.uid;
-
-              // SQL Backend Logic
-              if (CoinService.useSqlBackend) {
-                return FutureBuilder<List<Map<String, dynamic>>>(
-                  future: SqlApiService.getMyCoins(uid ?? ''),
-                  builder: (context, sqlSnap) {
-                    if (sqlSnap.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
-                      );
-                    }
-                    var coins = sqlSnap.data ?? [];
-                    // Filter out own coins (already shown in home/balance)
-                    if (uid != null) {
-                      coins = coins.where((c) => c['ownerId'] != uid).toList();
-                    }
-
-                    if (coins.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                        child: Center(
-                          child: Text('No coins yet. Add from Live Coins.'),
-                        ),
-                      );
-                    }
-
-                    // Convert SQL types to Firestore types (String -> Timestamp, etc)
-                    final converted = coins.map((c) {
-                      final m = Map<String, dynamic>.from(c);
-
-                      double toDouble(dynamic v) {
-                        if (v is num) return v.toDouble();
-                        if (v is String) return double.tryParse(v) ?? 0.0;
-                        return 0.0;
-                      }
-
-                      m['hourlyRate'] = toDouble(m['hourlyRate']);
-                      m['totalPoints'] = toDouble(m['totalPoints']);
-
-                      void toTs(String key) {
-                        if (m[key] is String && (m[key] as String).isNotEmpty) {
-                          try {
-                            m[key] = Timestamp.fromDate(DateTime.parse(m[key]));
-                          } catch (_) {
-                            m[key] = null;
-                          }
-                        } else {
-                          m[key] = null;
-                        }
-                      }
-
-                      toTs('lastMiningStart');
-                      toTs('lastMiningEnd');
-                      toTs('lastSyncedAt');
-                      return m;
-                    }).toList();
-
-                    final sorted = _sortMinedList(converted);
-
-                    return Column(
-                      children: [for (final c in sorted) _minedCoinCard(c)],
-                    );
-                  },
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
                 );
               }
+              var coins = snap.data ?? [];
+              final uid = FirebaseAuth.instance.currentUser?.uid;
 
-              // Firestore Backend Logic
-              var docs = snap.data?.docs ?? const [];
+              // Filter out own coins (already shown in home/balance)
               if (uid != null) {
-                docs = docs
+                coins = coins
                     .where(
-                      (d) =>
-                          (d.data()[FirestoreUserCoinMiningFields.ownerId]
+                      (c) =>
+                          (c[FirestoreUserCoinMiningFields.ownerId]
                               as String?) !=
                           uid,
                     )
                     .toList();
               }
-              docs = _sortMinedDocs(docs);
-              if (docs.isEmpty) {
+
+              if (coins.isEmpty) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: Center(
@@ -1243,8 +1203,13 @@ class _MobileHomePageState extends State<MobileHomePage>
                   ),
                 );
               }
+
+              coins = _normalizeCoins(coins);
+
+              final sorted = _sortMinedList(coins);
+
               return Column(
-                children: [for (final d in docs) _minedCoinCard(d.data())],
+                children: [for (final c in sorted) _minedCoinCard(c)],
               );
             },
           ),
@@ -1289,7 +1254,10 @@ class _MobileHomePageState extends State<MobileHomePage>
                 ),
               ),
               PopupMenuButton<String>(
-                onSelected: (v) => setState(() => _liveSort = v),
+                onSelected: (v) => setState(() {
+                  _liveSort = v;
+                  _liveCoinsStream = CoinService.watchLiveCoins(sort: v);
+                }),
                 itemBuilder: (context) => [
                   const PopupMenuItem(value: 'popular', child: Text('Popular')),
                   const PopupMenuItem(
@@ -1315,62 +1283,40 @@ class _MobileHomePageState extends State<MobileHomePage>
             ],
           ),
           const SizedBox(height: 8),
-          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-            stream: CoinService.useSqlBackend
-                ? null // No stream for SQL, we'll use FutureBuilder inside
-                : FirebaseFirestore.instance
-                      .collection(FirestoreConstants.userCoins)
-                      .where(FirestoreUserCoinFields.isActive, isEqualTo: true)
-                      .limit(20)
-                      .snapshots(),
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _liveCoinsStream,
             builder: (context, snap) {
-              if (CoinService.useSqlBackend) {
-                return FutureBuilder<List<Map<String, dynamic>>>(
-                  future: SqlApiService.getLiveCoins(sort: _liveSort),
-                  builder: (context, sqlSnap) {
-                    if (sqlSnap.connectionState == ConnectionState.waiting) {
-                      return const Center(
-                        child: CircularProgressIndicator(color: Colors.white),
-                      );
-                    }
-                    var coins = sqlSnap.data ?? [];
-                    final uid = FirebaseAuth.instance.currentUser?.uid;
-                    // Filter out own coins (already shown in home/balance)
-                    if (uid != null) {
-                      coins = coins.where((c) => c['ownerId'] != uid).toList();
-                    }
-
-                    if (coins.isEmpty) {
-                      return const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 16),
-                        child: Center(child: Text('No live community coins')),
-                      );
-                    }
-                    return Column(
-                      children: [for (final coin in coins) _liveCoinCard(coin)],
-                    );
-                  },
+              if (snap.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
                 );
               }
-
+              var coins = snap.data ?? [];
               final uid = FirebaseAuth.instance.currentUser?.uid;
-              var docs = (snap.data?.docs ?? const [])
-                  .where(
-                    (doc) =>
-                        (doc.data()[FirestoreUserCoinFields.ownerId]
-                            as String?) !=
-                        uid,
-                  )
-                  .toList();
-              docs = _sortLiveDocs(docs);
-              if (docs.isEmpty) {
+              // Filter out own coins (already shown in home/balance)
+              if (uid != null) {
+                coins = coins
+                    .where(
+                      (c) =>
+                          (c[FirestoreUserCoinFields.ownerId] as String?) !=
+                          uid,
+                    )
+                    .toList();
+              }
+
+              coins = _normalizeCoins(coins);
+              if (!CoinService.useSqlBackend) {
+                coins = _sortLiveList(coins);
+              }
+
+              if (coins.isEmpty) {
                 return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: Center(child: Text('No live community coins')),
                 );
               }
               return Column(
-                children: [for (final doc in docs) _liveCoinCard(doc.data())],
+                children: [for (final coin in coins) _liveCoinCard(coin)],
               );
             },
           ),
@@ -1435,112 +1381,95 @@ class _MobileHomePageState extends State<MobileHomePage>
     return l;
   }
 
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _sortMinedDocs(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) {
-    final l = [...docs];
-    int cmp(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
-    switch (_minedSort) {
-      case 'name_az':
-        l.sort(
-          (a, b) => cmp(
-            (a.data()[FirestoreUserCoinMiningFields.name] as String?) ?? '',
-            (b.data()[FirestoreUserCoinMiningFields.name] as String?) ?? '',
-          ),
-        );
-        break;
-      case 'name_za':
-        l.sort(
-          (a, b) => cmp(
-            (b.data()[FirestoreUserCoinMiningFields.name] as String?) ?? '',
-            (a.data()[FirestoreUserCoinMiningFields.name] as String?) ?? '',
-          ),
-        );
-        break;
-      case 'old_new':
-        l.sort((a, b) {
-          final ta =
-              (a.data()[FirestoreUserCoinMiningFields.lastMiningStart]
-                  as Timestamp?) ??
-              (a.data()[FirestoreUserCoinMiningFields.lastSyncedAt]
-                  as Timestamp?);
-          final tb =
-              (b.data()[FirestoreUserCoinMiningFields.lastMiningStart]
-                  as Timestamp?) ??
-              (b.data()[FirestoreUserCoinMiningFields.lastSyncedAt]
-                  as Timestamp?);
-          final va = ta?.millisecondsSinceEpoch ?? 0;
-          final vb = tb?.millisecondsSinceEpoch ?? 0;
-          return va.compareTo(vb);
-        });
-        break;
-      case 'new_old':
-        l.sort((a, b) {
-          final ta =
-              (a.data()[FirestoreUserCoinMiningFields.lastMiningStart]
-                  as Timestamp?) ??
-              (a.data()[FirestoreUserCoinMiningFields.lastSyncedAt]
-                  as Timestamp?);
-          final tb =
-              (b.data()[FirestoreUserCoinMiningFields.lastMiningStart]
-                  as Timestamp?) ??
-              (b.data()[FirestoreUserCoinMiningFields.lastSyncedAt]
-                  as Timestamp?);
-          final va = ta?.millisecondsSinceEpoch ?? 0;
-          final vb = tb?.millisecondsSinceEpoch ?? 0;
-          return vb.compareTo(va);
-        });
-        break;
-      case 'random':
-        l.shuffle();
-        break;
-      case 'popular':
-      default:
-        l.sort((a, b) {
-          final pa =
-              (a.data()[FirestoreUserCoinMiningFields.totalPoints] as num?)
-                  ?.toDouble() ??
-              0.0;
-          final pb =
-              (b.data()[FirestoreUserCoinMiningFields.totalPoints] as num?)
-                  ?.toDouble() ??
-              0.0;
-          return pb.compareTo(pa);
-        });
+  Map<String, dynamic> _normalizeCoinMap(Map<String, dynamic> c) {
+    if (!CoinService.useSqlBackend) return c;
+    final m = Map<String, dynamic>.from(c);
+
+    double toDouble(dynamic v) {
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? 0.0;
+      return 0.0;
     }
-    return l;
+
+    // Fields for mined coins
+    if (m.containsKey(FirestoreUserCoinMiningFields.hourlyRate)) {
+      m[FirestoreUserCoinMiningFields.hourlyRate] = toDouble(
+        m[FirestoreUserCoinMiningFields.hourlyRate],
+      );
+    }
+    if (m.containsKey(FirestoreUserCoinMiningFields.totalPoints)) {
+      m[FirestoreUserCoinMiningFields.totalPoints] = toDouble(
+        m[FirestoreUserCoinMiningFields.totalPoints],
+      );
+    }
+
+    // Fields for live coins
+    if (m.containsKey(FirestoreUserCoinFields.baseRatePerHour)) {
+      m[FirestoreUserCoinFields.baseRatePerHour] = toDouble(
+        m[FirestoreUserCoinFields.baseRatePerHour],
+      );
+    }
+    if (m.containsKey(FirestoreUserCoinFields.minersCount)) {
+      final v = m[FirestoreUserCoinFields.minersCount];
+      if (v is String) {
+        m[FirestoreUserCoinFields.minersCount] = int.tryParse(v) ?? 0;
+      }
+    }
+
+    void toTs(String key) {
+      if (m[key] is String && (m[key] as String).isNotEmpty) {
+        try {
+          m[key] = Timestamp.fromDate(DateTime.parse(m[key]));
+        } catch (_) {
+          m[key] = null;
+        }
+      } else if (m[key] is! Timestamp) {
+        m[key] = null;
+      }
+    }
+
+    toTs(FirestoreUserCoinMiningFields.lastMiningStart);
+    toTs(FirestoreUserCoinMiningFields.lastMiningEnd);
+    toTs(FirestoreUserCoinMiningFields.lastSyncedAt);
+    toTs(FirestoreUserCoinFields.createdAt);
+    toTs(FirestoreUserCoinFields.updatedAt);
+
+    return m;
   }
 
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> _sortLiveDocs(
-    List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
-  ) {
-    final l = [...docs];
+  List<Map<String, dynamic>> _normalizeCoins(List<Map<String, dynamic>> coins) {
+    if (!CoinService.useSqlBackend) return coins;
+    return coins.map(_normalizeCoinMap).toList();
+  }
+
+  List<Map<String, dynamic>> _sortLiveList(List<Map<String, dynamic>> list) {
+    final l = [...list];
     int cmp(String a, String b) => a.toLowerCase().compareTo(b.toLowerCase());
     switch (_liveSort) {
       case 'name_az':
         l.sort(
           (a, b) => cmp(
-            (a.data()[FirestoreUserCoinFields.name] as String?) ?? '',
-            (b.data()[FirestoreUserCoinFields.name] as String?) ?? '',
+            (a[FirestoreUserCoinFields.name] as String?) ?? '',
+            (b[FirestoreUserCoinFields.name] as String?) ?? '',
           ),
         );
         break;
       case 'name_za':
         l.sort(
           (a, b) => cmp(
-            (b.data()[FirestoreUserCoinFields.name] as String?) ?? '',
-            (a.data()[FirestoreUserCoinFields.name] as String?) ?? '',
+            (b[FirestoreUserCoinFields.name] as String?) ?? '',
+            (a[FirestoreUserCoinFields.name] as String?) ?? '',
           ),
         );
         break;
       case 'old_new':
         l.sort((a, b) {
           final ta =
-              (a.data()[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
-              (a.data()[FirestoreUserCoinFields.updatedAt] as Timestamp?);
+              (a[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
+              (a[FirestoreUserCoinFields.updatedAt] as Timestamp?);
           final tb =
-              (b.data()[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
-              (b.data()[FirestoreUserCoinFields.updatedAt] as Timestamp?);
+              (b[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
+              (b[FirestoreUserCoinFields.updatedAt] as Timestamp?);
           final va = ta?.millisecondsSinceEpoch ?? 0;
           final vb = tb?.millisecondsSinceEpoch ?? 0;
           return va.compareTo(vb);
@@ -1549,11 +1478,11 @@ class _MobileHomePageState extends State<MobileHomePage>
       case 'new_old':
         l.sort((a, b) {
           final ta =
-              (a.data()[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
-              (a.data()[FirestoreUserCoinFields.updatedAt] as Timestamp?);
+              (a[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
+              (a[FirestoreUserCoinFields.updatedAt] as Timestamp?);
           final tb =
-              (b.data()[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
-              (b.data()[FirestoreUserCoinFields.updatedAt] as Timestamp?);
+              (b[FirestoreUserCoinFields.createdAt] as Timestamp?) ??
+              (b[FirestoreUserCoinFields.updatedAt] as Timestamp?);
           final va = ta?.millisecondsSinceEpoch ?? 0;
           final vb = tb?.millisecondsSinceEpoch ?? 0;
           return vb.compareTo(va);
@@ -1563,27 +1492,21 @@ class _MobileHomePageState extends State<MobileHomePage>
       default:
         l.sort((a, b) {
           final ma =
-              (a.data()[FirestoreUserCoinFields.minersCount] as num?)
-                  ?.toInt() ??
-              0;
+              (a[FirestoreUserCoinFields.minersCount] as num?)?.toInt() ?? 0;
           final mb =
-              (b.data()[FirestoreUserCoinFields.minersCount] as num?)
-                  ?.toInt() ??
-              0;
+              (b[FirestoreUserCoinFields.minersCount] as num?)?.toInt() ?? 0;
           if (mb != ma) return mb.compareTo(ma);
           final la =
-              ((a.data()[FirestoreUserCoinFields.socialLinks] as List?) ?? [])
-                  .length;
+              ((a[FirestoreUserCoinFields.socialLinks] as List?) ?? []).length;
           final lb =
-              ((b.data()[FirestoreUserCoinFields.socialLinks] as List?) ?? [])
-                  .length;
+              ((b[FirestoreUserCoinFields.socialLinks] as List?) ?? []).length;
           if (lb != la) return lb.compareTo(la);
           final ra =
-              (a.data()[FirestoreUserCoinFields.baseRatePerHour] as num?)
+              (a[FirestoreUserCoinFields.baseRatePerHour] as num?)
                   ?.toDouble() ??
               0.0;
           final rb =
-              (b.data()[FirestoreUserCoinFields.baseRatePerHour] as num?)
+              (b[FirestoreUserCoinFields.baseRatePerHour] as num?)
                   ?.toDouble() ??
               0.0;
           return rb.compareTo(ra);
@@ -1678,7 +1601,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                       : () async {
                           try {
                             await CoinService.addCoinForUser(ownerId);
-                            if (context.mounted) {
+                            if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('Added to Mined Coins'),
@@ -1688,7 +1611,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                               _refresh();
                             }
                           } catch (e) {
-                            if (context.mounted) {
+                            if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text('Failed to add: $e')),
                               );

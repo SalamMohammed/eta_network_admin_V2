@@ -11,6 +11,7 @@ class SqlApiService {
   // Cache the token to minimize calls
   static String? _cachedToken;
   static DateTime? _tokenExpiry;
+  static final http.Client _client = http.Client();
 
   /// Gets a valid Firebase ID Token.
   /// Refreshes only if expired or missing.
@@ -40,14 +41,14 @@ class SqlApiService {
   }
 
   /// Generic GET request with Auth Header
-  static Future<List<Map<String, dynamic>>> get(
+  static Future<List<Map<String, dynamic>>?> get(
     String endpoint, {
     Map<String, String>? params,
   }) async {
     final token = await _getAuthToken();
     if (token == null) {
       debugPrint('[SqlApiService] No auth token available');
-      return [];
+      return null;
     }
 
     Uri uri = Uri.parse('$_baseUrl/$endpoint');
@@ -56,13 +57,16 @@ class SqlApiService {
     }
 
     try {
-      final response = await http.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
+      final response = await _client
+          .get(
+            uri,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Connection': 'keep-alive', // Explicitly request keep-alive
+            },
+          )
+          .timeout(const Duration(seconds: 10)); // Fail fast (10s)
 
       if (response.statusCode == 200) {
         final dynamic decoded = json.decode(response.body);
@@ -74,11 +78,11 @@ class SqlApiService {
         debugPrint(
           '[SqlApiService] HTTP ${response.statusCode}: ${response.body}',
         );
-        return [];
+        return null;
       }
     } catch (e) {
       debugPrint('[SqlApiService] Request failed: $e');
-      return [];
+      return null;
     }
   }
 
@@ -96,13 +100,16 @@ class SqlApiService {
     }
 
     try {
-      final response = await http.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-      );
+      final response = await _client
+          .get(
+            uri,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Connection': 'keep-alive',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final dynamic decoded = json.decode(response.body);
@@ -132,14 +139,17 @@ class SqlApiService {
     final uri = Uri.parse('$_baseUrl/$endpoint');
 
     try {
-      final response = await http.post(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode(body),
-      );
+      final response = await _client
+          .post(
+            uri,
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+              'Connection': 'keep-alive',
+            },
+            body: json.encode(body),
+          )
+          .timeout(const Duration(seconds: 15)); // Slightly longer for POST
 
       if (response.statusCode == 200) {
         final decoded = json.decode(response.body);
@@ -268,12 +278,12 @@ class SqlApiService {
   }
 
   /// Fetch "My Mined Coins" from SQL
-  static Future<List<Map<String, dynamic>>> getMyCoins(String uid) async {
+  static Future<List<Map<String, dynamic>>?> getMyCoins(String uid) async {
     return await get('get_my_coins.php', params: {'uid': uid});
   }
 
   /// Fetch "Live Coins" (Market) from SQL
-  static Future<List<Map<String, dynamic>>> getLiveCoins({
+  static Future<List<Map<String, dynamic>>?> getLiveCoins({
     String sort = 'popular',
   }) async {
     return await get('get_live_coins.php', params: {'sort': sort});
