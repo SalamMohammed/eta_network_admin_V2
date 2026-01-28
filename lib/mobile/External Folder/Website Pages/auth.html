@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redirecting... - ETA Network</title>
+<style>
+  :root {
+    --bg-dark: #062A2F;
+    --bg-darker: #0E1618;
+    --text-main: #ffffff;
+    --primary: #0FD9C5;
+  }
+  body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, var(--bg-dark), var(--bg-darker));
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-main);
+    margin: 0;
+  }
+  .loader {
+    border: 3px solid rgba(15, 217, 197, 0.1);
+    border-top: 3px solid var(--primary);
+    border-radius: 50%;
+    width: 48px;
+    height: 48px;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+<script>
+  function getParameterByName(name) {
+    const url = window.location.href;
+    name = name.replace(/[\[\]]/g, '\\$&');
+    const regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)');
+    const results = regex.exec(url);
+    if (!results) return null;
+    if (!results[2]) return '';
+    return decodeURIComponent(results[2].replace(/\+/g, ' '));
+  }
+
+  window.onload = function() {
+    const mode = getParameterByName('mode');
+    // Forward all query parameters
+    const query = window.location.search; 
+
+    // WordPress Page Slugs (modify if your slugs are different)
+    const verifyUrl = '/verification/';
+    const resetUrl = '/reset-password/'; 
+
+    if (mode === 'verifyEmail') {
+      window.location.href = verifyUrl + query;
+    } else if (mode === 'resetPassword') {
+      window.location.href = resetUrl + query;
+    } else {
+      // Fallback: Redirect to home
+      window.location.href = '/';
+    }
+  };
+</script>
+</head>
+<body>
+  <div class="loader"></div>
+</body>
+</html>

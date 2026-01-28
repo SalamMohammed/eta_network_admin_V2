@@ -3,7 +3,7 @@ import '../firebase_options.dart';
 
 class AuthVerificationService {
   static ActionCodeSettings _settings() {
-    final url = 'https://etanetwork.net/verified/';
+    final url = 'https://etanetwork.net/auth/';
     return ActionCodeSettings(
       url: url,
       handleCodeInApp: false,

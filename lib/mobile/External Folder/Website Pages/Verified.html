@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Verified - ETA Network</title>
+    <style>
+        :root {
+            --primary: #0FD9C5;
+            --primary-glow: rgba(15, 217, 197, 0.4);
+            --bg-dark: #062A2F;
+            --bg-darker: #0E1618;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(15, 217, 197, 0.2);
+            --text-main: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-darker) 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: var(--text-main);
+        }
+
+        .container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            padding: 60px 40px;
+            border-radius: 24px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            text-align: center;
+            max-width: 480px;
+            width: 100%;
+            border: 1px solid var(--glass-border);
+            animation: slideUp 0.6s ease-out forwards;
+        }
+
+        .logo-circle {
+            width: 90px;
+            height: 90px;
+            border-radius: 50%;
+            background: radial-gradient(circle at 30% 30%, #0FD9C5, #52F2DE);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            color: #062A2F;
+            font-weight: 800;
+            margin: 0 auto 32px;
+            box-shadow: 0 0 30px rgba(15, 217, 197, 0.3);
+            letter-spacing: 1px;
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 16px;
+            color: var(--primary);
+            letter-spacing: -0.5px;
+        }
+
+        p {
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
+        }
+
+        p.welcome-text {
+            color: var(--text-main);
+            font-size: 18px;
+            margin-bottom: 24px;
+        }
+
+        a.btn-home {
+            display: inline-block;
+            margin-top: 24px;
+            padding: 14px 32px;
+            background: linear-gradient(90deg, #0FD9C5, #52F2DE);
+            color: #062A2F;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 16px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 15px rgba(15, 217, 197, 0.2);
+        }
+
+        a.btn-home:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(15, 217, 197, 0.4);
+            filter: brightness(1.1);
+        }
+
+        a.btn-home:active {
+            transform: translateY(0);
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Responsive Adjustments */
+        @media (max-width: 480px) {
+            .container {
+                padding: 40px 24px;
+            }
+            h1 {
+                font-size: 24px;
+            }
+            .logo-circle {
+                width: 80px;
+                height: 80px;
+                font-size: 22px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="logo-circle">
+            ETA
+        </div>
+
+        <h1>Email Verified</h1>
+        
+        <p class="welcome-text">
+            Welcome to <strong>Eta Network</strong>.<br>Your account has been successfully verified.
+        </p>
+        
+        <p>
+            You can now return to the app and sign in to continue.
+        </p>
+
+        <a href="https://etanetwork.net" class="btn-home">
+            Go to Home
+        </a>
+    </div>
+
+</body>
+</html>

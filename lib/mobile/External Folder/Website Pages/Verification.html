@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify Your Email - ETA Network</title>
+
+<style>
+:root {
+  --primary: #0FD9C5;
+  --primary-glow: rgba(15, 217, 197, 0.4);
+  --bg-dark: #062A2F;
+  --bg-darker: #0E1618;
+  --glass-bg: rgba(255, 255, 255, 0.05);
+  --glass-border: rgba(15, 217, 197, 0.2);
+  --text-main: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.7);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background: linear-gradient(135deg, var(--bg-dark), var(--bg-darker));
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 4vw, 32px);
+  color: var(--text-main);
+}
+
+/* ===== Container ===== */
+.container {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: clamp(32px, 6vw, 60px) clamp(24px, 5vw, 40px);
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+  text-align: center;
+  width: 100%;
+  max-width: 480px;
+  border: 1px solid var(--glass-border);
+  animation: slideUp 0.6s ease-out forwards;
+}
+
+/* ===== Icon ===== */
+.icon-circle {
+  width: clamp(64px, 18vw, 80px);
+  height: clamp(64px, 18vw, 80px);
+  border-radius: 50%;
+  background: rgba(15, 217, 197, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto clamp(20px, 5vw, 32px);
+  border: 2px solid var(--primary);
+  box-shadow: 0 0 20px var(--primary-glow);
+}
+
+.icon-circle svg {
+  width: 40px;
+  height: 40px;
+}
+
+/* ===== Typography ===== */
+h1 {
+  font-size: clamp(22px, 5vw, 28px);
+  font-weight: 700;
+  margin-bottom: 16px;
+  color: var(--primary);
+  letter-spacing: -0.5px;
+}
+
+h2 {
+  font-size: clamp(18px, 4.5vw, 22px);
+}
+
+p {
+  font-size: clamp(14px, 4vw, 16px);
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 20px;
+}
+
+/* ===== Loader ===== */
+.loader {
+  border: 3px solid rgba(15, 217, 197, 0.1);
+  border-top: 3px solid var(--primary);
+  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 24px;
+}
+
+/* ===== Button ===== */
+a.btn-home {
+  display: inline-block;
+  margin-top: 12px;
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 600;
+  padding: 10px 26px;
+  border: 1px solid var(--glass-border);
+  border-radius: 50px;
+  transition: all 0.3s ease;
+}
+
+a.btn-home:hover {
+  background: rgba(15, 217, 197, 0.1);
+  transform: translateY(-2px);
+}
+
+/* ===== Animations ===== */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ===== Ultra Small Screens ===== */
+@media (max-height: 620px) {
+  body {
+    align-items: flex-start;
+  }
+  .container {
+    margin-top: 24px;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <!-- STATE 1 -->
+  <div id="state-default">
+    <div class="icon-circle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#0FD9C5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+        <polyline points="22,6 12,13 2,6"></polyline>
+      </svg>
+    </div>
+
+    <h1>Verify Your Email</h1>
+    <p>We've sent a verification link to your email address.</p>
+    <p style="font-size: 13px; opacity: 0.8;">
+      Please check your inbox (and spam folder) and click the link to activate your account.
+    </p>
+  </div>
+
+  <!-- STATE 2 -->
+  <div id="state-verifying" style="display:none;">
+    <div class="loader"></div>
+    <h2 style="color:#fff; margin-bottom:12px;">Verifying...</h2>
+    <p>Please wait while we confirm your email.</p>
+  </div>
+
+  <!-- STATE 3 -->
+  <div id="state-error" style="display:none;">
+    <div style="font-size:42px; margin-bottom:20px;">⚠️</div>
+    <h2 style="color:#ff6b6b; margin-bottom:12px;">Verification Failed</h2>
+    <p id="error-message">The link is invalid or has expired.</p>
+    <a href="https://etanetwork.net" class="btn-home">Return Home</a>
+  </div>
+
+</div>
+
+<!-- 🔒 LOGIC PRESERVED EXACTLY -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, applyActionCode } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBdVZ48BWKKXG7Xc1e97mKyKcssHIF2fz0",
+  authDomain: "eta-network-31964.firebaseapp.com",
+  projectId: "eta-network-31964",
+  storageBucket: "eta-network-31964.firebasestorage.app",
+  messagingSenderId: "899853959610",
+  appId: "1:899853959610:web:344ca8ceca463376b31d83"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+function getParameterByName(name) {
+  const url = window.location.href;
+  name = name.replace(/[\[\]]/g, '\\$&');
+  const regex = new RegExp('[?&]' + name + '(=([^&#]*)|&|#|$)');
+  const results = regex.exec(url);
+  if (!results) return null;
+  if (!results[2]) return '';
+  return decodeURIComponent(results[2].replace(/\+/g, ' '));
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const mode = getParameterByName('mode');
+  const actionCode = getParameterByName('oobCode');
+
+  if (mode === 'verifyEmail' && actionCode) {
+    document.getElementById('state-default').style.display = 'none';
+    document.getElementById('state-verifying').style.display = 'block';
+
+    applyActionCode(auth, actionCode)
+      .then(() => {
+        window.location.href = '/verified/';
+      })
+      .catch((error) => {
+        console.error(error);
+        document.getElementById('state-verifying').style.display = 'none';
+        document.getElementById('state-error').style.display = 'block';
+        document.getElementById('error-message').innerText = error.message;
+      });
+  }
+});
+</script>
+
+</body>
+</html>

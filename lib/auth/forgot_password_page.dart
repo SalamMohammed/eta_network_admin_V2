@@ -46,7 +46,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     try {
       final email = _emailController.text.trim();
       final settings = ActionCodeSettings(
-        url: 'https://etanetwork.net/reset-password/',
+        url: 'https://etanetwork.net/auth/',
         handleCodeInApp: false,
         androidPackageName: 'com.eta.network',
         androidInstallApp: true,
