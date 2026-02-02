@@ -2,13 +2,14 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import '../shared/firestore_constants.dart';
 import 'earnings_engine.dart';
 import '../shared/device_id.dart';
 import 'subscription_service.dart';
 import 'notification_service.dart';
 
-class MiningStateService extends ChangeNotifier {
+class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   static final MiningStateService _instance = MiningStateService._internal();
   factory MiningStateService() => _instance;
   MiningStateService._internal();
@@ -123,6 +124,7 @@ class MiningStateService extends ChangeNotifier {
 
   Future<void> init() async {
     if (_initialized) return;
+    WidgetsBinding.instance.addObserver(this);
     _deviceId = await DeviceId.get();
     await SubscriptionService().init();
     await _refresh();
@@ -488,6 +490,16 @@ class MiningStateService extends ChangeNotifier {
     return targetHourlyRate;
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _simTimer?.cancel();
+      _simTimer = null;
+    } else if (state == AppLifecycleState.resumed) {
+      _ensureTimerRunning();
+    }
+  }
+
   void _startSimulationIfNeeded() {
     // If we're already simulating and parameters haven't changed drastically, let it run
     // But if we just refreshed and got new base points, we might need to adjust
@@ -512,17 +524,53 @@ class MiningStateService extends ChangeNotifier {
 
     _simBase = _totalPoints;
     _simAnchor = DateTime.now();
+    _ensureTimerRunning();
+  }
+
+  void _ensureTimerRunning() {
+    if (!_miningActive || _lastEnd == null) return;
+    if (_simTimer != null) return;
+
+    // Check lifecycle to avoid running in background
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state != null && state != AppLifecycleState.resumed) return;
+
+    if (_simAnchor == null) {
+      _simBase = _totalPoints;
+      _simAnchor = DateTime.now();
+    }
+
     final end = _lastEnd!.toDate();
 
+    // Immediate update to ensure UI is fresh before first timer tick
+    {
+      final anchor = _simAnchor;
+      if (anchor != null) {
+        final now = DateTime.now();
+        if (now.isBefore(end)) {
+          final elapsedSec = now.difference(anchor).inMilliseconds / 1000.0;
+          final remainingSec = end.difference(anchor).inSeconds.toDouble();
+          final incPerSec = _hourlyRate > 0.0 ? (_hourlyRate / 3600.0) : 0.0;
+          final inc = (elapsedSec * incPerSec).clamp(
+            0.0,
+            remainingSec * incPerSec,
+          );
+          _displayTotal = _simBase + inc;
+          _maybeNotify(force: true);
+        }
+      }
+    }
+
     _simTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
-      final anchor = _simAnchor!;
+      final anchor = _simAnchor;
+      if (anchor == null) return;
       final now = DateTime.now();
 
       if (!now.isBefore(end)) {
         _simTimer?.cancel();
         _simTimer = null;
         _miningActive = false;
-        _displayTotal = _simBase; // Revert to base or fetch new?
+        // _displayTotal = _simBase; // Revert to base or fetch new?
         _maybeNotify(force: true);
 
         // Auto-refresh when session ends
@@ -573,6 +621,7 @@ class MiningStateService extends ChangeNotifier {
   /// Resets the service state to default values.
   /// Call this when the user logs out.
   void reset() {
+    WidgetsBinding.instance.removeObserver(this);
     _simTimer?.cancel();
     _simTimer = null;
     _userDocSub?.cancel();
@@ -606,6 +655,7 @@ class MiningStateService extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _simTimer?.cancel();
     _userDocSub?.cancel();
     _subExpiryTimer?.cancel();

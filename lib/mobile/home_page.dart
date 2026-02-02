@@ -57,7 +57,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     _tab.addListener(() {
       if (!mounted) return;
       if (_tab.indexIsChanging) return;
-
+      
       // Refresh streams when switching tabs to show cached data instantly
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
@@ -67,7 +67,7 @@ class _MobileHomePageState extends State<MobileHomePage>
           _liveCoinsStream = CoinService.watchLiveCoins(sort: _liveSort);
         }
       }
-
+      
       setState(() {});
     });
     unawaited(_adsService.init());
