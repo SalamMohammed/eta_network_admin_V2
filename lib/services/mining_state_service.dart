@@ -495,8 +495,13 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused) {
       _simTimer?.cancel();
       _simTimer = null;
+      _userDocSub?.cancel();
+      _userDocSub = null;
     } else if (state == AppLifecycleState.resumed) {
       _ensureTimerRunning();
+      _startUserDocListener();
+      // Also refresh manually to ensure we catch anything the listener might miss during reconnection
+      _refresh();
     }
   }
 

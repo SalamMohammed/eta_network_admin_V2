@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 import '../shared/firestore_constants.dart';
@@ -132,7 +133,7 @@ class AdsConfig {
   }
 }
 
-class AdsService extends ChangeNotifier {
+class AdsService extends ChangeNotifier with WidgetsBindingObserver {
   static final AdsService _instance = AdsService._internal();
   factory AdsService() => _instance;
   AdsService._internal();
@@ -140,6 +141,10 @@ class AdsService extends ChangeNotifier {
   AdsConfig _config = AdsConfig.defaults;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _configSub;
   bool _initialized = false;
+  RewardedAd? _cachedRewardedAd;
+  bool _isPreloading = false;
+  DateTime? _lastLoadAttempt;
+  static const Duration _minLoadInterval = Duration(seconds: 10);
 
   bool get isSupportedPlatform {
     if (kIsWeb) return false;
@@ -151,6 +156,7 @@ class AdsService extends ChangeNotifier {
 
   Future<void> init() async {
     if (_initialized) return;
+    WidgetsBinding.instance.addObserver(this);
     if (!isSupportedPlatform) {
       _initialized = true;
       return;
@@ -158,6 +164,18 @@ class AdsService extends ChangeNotifier {
     await MobileAds.instance.initialize();
     _startConfigListener();
     _initialized = true;
+    _preloadRewardedAd();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _configSub?.cancel();
+      _configSub = null;
+    } else if (state == AppLifecycleState.resumed) {
+      _startConfigListener();
+      _preloadRewardedAd();
+    }
   }
 
   void _startConfigListener() {
@@ -172,6 +190,12 @@ class AdsService extends ChangeNotifier {
               ? AdsConfig.defaults
               : AdsConfig.fromFirestore(data);
           notifyListeners();
+          // Config changed (e.g. unit IDs), reload ad
+          if (_config.enableRewarded) {
+            _cachedRewardedAd?.dispose();
+            _cachedRewardedAd = null;
+            _preloadRewardedAd();
+          }
         });
   }
 
@@ -189,15 +213,74 @@ class AdsService extends ChangeNotifier {
     return _config.rewardedAdUnitIdAndroid;
   }
 
+  Future<void> _preloadRewardedAd() async {
+    if (!isSupportedPlatform) return;
+    if (!_config.enableRewarded) return;
+    if (_cachedRewardedAd != null) return; // Already have one
+    if (_isPreloading) return; // Already loading
+
+    // Don't load in background
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state != null && state != AppLifecycleState.resumed) return;
+
+    // Rate limit checks
+    final now = DateTime.now();
+    if (_lastLoadAttempt != null &&
+        now.difference(_lastLoadAttempt!) < _minLoadInterval) {
+      return;
+    }
+
+    _isPreloading = true;
+    _lastLoadAttempt = now;
+
+    try {
+      await RewardedAd.load(
+        adUnitId: rewardedAdUnitId,
+        request: const AdRequest(),
+        rewardedAdLoadCallback: RewardedAdLoadCallback(
+          onAdLoaded: (ad) {
+            _cachedRewardedAd = ad;
+            _isPreloading = false;
+            debugPrint('AdsService: Ad preloaded successfully');
+          },
+          onAdFailedToLoad: (error) {
+            _cachedRewardedAd = null;
+            _isPreloading = false;
+            debugPrint('AdsService: Ad failed to preload: $error');
+          },
+        ),
+      );
+    } catch (e) {
+      _isPreloading = false;
+      debugPrint('AdsService: Ad preload exception: $e');
+    }
+  }
+
   Future<RewardedAd?> loadRewardedAd() async {
     if (!isSupportedPlatform) return null;
     if (!_config.enableRewarded) return null;
+
+    // Return cached ad if available (Instant!)
+    if (_cachedRewardedAd != null) {
+      final ad = _cachedRewardedAd;
+      _cachedRewardedAd = null;
+      // Preload the next one in the background
+      _preloadRewardedAd();
+      return ad;
+    }
+
+    // Fallback: Load on demand if cache missed
     final completer = Completer<RewardedAd?>();
     RewardedAd.load(
       adUnitId: rewardedAdUnitId,
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
-        onAdLoaded: (ad) => completer.complete(ad),
+        onAdLoaded: (ad) {
+          // Don't cache this one, return it immediately
+          completer.complete(ad);
+          // Start preloading the next one
+          _preloadRewardedAd();
+        },
         onAdFailedToLoad: (error) => completer.complete(null),
       ),
     );
@@ -206,8 +289,11 @@ class AdsService extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _configSub?.cancel();
     _configSub = null;
+    _cachedRewardedAd?.dispose();
+    _cachedRewardedAd = null;
     super.dispose();
   }
 }

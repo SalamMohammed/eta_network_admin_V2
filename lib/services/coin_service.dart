@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../shared/firestore_constants.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -5,12 +6,41 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:typed_data';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/widgets.dart';
 import '../shared/constants.dart';
 import 'sql_api_service.dart'; // Add this import
 
-class CoinService {
+class CoinService with WidgetsBindingObserver {
   // MASTER SWITCH: Set to true to use SQL, false for Firestore
   static const bool useSqlBackend = true;
+
+  // Singleton instance for lifecycle management
+  static final CoinService _instance = CoinService._internal();
+  factory CoinService() => _instance;
+  CoinService._internal() {
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  static bool _isPaused = false;
+  static final List<Function> _resumeCallbacks = [];
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _isPaused = true;
+    } else if (state == AppLifecycleState.resumed) {
+      _isPaused = false;
+      // Trigger immediate updates
+      for (final callback in _resumeCallbacks) {
+        callback();
+      }
+    }
+  }
+
+  static void init() {
+    // Just to ensure singleton is created and observer registered
+    _instance;
+  }
 
   static Future<Map<String, dynamic>?> getUserCoin(String uid) async {
     if (useSqlBackend) {
@@ -26,16 +56,77 @@ class CoinService {
   static Stream<Map<String, dynamic>?> watchUserCoin(String uid) {
     if (useSqlBackend) {
       // Poll every 5 seconds, but emit first value immediately
+      // Smart Resumption: Pause when backgrounded, fetch immediately on resume
       Stream<Map<String, dynamic>?> stream() async* {
         // Initial fetch
         yield await SqlApiService.getUserCoin(uid);
-        // Periodic polling
-        yield* Stream.periodic(
-          const Duration(seconds: 5),
-        ).asyncMap((_) => SqlApiService.getUserCoin(uid));
+
+        // We use a custom periodic logic to handle pausing/resumption
+        // yield* Stream.periodic(...) doesn't easily support external pause/resume
+        // so we just check _isPaused inside asyncMap, but that only skips, doesn't pause the timer.
+        // However, asyncMap waits for the future. If we just return null or skip, the timer continues.
+        // To truly save resources, we should skip network calls.
+
+        // Better approach: Use a persistent generator loop
+        while (true) {
+          await Future.delayed(const Duration(seconds: 5));
+          if (_isPaused) continue; // Skip if backgrounded
+
+          // If just resumed, this loop might be in the middle of a wait.
+          // The _resumeCallbacks can be used to interrupt/force fetch if we used a StreamController.
+          // But since we are using async*, we rely on the loop.
+          // "Smart Resumption" requires immediate fetch.
+          // The loop above has a rigid 5s wait.
+          // To support immediate fetch on resume, we can use a Signal/Event based approach or just accept up to 5s delay?
+          // User requested "no catch-up lag" -> immediate update.
+
+          // Implementation for Smart Resumption using this simple generator:
+          // We can't easily break the `Future.delayed` from outside.
+          // So let's stick to the periodic stream but add a "force refresh" signal?
+          // Or just standard polling that skips when paused.
+          // For "immediate" update on resume, the UI usually rebuilds or we can trigger a fetch.
+
+          // Let's implement the `_resumeCallbacks` logic inside `watchUserCoin` using a StreamController.
+        }
       }
 
-      return stream().asBroadcastStream();
+      // Re-implementing using StreamController for full control
+      final controller = StreamController<Map<String, dynamic>?>();
+      Timer? timer;
+
+      void fetch() async {
+        if (controller.isClosed) return;
+        final data = await SqlApiService.getUserCoin(uid);
+        if (!controller.isClosed) controller.add(data);
+      }
+
+      void startTimer() {
+        timer?.cancel();
+        timer = Timer.periodic(const Duration(seconds: 5), (_) {
+          if (_isPaused) return; // Skip if backgrounded
+          fetch();
+        });
+      }
+
+      // Register resume callback
+      void onResume() {
+        if (!controller.isClosed) {
+          fetch(); // Immediate fetch on resume
+        }
+      }
+
+      controller.onListen = () {
+        fetch(); // Initial fetch
+        startTimer();
+        _resumeCallbacks.add(onResume);
+      };
+
+      controller.onCancel = () {
+        timer?.cancel();
+        _resumeCallbacks.remove(onResume);
+      };
+
+      return controller.stream.asBroadcastStream();
     }
     return FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
@@ -54,36 +145,54 @@ class CoinService {
   static Stream<List<Map<String, dynamic>>> watchMyCoins(String uid) {
     if (useSqlBackend) {
       // Poll every 30 seconds
-      Stream<List<Map<String, dynamic>>> stream() async* {
-        // Yield cached data immediately if available and fresh (< 30s)
+      final controller = StreamController<List<Map<String, dynamic>>>();
+      Timer? timer;
+
+      void fetch() async {
+        if (controller.isClosed) return;
+
+        // Use cache if fresh and available
         if (_cachedMyCoins != null &&
             _myCoinsFetchTime != null &&
             DateTime.now().difference(_myCoinsFetchTime!) <
                 const Duration(seconds: 30)) {
-          yield _cachedMyCoins!;
+          if (!controller.isClosed) controller.add(_cachedMyCoins!);
+          // If it's cached, we might still want to fetch fresh if this was a forced refresh?
+          // But the logic below handles periodic.
         }
 
-        // Fetch fresh data
         final fresh = await SqlApiService.getMyCoins(uid);
         if (fresh != null) {
           _cachedMyCoins = fresh;
           _myCoinsFetchTime = DateTime.now();
-          yield fresh;
+          if (!controller.isClosed) controller.add(fresh);
         }
+      }
 
-        yield* Stream.periodic(const Duration(seconds: 30)).asyncExpand((
-          _,
-        ) async* {
-          final periodicFresh = await SqlApiService.getMyCoins(uid);
-          if (periodicFresh != null) {
-            _cachedMyCoins = periodicFresh;
-            _myCoinsFetchTime = DateTime.now();
-            yield periodicFresh;
-          }
+      void startTimer() {
+        timer?.cancel();
+        timer = Timer.periodic(const Duration(seconds: 30), (_) {
+          if (_isPaused) return;
+          fetch();
         });
       }
 
-      return stream().asBroadcastStream();
+      void onResume() {
+        if (!controller.isClosed) fetch();
+      }
+
+      controller.onListen = () {
+        fetch();
+        startTimer();
+        _resumeCallbacks.add(onResume);
+      };
+
+      controller.onCancel = () {
+        timer?.cancel();
+        _resumeCallbacks.remove(onResume);
+      };
+
+      return controller.stream.asBroadcastStream();
     }
     return FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
@@ -98,39 +207,54 @@ class CoinService {
   }) {
     if (useSqlBackend) {
       // Poll every 60 seconds for market data
-      Stream<List<Map<String, dynamic>>> stream() async* {
+      final controller = StreamController<List<Map<String, dynamic>>>();
+      Timer? timer;
+
+      void fetch() async {
+        if (controller.isClosed) return;
+
         // Yield cached data immediately if available, matches sort, and fresh (< 60s)
         if (_cachedLiveCoins != null &&
             _liveCoinsFetchTime != null &&
             _lastLiveSort == sort &&
             DateTime.now().difference(_liveCoinsFetchTime!) <
                 const Duration(seconds: 60)) {
-          yield _cachedLiveCoins!;
+          if (!controller.isClosed) controller.add(_cachedLiveCoins!);
         }
 
-        // Fetch fresh data
         final fresh = await SqlApiService.getLiveCoins(sort: sort);
         if (fresh != null) {
           _cachedLiveCoins = fresh;
           _liveCoinsFetchTime = DateTime.now();
           _lastLiveSort = sort;
-          yield fresh;
+          if (!controller.isClosed) controller.add(fresh);
         }
+      }
 
-        yield* Stream.periodic(const Duration(seconds: 60)).asyncExpand((
-          _,
-        ) async* {
-          final periodicFresh = await SqlApiService.getLiveCoins(sort: sort);
-          if (periodicFresh != null) {
-            _cachedLiveCoins = periodicFresh;
-            _liveCoinsFetchTime = DateTime.now();
-            _lastLiveSort = sort;
-            yield periodicFresh;
-          }
+      void startTimer() {
+        timer?.cancel();
+        timer = Timer.periodic(const Duration(seconds: 60), (_) {
+          if (_isPaused) return;
+          fetch();
         });
       }
 
-      return stream().asBroadcastStream();
+      void onResume() {
+        if (!controller.isClosed) fetch();
+      }
+
+      controller.onListen = () {
+        fetch();
+        startTimer();
+        _resumeCallbacks.add(onResume);
+      };
+
+      controller.onCancel = () {
+        timer?.cancel();
+        _resumeCallbacks.remove(onResume);
+      };
+
+      return controller.stream.asBroadcastStream();
     }
     return FirebaseFirestore.instance
         .collection(FirestoreConstants.userCoins)
