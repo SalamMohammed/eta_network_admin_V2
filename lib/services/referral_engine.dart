@@ -72,9 +72,16 @@ class ReferralEngine {
       FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
       FirestorePointLogFields.description: 'Referral fixed bonus applied',
     });
-    batch.update(inviteeRef, {
+
+    // Update points in realtime subcollection to avoid triggering user doc listeners
+    final realtimeRef = inviteeRef
+        .collection(FirestoreUserSubCollections.earnings)
+        .doc(FirestoreEarningsDocs.realtime);
+        
+    batch.set(realtimeRef, {
       FirestoreUserFields.totalPoints: FieldValue.increment(inviteeFixedBonus),
-    });
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
     await batch.commit();
   }

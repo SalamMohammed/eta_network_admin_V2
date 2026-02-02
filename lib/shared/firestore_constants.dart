@@ -9,10 +9,16 @@ class FirestoreConstants {
   static const String settings = 'settings';
   static const String userCoins = 'user_coins';
   static const String managers = 'managers';
+  static const String earnings = 'earnings';
 }
 
 class FirestoreUserSubCollections {
   static const String coins = 'coins';
+  static const String earnings = 'earnings';
+}
+
+class FirestoreEarningsDocs {
+  static const String realtime = 'realtime';
 }
 
 class FirestoreUserFields {

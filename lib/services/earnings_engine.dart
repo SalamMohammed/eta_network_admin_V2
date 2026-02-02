@@ -12,19 +12,37 @@ class EarningsEngine {
     final userRef = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
+    // Realtime earnings subcollection
+    final realtimeRef = userRef
+        .collection(FirestoreUserSubCollections.earnings)
+        .doc(FirestoreEarningsDocs.realtime);
+
     final snap = await userRef.get();
     if (!snap.exists) return {};
     final data = snap.data() ?? {};
+
+    final realtimeSnap = await realtimeRef.get();
+    final realtimeData = realtimeSnap.data() ?? {};
+
     final Timestamp? startTs =
         data[FirestoreUserFields.lastMiningStart] as Timestamp?;
     final Timestamp? endTs =
         data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+
+    // Prefer realtime doc for syncedAt, fallback to user doc
     final Timestamp? syncedTs =
-        data[FirestoreUserFields.lastSyncedAt] as Timestamp?;
+        (realtimeData[FirestoreUserFields.lastSyncedAt] as Timestamp?) ??
+        (data[FirestoreUserFields.lastSyncedAt] as Timestamp?);
+
     final double hourlyRate =
         (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+
+    // Prefer realtime doc for totalPoints, fallback to user doc
     double totalPoints =
-        (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
+        (realtimeData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+        (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+        0.0;
+
     if (startTs == null) {
       return {
         FirestoreUserFields.totalPoints: totalPoints,
@@ -49,25 +67,30 @@ class EarningsEngine {
     final elapsedHours =
         effectiveEnd.difference(from).inMilliseconds / (1000 * 60 * 60);
     final earned = elapsedHours * hourlyRate;
-    
+
     // Throttle writes: only write if > 0.1 points or > 10 minutes elapsed
     // This reduces excessive Cloud Function invocations
     final diffMinutes = effectiveEnd.difference(from).inMinutes;
     if (earned <= 0 || (earned < 0.1 && diffMinutes < 10)) {
       return {
-        FirestoreUserFields.totalPoints: totalPoints + earned, // Return calculated total for UI
+        FirestoreUserFields.totalPoints:
+            totalPoints + earned, // Return calculated total for UI
         FirestoreUserFields.hourlyRate: hourlyRate,
         FirestoreUserFields.lastMiningStart: startTs,
         FirestoreUserFields.lastMiningEnd: endTs,
-        FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(from), // Keep old sync time
+        FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(
+          from,
+        ), // Keep old sync time
       };
     }
-    
-    await userRef.update({
+
+    // Write to realtime subcollection INSTEAD of main user doc
+    await realtimeRef.set({
       FirestoreUserFields.totalPoints: FieldValue.increment(earned),
       FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-    });
+    }, SetOptions(merge: true));
+
     await FirebaseFirestore.instance
         .collection(FirestoreConstants.pointLogs)
         .add({
@@ -96,8 +119,17 @@ class EarningsEngine {
     final userRef = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
+    // Realtime earnings subcollection
+    final realtimeRef = userRef
+        .collection(FirestoreUserSubCollections.earnings)
+        .doc(FirestoreEarningsDocs.realtime);
+
     final snap = await userRef.get();
     final data = snap.data() ?? {};
+
+    final realtimeSnap = await realtimeRef.get();
+    final realtimeData = realtimeSnap.data() ?? {};
+
     final bool isBanned = (data['isBanned'] as bool?) ?? false;
     if (isBanned) {
       throw Exception('User banned');
@@ -105,6 +137,13 @@ class EarningsEngine {
     final Timestamp? lastEndTs =
         data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
     final DateTime now = DateTime.now();
+
+    // Prefer realtime doc for totalPoints
+    double totalPoints =
+        (realtimeData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+        (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+        0.0;
+
     if (lastEndTs != null && now.isBefore(lastEndTs.toDate())) {
       return {
         FirestoreUserFields.hourlyRate:
@@ -112,8 +151,7 @@ class EarningsEngine {
         FirestoreUserFields.lastMiningStart:
             data[FirestoreUserFields.lastMiningStart],
         FirestoreUserFields.lastMiningEnd: lastEndTs,
-        FirestoreUserFields.totalPoints:
-            (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0,
+        FirestoreUserFields.totalPoints: totalPoints,
         FirestoreUserFields.streakDays:
             (data[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0,
       };
@@ -214,16 +252,24 @@ class EarningsEngine {
     if (maxEnd != null && maxEnd.isAfter(start) && maxEnd.isBefore(end)) {
       end = maxEnd;
     }
+
+    // 1. Update User Doc (Triggers Cloud Function)
     await userRef.update({
       FirestoreUserFields.hourlyRate: hourlyRate,
       FirestoreUserFields.lastMiningStart: Timestamp.fromDate(start),
       FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(end),
-      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(start),
+      // FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(start), // MOVED to realtime
       FirestoreUserFields.deviceId: deviceId,
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       FirestoreUserFields.streakDays: newStreakDays,
       FirestoreUserFields.totalSessions: FieldValue.increment(1),
     });
+
+    // 2. Update Realtime Doc (No Trigger)
+    await realtimeRef.set({
+      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(start),
+    }, SetOptions(merge: true));
+
     // First-session referral activation: if configured, activate and award bonuses once.
     final refCfgSnap = await FirebaseFirestore.instance
         .collection(FirestoreConstants.appConfig)
@@ -261,7 +307,14 @@ class EarningsEngine {
             FirestoreConstants.users,
           );
           final inviterRef = users.doc(inviterUid);
+          // Inviter Realtime Ref
+          final inviterRealtimeRef = inviterRef
+              .collection(FirestoreUserSubCollections.earnings)
+              .doc(FirestoreEarningsDocs.realtime);
+
           final inviteeRef = users.doc(uid);
+          // Invitee Realtime Ref (already have realtimeRef for current user)
+
           final points = FirebaseFirestore.instance.collection(
             FirestoreConstants.pointLogs,
           );
@@ -286,14 +339,19 @@ class EarningsEngine {
             FirestorePointLogFields.description:
                 'Referral bonus (invitee) activated on first session',
           });
-          batch.update(inviterRef, {
+
+          // Update Inviter Points in Realtime Doc
+          batch.set(inviterRealtimeRef, {
             FirestoreUserFields.totalPoints: FieldValue.increment(
               referrerBonus,
             ),
-          });
-          batch.update(inviteeRef, {
+          }, SetOptions(merge: true));
+
+          // Update Invitee Points in Realtime Doc
+          batch.set(realtimeRef, {
             FirestoreUserFields.totalPoints: FieldValue.increment(inviteeBonus),
-          });
+          }, SetOptions(merge: true));
+
           await batch.commit();
           await RankEngine.updateUserRank(inviterUid);
           await RankEngine.updateUserRank(uid);
@@ -302,6 +360,17 @@ class EarningsEngine {
     }
     final refreshed = await userRef.get();
     final out = refreshed.data() ?? {};
+
+    // Need refreshed realtime data too?
+    // We just updated it (maybe).
+    // Actually, we can just return what we know.
+
+    // We updated realtimeRef with lastSyncedAt=start.
+    // We might have added bonus to realtimeRef.
+    // Let's just fetch it to be safe or calculate.
+    final refreshedRealtime = await realtimeRef.get();
+    final outRealtime = refreshedRealtime.data() ?? {};
+
     return {
       FirestoreUserFields.hourlyRate: hourlyRate,
       FirestoreUserFields.lastMiningStart: Timestamp.fromDate(start),
@@ -311,7 +380,8 @@ class EarningsEngine {
           (out[FirestoreUserFields.streakDays] as num?)?.toInt() ??
           newStreakDays,
       FirestoreUserFields.totalPoints:
-          (out[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0,
+          (outRealtime[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+          totalPoints, // use previous value if read failed? or 0.0
       'debug': {
         'baseRate': baseRate,
         'streakBonus': streakBonus,
@@ -320,6 +390,27 @@ class EarningsEngine {
         'hourlyRate': hourlyRate,
       },
     };
+  }
+
+  static Future<void> migrateLegacyPoints({
+    required String uid,
+    required double legacyPoints,
+  }) async {
+    if (legacyPoints <= 0) return;
+    final realtimeRef = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .collection(FirestoreUserSubCollections.earnings)
+        .doc(FirestoreEarningsDocs.realtime);
+
+    // Check if migration is needed (only if doc doesn't exist)
+    final snap = await realtimeRef.get();
+    if (snap.exists) return;
+
+    await realtimeRef.set({
+      FirestoreUserFields.totalPoints: legacyPoints,
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+    });
   }
 
   static Future<int> _computeAndPersistStreak(

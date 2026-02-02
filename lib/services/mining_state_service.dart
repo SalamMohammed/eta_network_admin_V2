@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import '../shared/firestore_constants.dart';
 import 'earnings_engine.dart';
@@ -47,6 +46,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   double _lastNotifiedDisplay = -1;
   static const Duration _minUiNotifyInterval = Duration(seconds: 1);
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userDocSub;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _realtimeDocSub;
   Timer? _subExpiryTimer;
   Timer? _refreshDebounce;
 
@@ -161,14 +161,37 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         24.0);
 
     // Load User Data
-    final snap = await FirebaseFirestore.instance
+    final userRef = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
-        .doc(uid)
-        .get();
+        .doc(uid);
+    final snap = await userRef.get();
     final d = snap.data() ?? {};
 
-    _totalPoints =
+    // Load Realtime Data
+    final realtimeSnap = await userRef
+        .collection(FirestoreUserSubCollections.earnings)
+        .doc(FirestoreEarningsDocs.realtime)
+        .get();
+    final realtimeData = realtimeSnap.data() ?? {};
+
+    // Prefer realtime points, fallback to user doc
+    final realtimePoints =
+        (realtimeData[FirestoreUserFields.totalPoints] as num?)?.toDouble();
+    final userDocPoints =
         (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
+
+    _totalPoints = realtimePoints ?? userDocPoints;
+
+    // Migration: If user has points but no realtime doc, create it
+    if (realtimePoints == null && userDocPoints > 0) {
+      unawaited(
+        EarningsEngine.migrateLegacyPoints(
+          uid: uid,
+          legacyPoints: userDocPoints,
+        ),
+      );
+    }
+
     _hourlyRate =
         (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
     _managerBonusPerHour =
@@ -375,6 +398,36 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         });
   }
 
+  void _startRealtimeDocListener() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _realtimeDocSub?.cancel();
+    _realtimeDocSub = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .collection(FirestoreUserSubCollections.earnings)
+        .doc(FirestoreEarningsDocs.realtime)
+        .snapshots()
+        .listen((snap) {
+          final d = snap.data();
+          if (d == null) return;
+
+          final newTotal = (d[FirestoreUserFields.totalPoints] as num?)
+              ?.toDouble();
+          if (newTotal != null && (newTotal - _totalPoints).abs() > 0.001) {
+            _totalPoints = newTotal;
+            if (_miningActive) {
+              // If mining, update base so simulation continues from new total
+              _simBase = _totalPoints;
+              _simAnchor = DateTime.now();
+            } else {
+              _displayTotal = _totalPoints;
+            }
+            _maybeNotify(force: true);
+          }
+        });
+  }
+
   void _scheduleExpiryRefresh(DateTime expiresAt) {
     _subExpiryTimer?.cancel();
     final now = DateTime.now();
@@ -497,9 +550,12 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       _simTimer = null;
       _userDocSub?.cancel();
       _userDocSub = null;
+      _realtimeDocSub?.cancel();
+      _realtimeDocSub = null;
     } else if (state == AppLifecycleState.resumed) {
       _ensureTimerRunning();
       _startUserDocListener();
+      _startRealtimeDocListener();
       // Also refresh manually to ensure we catch anything the listener might miss during reconnection
       _refresh();
     }
@@ -663,6 +719,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _simTimer?.cancel();
     _userDocSub?.cancel();
+    _realtimeDocSub?.cancel();
     _subExpiryTimer?.cancel();
     _refreshDebounce?.cancel();
     super.dispose();
