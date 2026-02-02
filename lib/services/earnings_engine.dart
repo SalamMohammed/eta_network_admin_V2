@@ -9,104 +9,109 @@ class EarningsEngine {
   static Future<Map<String, dynamic>> syncEarnings() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
+
     final userRef = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
-    // Realtime earnings subcollection
     final realtimeRef = userRef
         .collection(FirestoreUserSubCollections.earnings)
         .doc(FirestoreEarningsDocs.realtime);
+    final pointLogsRef = FirebaseFirestore.instance.collection(
+      FirestoreConstants.pointLogs,
+    );
 
-    final snap = await userRef.get();
-    if (!snap.exists) return {};
-    final data = snap.data() ?? {};
+    return FirebaseFirestore.instance.runTransaction((transaction) async {
+      final userSnap = await transaction.get(userRef);
+      if (!userSnap.exists) return {};
+      final data = userSnap.data() ?? {};
 
-    final realtimeSnap = await realtimeRef.get();
-    final realtimeData = realtimeSnap.data() ?? {};
+      final realtimeSnap = await transaction.get(realtimeRef);
+      final realtimeData = realtimeSnap.data() ?? {};
 
-    final Timestamp? startTs =
-        data[FirestoreUserFields.lastMiningStart] as Timestamp?;
-    final Timestamp? endTs =
-        data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+      final Timestamp? startTs =
+          data[FirestoreUserFields.lastMiningStart] as Timestamp?;
+      final Timestamp? endTs =
+          data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
 
-    // Prefer realtime doc for syncedAt, fallback to user doc
-    final Timestamp? syncedTs =
-        (realtimeData[FirestoreUserFields.lastSyncedAt] as Timestamp?) ??
-        (data[FirestoreUserFields.lastSyncedAt] as Timestamp?);
+      // Prefer realtime doc for syncedAt, fallback to user doc
+      final Timestamp? syncedTs =
+          (realtimeData[FirestoreUserFields.lastSyncedAt] as Timestamp?) ??
+          (data[FirestoreUserFields.lastSyncedAt] as Timestamp?);
 
-    final double hourlyRate =
-        (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+      final double hourlyRate =
+          (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
 
-    // Prefer realtime doc for totalPoints, fallback to user doc
-    double totalPoints =
-        (realtimeData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
-        (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
-        0.0;
+      // Prefer realtime doc for totalPoints, fallback to user doc
+      double totalPoints =
+          (realtimeData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+          (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+          0.0;
 
-    if (startTs == null) {
+      if (startTs == null) {
+        return {
+          FirestoreUserFields.totalPoints: totalPoints,
+          FirestoreUserFields.hourlyRate: hourlyRate,
+          FirestoreUserFields.lastMiningStart: startTs,
+          FirestoreUserFields.lastMiningEnd: endTs,
+        };
+      }
+      final now = DateTime.now();
+      final end = endTs?.toDate();
+      final sessionEnd = end ?? now;
+      final effectiveEnd = now.isBefore(sessionEnd) ? now : sessionEnd;
+      final from = (syncedTs ?? startTs).toDate();
+      if (!effectiveEnd.isAfter(from)) {
+        return {
+          FirestoreUserFields.totalPoints: totalPoints,
+          FirestoreUserFields.hourlyRate: hourlyRate,
+          FirestoreUserFields.lastMiningStart: startTs,
+          FirestoreUserFields.lastMiningEnd: endTs,
+        };
+      }
+      final elapsedHours =
+          effectiveEnd.difference(from).inMilliseconds / (1000 * 60 * 60);
+      final earned = elapsedHours * hourlyRate;
+
+      // Throttle writes: only write if > 0.1 points or > 10 minutes elapsed
+      // This reduces excessive Cloud Function invocations
+      final diffMinutes = effectiveEnd.difference(from).inMinutes;
+      if (earned <= 0 || (earned < 0.1 && diffMinutes < 10)) {
+        return {
+          FirestoreUserFields.totalPoints:
+              totalPoints + earned, // Return calculated total for UI
+          FirestoreUserFields.hourlyRate: hourlyRate,
+          FirestoreUserFields.lastMiningStart: startTs,
+          FirestoreUserFields.lastMiningEnd: endTs,
+          FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(
+            from,
+          ), // Keep old sync time
+        };
+      }
+
+      // Write to realtime subcollection INSTEAD of main user doc
+      transaction.set(realtimeRef, {
+        FirestoreUserFields.totalPoints: FieldValue.increment(earned),
+        FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
+        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      final newLogDoc = pointLogsRef.doc();
+      transaction.set(newLogDoc, {
+        FirestorePointLogFields.userId: uid,
+        FirestorePointLogFields.type: FirestorePointLogTypes.tap,
+        FirestorePointLogFields.amount: earned,
+        FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
+        FirestorePointLogFields.description: 'Session earnings',
+      });
+
       return {
-        FirestoreUserFields.totalPoints: totalPoints,
+        FirestoreUserFields.totalPoints: (totalPoints + earned),
         FirestoreUserFields.hourlyRate: hourlyRate,
         FirestoreUserFields.lastMiningStart: startTs,
+        FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
         FirestoreUserFields.lastMiningEnd: endTs,
       };
-    }
-    final now = DateTime.now();
-    final end = endTs?.toDate();
-    final sessionEnd = end ?? now;
-    final effectiveEnd = now.isBefore(sessionEnd) ? now : sessionEnd;
-    final from = (syncedTs ?? startTs).toDate();
-    if (!effectiveEnd.isAfter(from)) {
-      return {
-        FirestoreUserFields.totalPoints: totalPoints,
-        FirestoreUserFields.hourlyRate: hourlyRate,
-        FirestoreUserFields.lastMiningStart: startTs,
-        FirestoreUserFields.lastMiningEnd: endTs,
-      };
-    }
-    final elapsedHours =
-        effectiveEnd.difference(from).inMilliseconds / (1000 * 60 * 60);
-    final earned = elapsedHours * hourlyRate;
-
-    // Throttle writes: only write if > 0.1 points or > 10 minutes elapsed
-    // This reduces excessive Cloud Function invocations
-    final diffMinutes = effectiveEnd.difference(from).inMinutes;
-    if (earned <= 0 || (earned < 0.1 && diffMinutes < 10)) {
-      return {
-        FirestoreUserFields.totalPoints:
-            totalPoints + earned, // Return calculated total for UI
-        FirestoreUserFields.hourlyRate: hourlyRate,
-        FirestoreUserFields.lastMiningStart: startTs,
-        FirestoreUserFields.lastMiningEnd: endTs,
-        FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(
-          from,
-        ), // Keep old sync time
-      };
-    }
-
-    // Write to realtime subcollection INSTEAD of main user doc
-    await realtimeRef.set({
-      FirestoreUserFields.totalPoints: FieldValue.increment(earned),
-      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
-      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-
-    await FirebaseFirestore.instance
-        .collection(FirestoreConstants.pointLogs)
-        .add({
-          FirestorePointLogFields.userId: uid,
-          FirestorePointLogFields.type: FirestorePointLogTypes.tap,
-          FirestorePointLogFields.amount: earned,
-          FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
-          FirestorePointLogFields.description: 'Session earnings',
-        });
-    return {
-      FirestoreUserFields.totalPoints: (totalPoints + earned),
-      FirestoreUserFields.hourlyRate: hourlyRate,
-      FirestoreUserFields.lastMiningStart: startTs,
-      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
-      FirestoreUserFields.lastMiningEnd: endTs,
-    };
+    });
   }
 
   static Future<Map<String, dynamic>> startMining({
