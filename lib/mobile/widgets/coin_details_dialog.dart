@@ -804,7 +804,8 @@ class LiveMinedDisplay extends StatefulWidget {
   State<LiveMinedDisplay> createState() => _LiveMinedDisplayState();
 }
 
-class _LiveMinedDisplayState extends State<LiveMinedDisplay> {
+class _LiveMinedDisplayState extends State<LiveMinedDisplay>
+    with WidgetsBindingObserver {
   Timer? _timer;
   double _display = 0.0;
   Timestamp? _end;
@@ -815,13 +816,28 @@ class _LiveMinedDisplayState extends State<LiveMinedDisplay> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (widget.initialData != null) {
       _processData(widget.initialData!);
     }
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _timer?.cancel();
+      _timer = null;
+    } else if (state == AppLifecycleState.resumed) {
+      final now = DateTime.now();
+      if (_end != null && now.isBefore(_end!.toDate())) {
+        _startTimer();
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     super.dispose();
   }

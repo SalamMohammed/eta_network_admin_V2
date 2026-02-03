@@ -23,11 +23,15 @@ class CoinService with WidgetsBindingObserver {
 
   static bool _isPaused = false;
   static final List<Function> _resumeCallbacks = [];
+  static final List<Function> _pauseCallbacks = [];
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
       _isPaused = true;
+      for (final callback in _pauseCallbacks) {
+        callback();
+      }
     } else if (state == AppLifecycleState.resumed) {
       _isPaused = false;
       // Trigger immediate updates
@@ -55,41 +59,6 @@ class CoinService with WidgetsBindingObserver {
 
   static Stream<Map<String, dynamic>?> watchUserCoin(String uid) {
     if (useSqlBackend) {
-      // Poll every 5 seconds, but emit first value immediately
-      // Smart Resumption: Pause when backgrounded, fetch immediately on resume
-      Stream<Map<String, dynamic>?> stream() async* {
-        // Initial fetch
-        yield await SqlApiService.getUserCoin(uid);
-
-        // We use a custom periodic logic to handle pausing/resumption
-        // yield* Stream.periodic(...) doesn't easily support external pause/resume
-        // so we just check _isPaused inside asyncMap, but that only skips, doesn't pause the timer.
-        // However, asyncMap waits for the future. If we just return null or skip, the timer continues.
-        // To truly save resources, we should skip network calls.
-
-        // Better approach: Use a persistent generator loop
-        while (true) {
-          await Future.delayed(const Duration(seconds: 5));
-          if (_isPaused) continue; // Skip if backgrounded
-
-          // If just resumed, this loop might be in the middle of a wait.
-          // The _resumeCallbacks can be used to interrupt/force fetch if we used a StreamController.
-          // But since we are using async*, we rely on the loop.
-          // "Smart Resumption" requires immediate fetch.
-          // The loop above has a rigid 5s wait.
-          // To support immediate fetch on resume, we can use a Signal/Event based approach or just accept up to 5s delay?
-          // User requested "no catch-up lag" -> immediate update.
-
-          // Implementation for Smart Resumption using this simple generator:
-          // We can't easily break the `Future.delayed` from outside.
-          // So let's stick to the periodic stream but add a "force refresh" signal?
-          // Or just standard polling that skips when paused.
-          // For "immediate" update on resume, the UI usually rebuilds or we can trigger a fetch.
-
-          // Let's implement the `_resumeCallbacks` logic inside `watchUserCoin` using a StreamController.
-        }
-      }
-
       // Re-implementing using StreamController for full control
       final controller = StreamController<Map<String, dynamic>?>();
       Timer? timer;
@@ -102,28 +71,35 @@ class CoinService with WidgetsBindingObserver {
 
       void startTimer() {
         timer?.cancel();
-        timer = Timer.periodic(const Duration(seconds: 5), (_) {
-          if (_isPaused) return; // Skip if backgrounded
+        timer = Timer.periodic(const Duration(seconds: 15), (_) {
+          if (_isPaused) return;
           fetch();
         });
       }
 
-      // Register resume callback
+      void onPause() {
+        timer?.cancel();
+        timer = null;
+      }
+
       void onResume() {
         if (!controller.isClosed) {
-          fetch(); // Immediate fetch on resume
+          fetch();
+          startTimer();
         }
       }
 
       controller.onListen = () {
-        fetch(); // Initial fetch
+        fetch();
         startTimer();
         _resumeCallbacks.add(onResume);
+        _pauseCallbacks.add(onPause);
       };
 
       controller.onCancel = () {
         timer?.cancel();
         _resumeCallbacks.remove(onResume);
+        _pauseCallbacks.remove(onPause);
       };
 
       return controller.stream.asBroadcastStream();
@@ -144,7 +120,7 @@ class CoinService with WidgetsBindingObserver {
 
   static Stream<List<Map<String, dynamic>>> watchMyCoins(String uid) {
     if (useSqlBackend) {
-      // Poll every 30 seconds
+      // Poll every 60 seconds (1 request per minute)
       final controller = StreamController<List<Map<String, dynamic>>>();
       Timer? timer;
 
@@ -155,7 +131,7 @@ class CoinService with WidgetsBindingObserver {
         if (_cachedMyCoins != null &&
             _myCoinsFetchTime != null &&
             DateTime.now().difference(_myCoinsFetchTime!) <
-                const Duration(seconds: 30)) {
+                const Duration(seconds: 60)) {
           if (!controller.isClosed) controller.add(_cachedMyCoins!);
           // If it's cached, we might still want to fetch fresh if this was a forced refresh?
           // But the logic below handles periodic.
@@ -171,25 +147,35 @@ class CoinService with WidgetsBindingObserver {
 
       void startTimer() {
         timer?.cancel();
-        timer = Timer.periodic(const Duration(seconds: 30), (_) {
+        timer = Timer.periodic(const Duration(seconds: 60), (_) {
           if (_isPaused) return;
           fetch();
         });
       }
 
+      void onPause() {
+        timer?.cancel();
+        timer = null;
+      }
+
       void onResume() {
-        if (!controller.isClosed) fetch();
+        if (!controller.isClosed) {
+          fetch();
+          startTimer();
+        }
       }
 
       controller.onListen = () {
         fetch();
         startTimer();
         _resumeCallbacks.add(onResume);
+        _pauseCallbacks.add(onPause);
       };
 
       controller.onCancel = () {
         timer?.cancel();
         _resumeCallbacks.remove(onResume);
+        _pauseCallbacks.remove(onPause);
       };
 
       return controller.stream.asBroadcastStream();
@@ -234,24 +220,33 @@ class CoinService with WidgetsBindingObserver {
       void startTimer() {
         timer?.cancel();
         timer = Timer.periodic(const Duration(seconds: 60), (_) {
-          if (_isPaused) return;
           fetch();
         });
       }
 
+      void onPause() {
+        timer?.cancel();
+        timer = null;
+      }
+
       void onResume() {
-        if (!controller.isClosed) fetch();
+        if (!controller.isClosed) {
+          fetch();
+          startTimer();
+        }
       }
 
       controller.onListen = () {
         fetch();
         startTimer();
         _resumeCallbacks.add(onResume);
+        _pauseCallbacks.add(onPause);
       };
 
       controller.onCancel = () {
         timer?.cancel();
         _resumeCallbacks.remove(onResume);
+        _pauseCallbacks.remove(onPause);
       };
 
       return controller.stream.asBroadcastStream();

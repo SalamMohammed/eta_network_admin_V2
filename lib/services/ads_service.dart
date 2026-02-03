@@ -173,6 +173,7 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
       _configSub?.cancel();
       _configSub = null;
     } else if (state == AppLifecycleState.resumed) {
+      // Avoid immediate restart if paused very briefly, or ensure no duplicates
       _startConfigListener();
       _preloadRewardedAd();
     }

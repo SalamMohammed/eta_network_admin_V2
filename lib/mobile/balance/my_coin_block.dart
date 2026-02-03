@@ -1373,7 +1373,8 @@ class CoinMiningControls extends StatefulWidget {
 
 enum CoinMiningControlsVariant { compact, detailed, myCoinCard }
 
-class _CoinMiningControlsState extends State<CoinMiningControls> {
+class _CoinMiningControlsState extends State<CoinMiningControls>
+    with WidgetsBindingObserver {
   Timer? _timer;
   double _display = 0.0;
   Timestamp? _end;
@@ -1381,6 +1382,12 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
   Timestamp? _start;
   double _totalBase = 0.0;
   Map<String, dynamic>? _localOverrideData;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   @override
   void didUpdateWidget(CoinMiningControls oldWidget) {
@@ -1416,7 +1423,21 @@ class _CoinMiningControlsState extends State<CoinMiningControls> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _timer?.cancel();
+      _timer = null;
+    } else if (state == AppLifecycleState.resumed) {
+      final now = DateTime.now();
+      if (_end != null && now.isBefore(_end!.toDate())) {
+        _startTimer();
+      }
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     super.dispose();
   }
