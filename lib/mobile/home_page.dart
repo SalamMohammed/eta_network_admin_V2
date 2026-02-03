@@ -11,6 +11,7 @@ import '../services/sql_api_service.dart';
 import '../services/mining_state_service.dart';
 import '../services/subscription_service.dart';
 import '../services/notification_service.dart';
+import '../services/update_service.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import '../services/ads_service.dart';
@@ -57,7 +58,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     _tab.addListener(() {
       if (!mounted) return;
       if (_tab.indexIsChanging) return;
-      
+
       // Refresh streams when switching tabs to show cached data instantly
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid != null) {
@@ -67,7 +68,7 @@ class _MobileHomePageState extends State<MobileHomePage>
           _liveCoinsStream = CoinService.watchLiveCoins(sort: _liveSort);
         }
       }
-      
+
       setState(() {});
     });
     unawaited(_adsService.init());
@@ -82,6 +83,9 @@ class _MobileHomePageState extends State<MobileHomePage>
 
     // Ensure notifications are permitted and token is synced
     unawaited(NotificationService().requestPermissions());
+
+    // Check for Play Store updates (Android Force Update)
+    unawaited(UpdateService.checkForUpdate());
 
     _miningService.init().then((_) {
       if (mounted) _manageCommunityCoins();
@@ -421,7 +425,8 @@ class _MobileHomePageState extends State<MobileHomePage>
         final rewardedLabel = rewardedLoading
             ? 'Loading ad…'
             : rewardedMaxPerSession > 0
-            ? 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}% • $rewardedWatchedThisSession/$rewardedMaxPerSession'
+            // ? 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}% • $rewardedWatchedThisSession/$rewardedMaxPerSession'
+            ? 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}%'
             : 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}%';
 
         return Container(
