@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/firestore_constants.dart';
 import '../../shared/constants.dart';
 
@@ -241,20 +243,76 @@ class _ReferralsPageState extends State<ReferralsPage> {
     _load();
   }
 
-  Future<void> _load() async {
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) {
-        if (mounted) setState(() => _loading = false);
-        return;
-      }
+  String _generateReferralCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rnd = Random();
+    return List.generate(8, (_) => chars[rnd.nextInt(chars.length)]).join();
+  }
 
-      // 1. Get User Doc (Referral Code)
-      final userDocFuture = FirebaseFirestore.instance
+  Future<void> _load() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+
+    // PHASE 1: LOAD REFERRAL CODE (CRITICAL)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'referral_code_$uid';
+      String? cachedCode = prefs.getString(cacheKey);
+
+      // Try to load from Firestore (Source of Truth)
+      // We do this separately so that if stats/team queries fail,
+      // the user still gets their code.
+      final userDoc = await FirebaseFirestore.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
           .get();
 
+      String? code;
+      if (userDoc.exists) {
+        final data = userDoc.data();
+        if (data != null &&
+            data.containsKey(FirestoreUserFields.referralCode)) {
+          code = data[FirestoreUserFields.referralCode]?.toString();
+        }
+      }
+
+      // Fallback to cache
+      if (code == null || code.isEmpty) {
+        code = cachedCode;
+      }
+
+      // Generate if missing
+      if (code == null || code.isEmpty) {
+        code = _generateReferralCode();
+        await FirebaseFirestore.instance
+            .collection(FirestoreConstants.users)
+            .doc(uid)
+            .set({
+              FirestoreUserFields.referralCode: code,
+            }, SetOptions(merge: true));
+      }
+
+      // Update Cache
+      if (code.isNotEmpty) {
+        await prefs.setString(cacheKey, code);
+      }
+
+      // Update UI with Code immediately
+      if (mounted) {
+        setState(() {
+          _referralCode = code;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading referral code: $e');
+      // If critical failure, we might stop here or try to show cached
+    }
+
+    // PHASE 2: LOAD STATS & TEAM (SECONDARY)
+    try {
       // 2. Prepare Referrals Query
       final referralsRef = FirebaseFirestore.instance
           .collection(FirestoreConstants.referrals)
@@ -287,22 +345,14 @@ class _ReferralsPageState extends State<ReferralsPage> {
           .get();
 
       final results = await Future.wait([
-        userDocFuture,
         recentReferralsFuture,
         statsDocFuture,
         activeCountFuture,
       ]);
 
-      final userDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>;
-      final recentSnap = results[1] as QuerySnapshot<Map<String, dynamic>>;
-      final statsDoc = results[2] as DocumentSnapshot<Map<String, dynamic>>;
-      final activeCountAgg = results[3] as AggregateQuerySnapshot;
-
-      // Process User Doc
-      String? code;
-      if (userDoc.exists) {
-        code = userDoc.data()?[FirestoreUserFields.referralCode] as String?;
-      }
+      final recentSnap = results[0] as QuerySnapshot<Map<String, dynamic>>;
+      final statsDoc = results[1] as DocumentSnapshot<Map<String, dynamic>>;
+      final activeCountAgg = results[2] as AggregateQuerySnapshot;
 
       // Process Referrals List
       final List<_ReferralItem> finalOrderedItems = [];
@@ -385,7 +435,6 @@ class _ReferralsPageState extends State<ReferralsPage> {
 
       if (mounted) {
         setState(() {
-          _referralCode = code;
           final statsData = statsDoc.data() ?? {};
           _totalInvited = (statsData['totalInvited'] as num?)?.toInt() ?? 0;
           _activeInvited = activeCountAgg.count ?? 0;
@@ -394,7 +443,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading referrals: $e');
+      debugPrint('Error loading referral stats: $e');
       if (mounted) {
         setState(() => _loading = false);
       }
