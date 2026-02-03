@@ -13,10 +13,11 @@ class RankEngine {
     final int streakDays =
         (data[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
 
+    final DateTime activeThreshold = DateTime.now().subtract(const Duration(hours: 48));
     final referralsQ = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.referrals)
-        .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
-        .where(FirestoreReferralFields.isActive, isEqualTo: true)
+        .collection(FirestoreConstants.users)
+        .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
+        .where(FirestoreUserFields.lastMiningEnd, isGreaterThan: Timestamp.fromDate(activeThreshold))
         .count()
         .get();
     final int activeReferrals = referralsQ.count ?? 0;

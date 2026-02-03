@@ -221,13 +221,22 @@ class EarningsEngine {
     debugPrint(
       'EarningsEngine: rank → name=${(afterRankData[FirestoreUserFields.rank] as String?) ?? ''}, multiplier=${rankMultiplier.toStringAsFixed(6)}',
     );
-    final statsSnap = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.referralStats)
-        .doc(uid)
+
+    // Switch to count() aggregation for accurate active referral count
+    final DateTime activeThreshold = DateTime.now().subtract(
+      const Duration(hours: 48),
+    );
+    final referralCountAgg = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
+        .where(
+          FirestoreUserFields.lastMiningEnd,
+          isGreaterThan: Timestamp.fromDate(activeThreshold),
+        )
+        .count()
         .get();
-    final statsData = statsSnap.data() ?? {};
-    final int referralCount =
-        (statsData['active48hCount'] as num?)?.toInt() ?? 0;
+    final int referralCount = referralCountAgg.count ?? 0;
+
     debugPrint('EarningsEngine: referrals → count=$referralCount');
     final double referralMultiplier = await _referralMultiplier(referralCount);
     final double streakFrac = (streakMultiplier - 1.0).clamp(0.0, 1000.0);

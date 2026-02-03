@@ -272,15 +272,31 @@ class _ReferralsPageState extends State<ReferralsPage> {
           .doc(uid)
           .get();
 
+      // 5. Active Count Query (Realtime Aggregation)
+      final activeThreshold = DateTime.now().subtract(
+        const Duration(hours: 48),
+      );
+      final activeCountFuture = FirebaseFirestore.instance
+          .collection(FirestoreConstants.users)
+          .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
+          .where(
+            FirestoreUserFields.lastMiningEnd,
+            isGreaterThan: Timestamp.fromDate(activeThreshold),
+          )
+          .count()
+          .get();
+
       final results = await Future.wait([
         userDocFuture,
         recentReferralsFuture,
         statsDocFuture,
+        activeCountFuture,
       ]);
 
       final userDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>;
       final recentSnap = results[1] as QuerySnapshot<Map<String, dynamic>>;
       final statsDoc = results[2] as DocumentSnapshot<Map<String, dynamic>>;
+      final activeCountAgg = results[3] as AggregateQuerySnapshot;
 
       // Process User Doc
       String? code;
@@ -372,7 +388,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
           _referralCode = code;
           final statsData = statsDoc.data() ?? {};
           _totalInvited = (statsData['totalInvited'] as num?)?.toInt() ?? 0;
-          _activeInvited = (statsData['active48hCount'] as num?)?.toInt() ?? 0;
+          _activeInvited = activeCountAgg.count ?? 0;
           _referrals = finalOrderedItems;
           _loading = false;
         });
