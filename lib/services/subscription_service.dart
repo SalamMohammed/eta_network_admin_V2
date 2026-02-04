@@ -247,13 +247,6 @@ class SubscriptionService {
 
     final status = isActive ? 'active' : 'expired';
 
-    final existingSnap = await userRef.get();
-    final existingData = existingSnap.data() ?? {};
-    final existingRole = existingData[FirestoreUserFields.role] as String?;
-    final roleToWrite = existingRole == FirestoreUserRoles.admin
-        ? FirestoreUserRoles.admin
-        : (isActive ? FirestoreUserRoles.pro : FirestoreUserRoles.free);
-
     final subData = {
       FirestoreUserSubscriptionFields.status: status,
       if (planId != null) FirestoreUserSubscriptionFields.planId: planId,
@@ -265,21 +258,89 @@ class SubscriptionService {
       FirestoreUserSubscriptionFields.autoRenew: autoRenew,
     };
 
+    final existingSnap = await userRef.get();
+    final existingData = existingSnap.data() ?? {};
+    final existingRole = existingData[FirestoreUserFields.role] as String?;
+    final roleToWrite = existingRole == FirestoreUserRoles.admin
+        ? FirestoreUserRoles.admin
+        : (isActive ? FirestoreUserRoles.pro : FirestoreUserRoles.free);
+
+    // Determine if manager needs update
+    String? managerIdToWrite =
+        existingData[FirestoreUserFields.activeManagerId] as String?;
+    bool managerChanged = false;
+
+    if (isActive && planId != null) {
+      final existingPlanId =
+          (existingData[FirestoreUserFields.subscription]
+              as Map?)?[FirestoreUserSubscriptionFields.planId];
+      // If plan changed OR managerId is missing, lookup manager
+      if (existingPlanId != planId || managerIdToWrite == null) {
+        managerIdToWrite = await _getManagerIdFromPlan(planId);
+        if (managerIdToWrite !=
+            existingData[FirestoreUserFields.activeManagerId]) {
+          managerChanged = true;
+        }
+      }
+    }
+
+    // Check if data actually changed to avoid unnecessary writes
+    bool dataChanged = false;
+
+    // Check subscription fields
+    final existingSub =
+        existingData[FirestoreUserFields.subscription] as Map<String, dynamic>? ??
+            {};
+    if (existingSub[FirestoreUserSubscriptionFields.status] !=
+        subData[FirestoreUserSubscriptionFields.status]) dataChanged = true;
+    if (existingSub[FirestoreUserSubscriptionFields.planId] !=
+        subData[FirestoreUserSubscriptionFields.planId]) dataChanged = true;
+    if (existingSub[FirestoreUserSubscriptionFields.provider] !=
+        subData[FirestoreUserSubscriptionFields.provider]) dataChanged = true;
+    if (existingSub[FirestoreUserSubscriptionFields.autoRenew] !=
+        subData[FirestoreUserSubscriptionFields.autoRenew]) dataChanged = true;
+
+    // Check expiresAt (Timestamp comparison)
+    final newExp =
+        subData[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
+    final oldExp =
+        existingSub[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
+    if (newExp?.seconds != oldExp?.seconds) dataChanged = true;
+
+    // Check role
+    if (existingRole != roleToWrite) dataChanged = true;
+
+    // Check managerEnabled
+    final existingManagerEnabled =
+        existingData[FirestoreUserFields.managerEnabled] as bool? ?? false;
+    if (existingManagerEnabled != isActive) dataChanged = true;
+
+    if (managerChanged) dataChanged = true;
+
+    // If data hasn't changed, check if we need a heartbeat (every 24h)
+    if (!dataChanged) {
+      final existingUpdatedAt =
+          existingData[FirestoreUserFields.updatedAt] as Timestamp?;
+      if (existingUpdatedAt != null) {
+        final diff = now.difference(existingUpdatedAt.toDate());
+        if (diff.inHours < 24) {
+          // Skip update if less than 24h and no data changes
+          return;
+        }
+      }
+    }
+
     await userRef.set({
       FirestoreUserFields.subscription: subData,
       FirestoreUserFields.role: roleToWrite,
       FirestoreUserFields.managerEnabled: isActive,
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      if (managerIdToWrite != null)
+        FirestoreUserFields.activeManagerId: managerIdToWrite,
     }, SetOptions(merge: true));
-
-    // Check if we need to enable/disable manager based on subscription
-    if (isActive && planId != null) {
-      await _syncManagerFromPlan(uid, planId);
-    }
   }
 
-  Future<void> _syncManagerFromPlan(String uid, String planId) async {
-    // Find the manager that has this storeProductId
+  Future<String?> _getManagerIdFromPlan(String planId) async {
     final qs = await FirebaseFirestore.instance
         .collection(FirestoreConstants.managers)
         .where(FirestoreManagerFields.storeProductId, isEqualTo: planId)
@@ -287,15 +348,8 @@ class SubscriptionService {
         .get();
 
     if (qs.docs.isNotEmpty) {
-      final managerId = qs.docs.first.id;
-      await FirebaseFirestore.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .set({
-            FirestoreUserFields.activeManagerId: managerId,
-            FirestoreUserFields.managerEnabled: true,
-            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+      return qs.docs.first.id;
     }
+    return null;
   }
 }

@@ -45,10 +45,29 @@ class _LoginPageState extends State<LoginPage> {
         .doc(user.uid);
     final snap = await ref.get();
     if (snap.exists) {
-      await ref.set({
-        FirestoreUserFields.email: user.email,
-        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      final data = snap.data() ?? {};
+      final existingEmail = data[FirestoreUserFields.email] as String?;
+      final existingUpdatedAt =
+          data[FirestoreUserFields.updatedAt] as Timestamp?;
+
+      bool needsUpdate = false;
+      if (existingEmail != user.email) {
+        needsUpdate = true;
+      }
+
+      if (!needsUpdate && existingUpdatedAt != null) {
+        final diff = DateTime.now().difference(existingUpdatedAt.toDate());
+        if (diff.inHours >= 24) needsUpdate = true;
+      } else if (existingUpdatedAt == null) {
+        needsUpdate = true;
+      }
+
+      if (needsUpdate) {
+        await ref.set({
+          FirestoreUserFields.email: user.email,
+          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
       return;
     }
 

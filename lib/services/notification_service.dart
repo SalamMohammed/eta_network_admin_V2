@@ -213,7 +213,7 @@ class NotificationService {
     if (uid != null &&
         (settings.authorizationStatus == AuthorizationStatus.authorized ||
             settings.authorizationStatus == AuthorizationStatus.provisional)) {
-      await ensureTokenRegistered(force: true);
+      await ensureTokenRegistered();
     }
     return settings;
   }
