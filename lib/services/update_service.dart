@@ -18,9 +18,9 @@ class UpdateService {
         // Fallback to flexible if immediate is not allowed but flexible is
         else if (info.flexibleUpdateAllowed) {
           await InAppUpdate.startFlexibleUpdate();
-          // For flexible, we can choose to complete it immediately or let user decide.
-          // For "Force" behavior, we might want to prompt user, but immediate is the standard force way.
-          await InAppUpdate.completeFlexibleUpdate();
+          // Note: We do not call completeFlexibleUpdate() immediately because the download
+          // happens in the background. Calling it now would fail.
+          // The Play Store handles the install prompt once downloaded.
         }
       }
     } catch (e) {

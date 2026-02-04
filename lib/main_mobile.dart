@@ -14,7 +14,7 @@ Future<void> main() async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   if (!kIsWeb) {
-    _initBackgroundServices();
+    await _initBackgroundServices();
   }
 
   runApp(const MyMobileApp());

@@ -10,6 +10,7 @@ import 'login_page.dart';
 import '../entry/selector_page.dart';
 import '../services/referral_engine.dart';
 import '../services/auth_verification_service.dart';
+import '../services/install_referrer_service.dart';
 
 import 'auth_gate.dart';
 
@@ -31,6 +32,21 @@ class _SignupPageState extends State<SignupPage> {
   final _referralController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInstallReferrer();
+  }
+
+  Future<void> _checkInstallReferrer() async {
+    final code = await InstallReferrerService.getCapturedReferralCode();
+    if (code != null && code.isNotEmpty && mounted) {
+      setState(() {
+        _referralController.text = code;
+      });
+    }
+  }
 
   Future<void> _signup() async {
     if (!_formKey.currentState!.validate()) {

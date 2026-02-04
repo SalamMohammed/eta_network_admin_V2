@@ -461,8 +461,13 @@ class _ReferralsPageState extends State<ReferralsPage> {
 
   Future<void> _shareLink() async {
     if (_referralCode == null) return;
+
+    // Google Play Store link with referrer for automatic code capture
+    final playStoreLink =
+        'https://play.google.com/store/apps/details?id=net.etanetwork.app&pcampaignid=web_share&referrer=utm_source%3D$_referralCode';
+
     final text =
-        'Join me on Eta Network! Use my code: $_referralCode https://eta.network/join';
+        'Join me on Eta Network! Use my code: $_referralCode $playStoreLink';
     try {
       // ignore: deprecated_member_use
       await Share.share(text);
