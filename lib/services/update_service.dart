@@ -11,16 +11,18 @@ class UpdateService {
       final info = await InAppUpdate.checkForUpdate();
 
       if (info.updateAvailability == UpdateAvailability.updateAvailable) {
-        // We prioritize immediate (forced) updates
-        if (info.immediateUpdateAllowed) {
+        // We prioritize immediate (forced) updates.
+        // In version 4.x, we don't have explicit immediateUpdateAllowed flags,
+        // so we attempt the update if available.
+        try {
           await InAppUpdate.performImmediateUpdate();
-        }
-        // Fallback to flexible if immediate is not allowed but flexible is
-        else if (info.flexibleUpdateAllowed) {
-          await InAppUpdate.startFlexibleUpdate();
-          // Note: We do not call completeFlexibleUpdate() immediately because the download
-          // happens in the background. Calling it now would fail.
-          // The Play Store handles the install prompt once downloaded.
+        } catch (e) {
+          // If immediate update fails or is not allowed, try flexible
+          try {
+            await InAppUpdate.startFlexibleUpdate();
+          } catch (_) {
+            // Both failed, nothing to do
+          }
         }
       }
     } catch (e) {

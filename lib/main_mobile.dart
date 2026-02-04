@@ -6,6 +6,7 @@ import 'auth/auth_gate.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'services/notification_service.dart';
 import 'services/ads_service.dart';
+import 'services/install_referrer_service.dart';
 import 'shared/constants.dart';
 
 Future<void> main() async {
@@ -35,6 +36,7 @@ class MyMobileApp extends StatelessWidget {
 
 Future<void> _initBackgroundServices() async {
   try {
+    await InstallReferrerService.init();
     await NotificationService().init();
     await NotificationService().ensureTokenRegistered();
     await AdsService().init();

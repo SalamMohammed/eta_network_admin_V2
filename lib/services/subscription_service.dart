@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import '../shared/firestore_constants.dart';
+import 'config_service.dart';
+import 'user_service.dart';
 
 class SubscriptionService {
   static final SubscriptionService _instance = SubscriptionService._internal();
@@ -20,12 +22,7 @@ class SubscriptionService {
     }
 
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection(FirestoreConstants.appConfig)
-          .doc(FirestoreAppConfigDocs.general)
-          .get();
-
-      final data = doc.data() ?? {};
+      final data = await ConfigService().getGeneralConfig();
       final apiKey = data[FirestoreAppConfigFields.revenueCatApiKey] as String?;
 
       if (apiKey == null || apiKey.isEmpty) {
@@ -258,8 +255,8 @@ class SubscriptionService {
       FirestoreUserSubscriptionFields.autoRenew: autoRenew,
     };
 
-    final existingSnap = await userRef.get();
-    final existingData = existingSnap.data() ?? {};
+    final existingSnap = await UserService().getUser(uid);
+    final existingData = existingSnap?.data() ?? {};
     final existingRole = existingData[FirestoreUserFields.role] as String?;
     final roleToWrite = existingRole == FirestoreUserRoles.admin
         ? FirestoreUserRoles.admin
@@ -289,16 +286,21 @@ class SubscriptionService {
 
     // Check subscription fields
     final existingSub =
-        existingData[FirestoreUserFields.subscription] as Map<String, dynamic>? ??
-            {};
+        existingData[FirestoreUserFields.subscription]
+            as Map<String, dynamic>? ??
+        {};
     if (existingSub[FirestoreUserSubscriptionFields.status] !=
-        subData[FirestoreUserSubscriptionFields.status]) dataChanged = true;
+        subData[FirestoreUserSubscriptionFields.status])
+      dataChanged = true;
     if (existingSub[FirestoreUserSubscriptionFields.planId] !=
-        subData[FirestoreUserSubscriptionFields.planId]) dataChanged = true;
+        subData[FirestoreUserSubscriptionFields.planId])
+      dataChanged = true;
     if (existingSub[FirestoreUserSubscriptionFields.provider] !=
-        subData[FirestoreUserSubscriptionFields.provider]) dataChanged = true;
+        subData[FirestoreUserSubscriptionFields.provider])
+      dataChanged = true;
     if (existingSub[FirestoreUserSubscriptionFields.autoRenew] !=
-        subData[FirestoreUserSubscriptionFields.autoRenew]) dataChanged = true;
+        subData[FirestoreUserSubscriptionFields.autoRenew])
+      dataChanged = true;
 
     // Check expiresAt (Timestamp comparison)
     final newExp =

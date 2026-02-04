@@ -4,6 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../shared/firestore_constants.dart';
 import '../shared/constants.dart';
 import 'rank_engine.dart';
+import 'config_service.dart';
+import 'user_service.dart';
 
 class EarningsEngine {
   static Future<Map<String, dynamic>> syncEarnings() async {
@@ -20,10 +22,16 @@ class EarningsEngine {
       FirestoreConstants.pointLogs,
     );
 
+    // Fetch user data via UserService to use cache (deduplication)
+    final userSnap = await UserService().getUser(uid);
+    if (userSnap == null || !userSnap.exists) return {};
+    final data = userSnap.data() ?? {};
+
     return FirebaseFirestore.instance.runTransaction((transaction) async {
-      final userSnap = await transaction.get(userRef);
-      if (!userSnap.exists) return {};
-      final data = userSnap.data() ?? {};
+      // NOTE: We do NOT read userRef inside transaction to save a read.
+      // We rely on UserService cache (5s freshness).
+      // This means we might calculate based on slightly stale hourlyRate,
+      // but writes go to realtimeRef which is read inside transaction.
 
       final realtimeSnap = await transaction.get(realtimeRef);
       final realtimeData = realtimeSnap.data() ?? {};
@@ -53,6 +61,7 @@ class EarningsEngine {
           FirestoreUserFields.hourlyRate: hourlyRate,
           FirestoreUserFields.lastMiningStart: startTs,
           FirestoreUserFields.lastMiningEnd: endTs,
+          'userData': data,
         };
       }
       final now = DateTime.now();
@@ -66,6 +75,7 @@ class EarningsEngine {
           FirestoreUserFields.hourlyRate: hourlyRate,
           FirestoreUserFields.lastMiningStart: startTs,
           FirestoreUserFields.lastMiningEnd: endTs,
+          'userData': data,
         };
       }
       final elapsedHours =
@@ -85,6 +95,7 @@ class EarningsEngine {
           FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(
             from,
           ), // Keep old sync time
+          'userData': data,
         };
       }
 
@@ -110,6 +121,7 @@ class EarningsEngine {
         FirestoreUserFields.lastMiningStart: startTs,
         FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
         FirestoreUserFields.lastMiningEnd: endTs,
+        'userData': data,
       };
     });
   }
@@ -162,11 +174,7 @@ class EarningsEngine {
       };
     }
     // Enforce single account per device if enabled
-    final cfgRef = FirebaseFirestore.instance
-        .collection(FirestoreConstants.appConfig)
-        .doc(FirestoreAppConfigDocs.general);
-    final cfgSnap = await cfgRef.get();
-    final cfg = cfgSnap.data() ?? {};
+    final cfg = await ConfigService().getGeneralConfig();
     final bool enforceSingleDevice =
         (cfg[FirestoreAppConfigFields.deviceSingleUserEnforced] as bool?) ??
         false;

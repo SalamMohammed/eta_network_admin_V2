@@ -7,6 +7,8 @@ import 'earnings_engine.dart';
 import '../shared/device_id.dart';
 import 'subscription_service.dart';
 import 'notification_service.dart';
+import 'config_service.dart';
+import 'user_service.dart';
 
 class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   static final MiningStateService _instance = MiningStateService._internal();
@@ -147,11 +149,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     await EarningsEngine.syncEarnings();
 
     // Load App Config
-    final general = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.appConfig)
-        .doc(FirestoreAppConfigDocs.general)
-        .get();
-    final g = general.data() ?? {};
+    final g = await ConfigService().getGeneralConfig();
     final baseRate =
         (g[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ?? 0.2;
     _baseRate = baseRate;
@@ -164,8 +162,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     final userRef = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
-    final snap = await userRef.get();
-    final d = snap.data() ?? {};
+    final snap = await UserService().getUser(uid);
+    final d = snap?.data() ?? {};
 
     // Load Realtime Data
     final realtimeSnap = await userRef

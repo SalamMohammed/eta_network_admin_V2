@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:android_play_install_referrer/android_play_install_referrer.dart';
+import 'package:play_install_referrer/play_install_referrer.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,29 +13,29 @@ class InstallReferrerService {
 
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       // If we already captured it, no need to check again.
       if (prefs.containsKey(_prefsKey)) return;
 
-      final referrerDetails = await AndroidPlayInstallReferrer.installReferrer;
-      
+      final referrerDetails = await PlayInstallReferrer.installReferrer;
+
       if (referrerDetails.installReferrer != null) {
         String referrerUrl = referrerDetails.installReferrer!;
         debugPrint('Install Referrer URL: $referrerUrl');
-        
+
         // The referrer string is typically URL-encoded parameters, e.g.,
         // "utm_source=test_source&utm_medium=test_medium"
         // We prepend '?' to parse it easily with Uri.
         if (!referrerUrl.startsWith('?')) {
           referrerUrl = '?$referrerUrl';
         }
-        
+
         final uri = Uri.tryParse(referrerUrl);
         if (uri != null) {
           final source = uri.queryParameters['utm_source'];
           if (source != null && source.isNotEmpty) {
-             await prefs.setString(_prefsKey, source);
-             debugPrint('Captured referral code from install: $source');
+            await prefs.setString(_prefsKey, source);
+            debugPrint('Captured referral code from install: $source');
           }
         }
       }
