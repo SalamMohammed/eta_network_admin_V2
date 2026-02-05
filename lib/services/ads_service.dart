@@ -1,9 +1,10 @@
 import 'dart:async';
-
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../shared/firestore_constants.dart';
 
@@ -138,8 +139,11 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
   factory AdsService() => _instance;
   AdsService._internal();
 
+  static const String _prefsKeyAds = 'app_config_ads_cache';
+  static const String _prefsKeyAdsTs = 'app_config_ads_ts';
+  static const Duration _cacheDuration = Duration(hours: 24);
+
   AdsConfig _config = AdsConfig.defaults;
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _configSub;
   bool _initialized = false;
   RewardedAd? _cachedRewardedAd;
   bool _isPreloading = false;
@@ -162,42 +166,75 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     await MobileAds.instance.initialize();
-    _startConfigListener();
+    await _fetchConfig();
     _initialized = true;
     _preloadRewardedAd();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused) {
-      _configSub?.cancel();
-      _configSub = null;
-    } else if (state == AppLifecycleState.resumed) {
-      // Avoid immediate restart if paused very briefly, or ensure no duplicates
-      _startConfigListener();
+    if (state == AppLifecycleState.resumed) {
+      // Check if config needs refresh on resume
+      _fetchConfig();
       _preloadRewardedAd();
     }
   }
 
-  void _startConfigListener() {
-    _configSub?.cancel();
-    _configSub = FirebaseFirestore.instance
-        .collection(FirestoreConstants.appConfig)
-        .doc(FirestoreAppConfigDocs.ads)
-        .snapshots()
-        .listen((snap) {
-          final data = snap.data();
-          _config = data == null
-              ? AdsConfig.defaults
-              : AdsConfig.fromFirestore(data);
-          notifyListeners();
-          // Config changed (e.g. unit IDs), reload ad
-          if (_config.enableRewarded) {
-            _cachedRewardedAd?.dispose();
-            _cachedRewardedAd = null;
-            _preloadRewardedAd();
+  Future<void> _fetchConfig({bool forceRefresh = false}) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // 1. Check disk cache if not forcing refresh
+      if (!forceRefresh) {
+        final int? ts = prefs.getInt(_prefsKeyAdsTs);
+        if (ts != null) {
+          final cachedTime = DateTime.fromMillisecondsSinceEpoch(ts);
+          if (DateTime.now().difference(cachedTime) < _cacheDuration) {
+            final String? jsonStr = prefs.getString(_prefsKeyAds);
+            if (jsonStr != null) {
+              try {
+                final Map<String, dynamic> data = jsonDecode(jsonStr);
+                _config = AdsConfig.fromFirestore(data);
+                notifyListeners();
+                debugPrint('AdsService: Using cached config');
+                return;
+              } catch (e) {
+                debugPrint('AdsService: Error decoding cached config: $e');
+              }
+            }
           }
-        });
+        }
+      }
+
+      // 2. Fetch from Firestore
+      debugPrint('AdsService: Fetching config from Firestore');
+      final doc = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.appConfig)
+          .doc(FirestoreAppConfigDocs.ads)
+          .get();
+
+      final data = doc.data();
+      if (data != null) {
+        _config = AdsConfig.fromFirestore(data);
+
+        // 3. Save to cache
+        await prefs.setString(_prefsKeyAds, jsonEncode(data));
+        await prefs.setInt(
+          _prefsKeyAdsTs,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+        notifyListeners();
+
+        // Config changed, reload ad if needed
+        if (_config.enableRewarded) {
+          _cachedRewardedAd?.dispose();
+          _cachedRewardedAd = null;
+          _preloadRewardedAd();
+        }
+      }
+    } catch (e) {
+      debugPrint('AdsService: Error fetching config: $e');
+    }
   }
 
   String get bannerAdUnitId {
@@ -291,8 +328,6 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _configSub?.cancel();
-    _configSub = null;
     _cachedRewardedAd?.dispose();
     _cachedRewardedAd = null;
     super.dispose();

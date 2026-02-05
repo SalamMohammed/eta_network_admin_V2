@@ -11,71 +11,100 @@ class ConfigService {
 
   static const String _prefsKeyGeneral = 'app_config_general_cache';
   static const String _prefsKeyGeneralTs = 'app_config_general_ts';
+  static const String _prefsKeyStreak = 'app_config_streak_cache';
+  static const String _prefsKeyStreakTs = 'app_config_streak_ts';
+  static const String _prefsKeyRanks = 'app_config_ranks_cache';
+  static const String _prefsKeyRanksTs = 'app_config_ranks_ts';
+  static const String _prefsKeyReferrals = 'app_config_referrals_cache';
+  static const String _prefsKeyReferralsTs = 'app_config_referrals_ts';
   static const Duration _cacheDuration = Duration(hours: 24);
 
-  Map<String, dynamic>? _memoryCache;
+  final Map<String, Map<String, dynamic>> _memoryCache = {};
 
-  /// Fetches the general app config.
-  /// Uses local cache if available and not expired (< 24 hours).
-  /// Otherwise fetches from Firestore and updates cache.
-  Future<Map<String, dynamic>> getGeneralConfig({
+  Future<Map<String, dynamic>> getGeneralConfig({bool forceRefresh = false}) {
+    return _getConfig(
+      FirestoreAppConfigDocs.general,
+      _prefsKeyGeneral,
+      _prefsKeyGeneralTs,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  Future<Map<String, dynamic>> getStreakConfig({bool forceRefresh = false}) {
+    return _getConfig(
+      FirestoreAppConfigDocs.streak,
+      _prefsKeyStreak,
+      _prefsKeyStreakTs,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  Future<Map<String, dynamic>> getRanksConfig({bool forceRefresh = false}) {
+    return _getConfig(
+      FirestoreAppConfigDocs.ranks,
+      _prefsKeyRanks,
+      _prefsKeyRanksTs,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  Future<Map<String, dynamic>> getReferralConfig({bool forceRefresh = false}) {
+    return _getConfig(
+      FirestoreAppConfigDocs.referrals,
+      _prefsKeyReferrals,
+      _prefsKeyReferralsTs,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  Future<Map<String, dynamic>> _getConfig(
+    String docId,
+    String cacheKey,
+    String tsKey, {
     bool forceRefresh = false,
   }) async {
-    // 1. Return memory cache if available and valid (for this session)
-    if (!forceRefresh && _memoryCache != null) {
-      return _memoryCache!;
+    if (!forceRefresh && _memoryCache.containsKey(docId)) {
+      return _memoryCache[docId]!;
     }
 
     try {
       final prefs = await SharedPreferences.getInstance();
-
-      // 2. Check disk cache
       if (!forceRefresh) {
-        final int? ts = prefs.getInt(_prefsKeyGeneralTs);
+        final int? ts = prefs.getInt(tsKey);
         if (ts != null) {
           final cachedTime = DateTime.fromMillisecondsSinceEpoch(ts);
           if (DateTime.now().difference(cachedTime) < _cacheDuration) {
-            final String? jsonStr = prefs.getString(_prefsKeyGeneral);
+            final String? jsonStr = prefs.getString(cacheKey);
             if (jsonStr != null) {
               try {
                 final Map<String, dynamic> data = jsonDecode(jsonStr);
-                _memoryCache = data;
+                _memoryCache[docId] = data;
                 debugPrint(
-                  'ConfigService: Using cached config (age: ${DateTime.now().difference(cachedTime).inMinutes} min)',
+                  'ConfigService: Using cached $docId config (age: ${DateTime.now().difference(cachedTime).inMinutes} min)',
                 );
                 return data;
               } catch (e) {
-                debugPrint('ConfigService: Error decoding cached config: $e');
+                debugPrint('ConfigService: Error decoding cached $docId: $e');
               }
             }
           }
         }
       }
 
-      // 3. Fetch from Firestore
-      debugPrint('ConfigService: Fetching config from Firestore');
+      debugPrint('ConfigService: Fetching $docId config from Firestore');
       final doc = await FirebaseFirestore.instance
           .collection(FirestoreConstants.appConfig)
-          .doc(FirestoreAppConfigDocs.general)
+          .doc(docId)
           .get();
 
       final data = doc.data() ?? {};
-
-      // 4. Save to cache
-      _memoryCache = data;
-      await prefs.setString(
-        _prefsKeyGeneral,
-        jsonEncode(_dataToJsonSafe(data)),
-      );
-      await prefs.setInt(
-        _prefsKeyGeneralTs,
-        DateTime.now().millisecondsSinceEpoch,
-      );
-
+      _memoryCache[docId] = data;
+      await prefs.setString(cacheKey, jsonEncode(_dataToJsonSafe(data)));
+      await prefs.setInt(tsKey, DateTime.now().millisecondsSinceEpoch);
       return data;
     } catch (e) {
-      debugPrint('ConfigService: Error fetching config: $e');
-      return _memoryCache ?? {};
+      debugPrint('ConfigService: Error fetching $docId: $e');
+      return _memoryCache[docId] ?? {};
     }
   }
 

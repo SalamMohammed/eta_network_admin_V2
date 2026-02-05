@@ -265,7 +265,11 @@ class _MobileHomePageState extends State<MobileHomePage>
     if (last == null || now.difference(last) >= const Duration(seconds: 1)) {
       _lastUiUpdate = now;
       setState(() {});
-      unawaited(_manageCommunityCoins());
+      // Only check community coins every 10 minutes to save reads
+      if (_lastCommunityCoinCheck == null || now.difference(_lastCommunityCoinCheck!) >= const Duration(minutes: 10)) {
+        _lastCommunityCoinCheck = now;
+        unawaited(_manageCommunityCoins());
+      }
       return;
     }
     _debounceTimer ??= Timer(const Duration(seconds: 1), () {
@@ -273,13 +277,19 @@ class _MobileHomePageState extends State<MobileHomePage>
       _lastUiUpdate = DateTime.now();
       _debounceTimer = null;
       setState(() {});
-      unawaited(_manageCommunityCoins());
+      if (_lastCommunityCoinCheck == null || DateTime.now().difference(_lastCommunityCoinCheck!) >= const Duration(minutes: 10)) {
+        _lastCommunityCoinCheck = DateTime.now();
+        unawaited(_manageCommunityCoins());
+      }
     });
   }
+
+  DateTime? _lastCommunityCoinCheck;
 
   Future<void> _refresh() async {
     await _miningService.refresh();
     if (mounted) {
+      _lastCommunityCoinCheck = DateTime.now();
       await _manageCommunityCoins();
     }
   }

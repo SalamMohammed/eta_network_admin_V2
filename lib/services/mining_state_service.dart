@@ -37,6 +37,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   double _activeManagerMultiplier = 1.0;
   double _baseRate = 0.2;
 
+  // Manager Cache
+  Map<String, dynamic>? _cachedManagerData;
+  String? _cachedManagerId;
+  DateTime? _lastManagerFetch;
+
   // Simulation state
   double _displayTotal = 0.0;
   double _simBase = 0.0;
@@ -146,7 +151,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     if (uid == null) return;
 
     // Sync earnings to ensure accuracy before loading
-    await EarningsEngine.syncEarnings();
+    // OPTIMIZATION: Capture result to avoid redundant reads
+    final syncRes = await EarningsEngine.syncEarnings();
 
     // Load App Config
     final g = await ConfigService().getGeneralConfig();
@@ -159,36 +165,48 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         24.0);
 
     // Load User Data
-    final userRef = FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid);
-    final snap = await UserService().getUser(uid);
-    final d = snap?.data() ?? {};
+    // OPTIMIZATION: Use data from syncRes if available to avoid UserService call
+    Map<String, dynamic> d =
+        (syncRes['userData'] as Map<String, dynamic>?) ?? {};
+    if (d.isEmpty) {
+      final snap = await UserService().getUser(uid);
+      d = snap?.data() ?? {};
+    }
 
     // Load Realtime Data
-    final realtimeSnap = await userRef
-        .collection(FirestoreUserSubCollections.earnings)
-        .doc(FirestoreEarningsDocs.realtime)
-        .get();
-    final realtimeData = realtimeSnap.data() ?? {};
+    // OPTIMIZATION: Use totalPoints from syncRes (which already merged realtime+user)
+    // instead of fetching realtimeRef again.
+    double? totalPoints = (syncRes[FirestoreUserFields.totalPoints] as num?)
+        ?.toDouble();
 
-    // Prefer realtime points, fallback to user doc
-    final realtimePoints =
-        (realtimeData[FirestoreUserFields.totalPoints] as num?)?.toDouble();
-    final userDocPoints =
-        (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
+    if (totalPoints == null) {
+      // Fallback: Manually fetch if syncRes failed (unlikely)
+      final userRef = FirebaseFirestore.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid);
+      final realtimeSnap = await userRef
+          .collection(FirestoreUserSubCollections.earnings)
+          .doc(FirestoreEarningsDocs.realtime)
+          .get();
+      final realtimeData = realtimeSnap.data() ?? {};
+      final realtimePoints =
+          (realtimeData[FirestoreUserFields.totalPoints] as num?)?.toDouble();
+      final userDocPoints =
+          (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
+      totalPoints = realtimePoints ?? userDocPoints;
 
-    _totalPoints = realtimePoints ?? userDocPoints;
-
-    // Migration: If user has points but no realtime doc, create it
-    if (realtimePoints == null && userDocPoints > 0) {
-      unawaited(
-        EarningsEngine.migrateLegacyPoints(
-          uid: uid,
-          legacyPoints: userDocPoints,
-        ),
-      );
+      // Migration check (fallback path only)
+      if (realtimePoints == null && userDocPoints > 0) {
+        unawaited(
+          EarningsEngine.migrateLegacyPoints(
+            uid: uid,
+            legacyPoints: userDocPoints,
+          ),
+        );
+      }
     }
+
+    _totalPoints = totalPoints ?? 0.0;
 
     _hourlyRate =
         (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
@@ -250,11 +268,30 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         (d[FirestoreUserFields.activeManagerId] as String?) ?? '';
 
     if (_activeManagerId != null && _activeManagerId!.isNotEmpty) {
-      final mgr = await FirebaseFirestore.instance
-          .collection(FirestoreConstants.managers)
-          .doc(_activeManagerId)
-          .get();
-      final m = mgr.data() ?? {};
+      // OPTIMIZATION: Cache manager data for 10 minutes
+      bool shouldUseCache = false;
+      if (_cachedManagerData != null &&
+          _cachedManagerId == _activeManagerId &&
+          _lastManagerFetch != null) {
+        if (DateTime.now().difference(_lastManagerFetch!).inMinutes < 10) {
+          shouldUseCache = true;
+        }
+      }
+
+      Map<String, dynamic> m;
+      if (shouldUseCache) {
+        m = _cachedManagerData!;
+      } else {
+        final mgr = await FirebaseFirestore.instance
+            .collection(FirestoreConstants.managers)
+            .doc(_activeManagerId)
+            .get();
+        m = mgr.data() ?? {};
+        _cachedManagerData = m;
+        _cachedManagerId = _activeManagerId;
+        _lastManagerFetch = DateTime.now();
+      }
+
       _managerGlobalEnabled =
           (m[FirestoreManagerFields.globalCommunity] as bool?) ?? true;
       _managerEtaAuto =
