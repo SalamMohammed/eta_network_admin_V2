@@ -40,6 +40,8 @@ class _MobileHomePageState extends State<MobileHomePage>
   Stream<Map<String, dynamic>?> _userCoinStream = const Stream.empty();
   Stream<List<Map<String, dynamic>>> _minedCoinsStream = const Stream.empty();
   Stream<List<Map<String, dynamic>>> _liveCoinsStream = const Stream.empty();
+  StreamSubscription<List<Map<String, dynamic>>>? _managerCoinsSub;
+  List<Map<String, dynamic>> _managerCachedCoins = [];
   static const String _prefsRewardedSessionStartMsKey =
       'ads_rewarded_session_start_ms';
   static const String _prefsRewardedSessionCountKey =
@@ -79,6 +81,15 @@ class _MobileHomePageState extends State<MobileHomePage>
       _userCoinStream = CoinService.watchUserCoin(uid);
       _minedCoinsStream = CoinService.watchMyCoins(uid);
       _liveCoinsStream = CoinService.watchLiveCoins(sort: _liveSort);
+
+      // Cache coins for Manager (Zero-Read Polling)
+      _managerCoinsSub = CoinService.watchMyCoins(uid).listen((coins) {
+        if (mounted) {
+          _managerCachedCoins = coins;
+          // Trigger check immediately when data updates
+          unawaited(_manageCommunityCoins());
+        }
+      });
     }
 
     // Ensure notifications are permitted and token is synced
@@ -97,6 +108,7 @@ class _MobileHomePageState extends State<MobileHomePage>
   void dispose() {
     _miningService.removeListener(_handleServiceUpdate);
     _adsService.removeListener(_handleAdsUpdate);
+    _managerCoinsSub?.cancel();
     _tab.dispose();
     _debounceTimer?.cancel();
     super.dispose();
@@ -266,7 +278,9 @@ class _MobileHomePageState extends State<MobileHomePage>
       _lastUiUpdate = now;
       setState(() {});
       // Only check community coins every 10 minutes to save reads
-      if (_lastCommunityCoinCheck == null || now.difference(_lastCommunityCoinCheck!) >= const Duration(minutes: 10)) {
+      if (_lastCommunityCoinCheck == null ||
+          now.difference(_lastCommunityCoinCheck!) >=
+              const Duration(minutes: 10)) {
         _lastCommunityCoinCheck = now;
         unawaited(_manageCommunityCoins());
       }
@@ -277,7 +291,9 @@ class _MobileHomePageState extends State<MobileHomePage>
       _lastUiUpdate = DateTime.now();
       _debounceTimer = null;
       setState(() {});
-      if (_lastCommunityCoinCheck == null || DateTime.now().difference(_lastCommunityCoinCheck!) >= const Duration(minutes: 10)) {
+      if (_lastCommunityCoinCheck == null ||
+          DateTime.now().difference(_lastCommunityCoinCheck!) >=
+              const Duration(minutes: 10)) {
         _lastCommunityCoinCheck = DateTime.now();
         unawaited(_manageCommunityCoins());
       }
@@ -303,18 +319,22 @@ class _MobileHomePageState extends State<MobileHomePage>
 
     // Ensure own coin is mining when enabled
     if (_miningService.managerUserCoinAuto) {
-      final ownRef = FirebaseFirestore.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .collection(FirestoreUserSubCollections.coins)
-          .doc(uid);
-      final ownSnap = await ownRef.get();
-      final ownData = ownSnap.data() ?? {};
-      final ownEnd =
-          ownData[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
-      final ownActive =
-          ownEnd != null && DateTime.now().isBefore(ownEnd.toDate());
-      if (!ownActive) {
+      final ownData = _managerCachedCoins.firstWhere(
+        (c) => c[FirestoreUserCoinMiningFields.ownerId] == uid,
+        orElse: () => {},
+      );
+
+      final dynamic rawEnd =
+          ownData[FirestoreUserCoinMiningFields.lastMiningEnd];
+      DateTime? ownEnd;
+      if (rawEnd is Timestamp) {
+        ownEnd = rawEnd.toDate();
+      } else if (rawEnd is String) {
+        ownEnd = DateTime.tryParse(rawEnd);
+      }
+
+      final ownActive = ownEnd != null && DateTime.now().isBefore(ownEnd);
+      if (!ownActive && ownData.isNotEmpty) {
         try {
           await CoinService.startCoinMining(uid, deviceId: devId);
         } catch (e) {
@@ -329,43 +349,54 @@ class _MobileHomePageState extends State<MobileHomePage>
         _miningService.managerMaxCommunity > 0)) {
       return;
     }
-    final q = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid)
-        .collection(FirestoreUserSubCollections.coins)
-        .get();
+
+    final coins = _managerCachedCoins;
     final now = DateTime.now();
     int activeManaged = 0;
-    for (final d in q.docs) {
-      final data = d.data();
+
+    // First pass: count active
+    for (final data in coins) {
       final ownerId =
           (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
-      if (ownerId == uid) {
-        continue;
-      }
+      if (ownerId == uid) continue;
+
       if (_miningService.managedCoinSelections.isNotEmpty &&
           !_miningService.managedCoinSelections.contains(ownerId)) {
         continue;
       }
-      final end =
-          data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
-      final isActive = end != null && now.isBefore(end.toDate());
+
+      final dynamic rawEnd = data[FirestoreUserCoinMiningFields.lastMiningEnd];
+      DateTime? end;
+      if (rawEnd is Timestamp) {
+        end = rawEnd.toDate();
+      } else if (rawEnd is String) {
+        end = DateTime.tryParse(rawEnd);
+      }
+
+      final isActive = end != null && now.isBefore(end);
       if (isActive) activeManaged++;
     }
-    for (final d in q.docs) {
-      final data = d.data();
+
+    // Second pass: start mining
+    for (final data in coins) {
       final ownerId =
           (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
-      if (ownerId == uid) {
-        continue;
-      }
+      if (ownerId == uid) continue;
+
       if (_miningService.managedCoinSelections.isNotEmpty &&
           !_miningService.managedCoinSelections.contains(ownerId)) {
         continue;
       }
-      final end =
-          data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
-      final isActive = end != null && now.isBefore(end.toDate());
+
+      final dynamic rawEnd = data[FirestoreUserCoinMiningFields.lastMiningEnd];
+      DateTime? end;
+      if (rawEnd is Timestamp) {
+        end = rawEnd.toDate();
+      } else if (rawEnd is String) {
+        end = DateTime.tryParse(rawEnd);
+      }
+
+      final isActive = end != null && now.isBefore(end);
       if (!isActive && activeManaged < _miningService.managerMaxCommunity) {
         try {
           await CoinService.startCoinMining(ownerId, deviceId: devId);

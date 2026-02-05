@@ -8,7 +8,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/widgets.dart';
 import '../shared/constants.dart';
-import 'sql_api_service.dart'; // Add this import
+import 'sql_api_service.dart';
+import 'config_service.dart';
 
 class CoinService with WidgetsBindingObserver {
   // MASTER SWITCH: Set to true to use SQL, false for Firestore
@@ -455,11 +456,7 @@ class CoinService with WidgetsBindingObserver {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
 
-    final general = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.appConfig)
-        .doc(FirestoreAppConfigDocs.general)
-        .get();
-    final g = general.data() ?? {};
+    final g = await ConfigService().getGeneralConfig();
 
     final bool enforceSingleDevice =
         (g[FirestoreAppConfigFields.deviceSingleUserEnforced] as bool?) ??
