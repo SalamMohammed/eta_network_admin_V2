@@ -38,7 +38,7 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     _miningService.addListener(_handleMiningUpdate);
-    _miningService.init();
+    // MiningService is auto-initialized by Auth listener
     _load();
   }
 

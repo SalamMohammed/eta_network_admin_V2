@@ -327,9 +327,8 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _cachedRewardedAd?.dispose();
-    _cachedRewardedAd = null;
-    super.dispose();
+    // Singleton should not be disposed.
+    // WidgetsBinding.instance.removeObserver(this);
+    // super.dispose();
   }
 }

@@ -13,7 +13,16 @@ import 'user_service.dart';
 class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   static final MiningStateService _instance = MiningStateService._internal();
   factory MiningStateService() => _instance;
-  MiningStateService._internal();
+  MiningStateService._internal() {
+    // Listen for auth changes to manage lifecycle automatically
+    FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (user != null) {
+        init();
+      } else {
+        reset();
+      }
+    });
+  }
 
   // Mining state
   double _totalPoints = 0.0;
@@ -49,6 +58,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _simTimer;
   String? _deviceId;
   bool _initialized = false;
+  bool _isInitializing = false;
   DateTime? _lastUiNotify;
   double _lastNotifiedDisplay = -1;
   static const Duration _minUiNotifyInterval = Duration(seconds: 1);
@@ -130,14 +140,27 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> init() async {
-    if (_initialized) return;
-    WidgetsBinding.instance.addObserver(this);
-    _deviceId = await DeviceId.get();
-    await SubscriptionService().init();
-    await _refresh();
-    _startUserDocListener();
-    _startSimulationIfNeeded();
-    _initialized = true;
+    if (_initialized || _isInitializing) return;
+    _isInitializing = true;
+    try {
+      WidgetsBinding.instance.addObserver(this);
+      _deviceId = await DeviceId.get();
+
+      // Initialize dependencies
+      await SubscriptionService().init();
+
+      // Initial refresh
+      await _refresh();
+
+      // Start listeners
+      _startUserDocListener();
+      _startRealtimeDocListener();
+      _startSimulationIfNeeded();
+
+      _initialized = true;
+    } finally {
+      _isInitializing = false;
+    }
   }
 
   Future<void> refresh() async {
@@ -659,7 +682,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       }
     }
 
-    _simTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
+    _simTimer = Timer.periodic(const Duration(milliseconds: 5000), (_) {
       final anchor = _simAnchor;
       if (anchor == null) return;
       final now = DateTime.now();
@@ -724,20 +747,26 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     _simTimer = null;
     _userDocSub?.cancel();
     _userDocSub = null;
+    _realtimeDocSub?.cancel();
+    _realtimeDocSub = null;
     _subExpiryTimer?.cancel();
     _subExpiryTimer = null;
     _refreshDebounce?.cancel();
     _refreshDebounce = null;
+
+    _isInitializing = false;
+    _initialized = false;
+    _miningActive = false;
+
     _totalPoints = 0.0;
     _hourlyRate = 0.0;
     _lastStart = null;
     _lastEnd = null;
-    _miningActive = false;
     _streakDays = 0;
     _displayTotal = 0.0;
     _simBase = 0.0;
     _simAnchor = null;
-    _initialized = false;
+
     _managerEnabled = false;
     _managerGlobalEnabled = false;
     _managerEtaAuto = false;
@@ -748,17 +777,18 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     _subscriptionExpiresAt = null;
     _managerBonusPerHour = 0.0;
     _activeManagerMultiplier = 1.0;
+
+    _cachedManagerData = null;
+    _cachedManagerId = null;
+    _lastManagerFetch = null;
+
     notifyListeners();
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _simTimer?.cancel();
-    _userDocSub?.cancel();
-    _realtimeDocSub?.cancel();
-    _subExpiryTimer?.cancel();
-    _refreshDebounce?.cancel();
-    super.dispose();
+    // Singleton should not be disposed.
+    // WidgetsBinding.instance.removeObserver(this);
+    // super.dispose();
   }
 }

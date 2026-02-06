@@ -27,7 +27,7 @@ class MobileHomePage extends StatefulWidget {
 }
 
 class _MobileHomePageState extends State<MobileHomePage>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final _miningService = MiningStateService();
   final _adsService = AdsService();
   late final TabController _tab = TabController(length: 2, vsync: this);
@@ -55,6 +55,7 @@ class _MobileHomePageState extends State<MobileHomePage>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _miningService.addListener(_handleServiceUpdate);
     _adsService.addListener(_handleAdsUpdate);
     _tab.addListener(() {
@@ -98,10 +99,9 @@ class _MobileHomePageState extends State<MobileHomePage>
     // Check for Play Store updates (Android Force Update)
     unawaited(UpdateService.checkForUpdate());
 
-    _miningService.init().then((_) {
-      if (mounted) _manageCommunityCoins();
-      unawaited(_syncRewardedSessionWithMiningState());
-    });
+    // MiningService is auto-initialized by Auth listener
+    if (mounted) _manageCommunityCoins();
+    unawaited(_syncRewardedSessionWithMiningState());
   }
 
   @override
@@ -112,6 +112,14 @@ class _MobileHomePageState extends State<MobileHomePage>
     _tab.dispose();
     _debounceTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(UpdateService.checkForUpdate());
+      _manageCommunityCoins();
+    }
   }
 
   void _handleAdsUpdate() {

@@ -19,8 +19,7 @@ class _BalancePageState extends State<BalancePage> {
   void initState() {
     super.initState();
     _miningService.addListener(_handleServiceUpdate);
-    // Ensure service is initialized if we came straight here
-    _miningService.init();
+    // MiningService is auto-initialized by Auth listener
   }
 
   @override

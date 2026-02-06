@@ -10,23 +10,19 @@ class UpdateService {
     try {
       final info = await InAppUpdate.checkForUpdate();
 
-      if (info.updateAvailability == UpdateAvailability.updateAvailable) {
+      if (info.updateAvailability == UpdateAvailability.updateAvailable ||
+          info.updateAvailability ==
+              UpdateAvailability.developerTriggeredUpdateInProgress) {
         // We prioritize immediate (forced) updates.
-        // In version 4.x, we don't have explicit immediateUpdateAllowed flags,
-        // so we attempt the update if available.
+        // This blocks the UI until the update is complete.
         try {
           await InAppUpdate.performImmediateUpdate();
         } catch (e) {
-          // If immediate update fails or is not allowed, try flexible
-          try {
-            await InAppUpdate.startFlexibleUpdate();
-          } catch (_) {
-            // Both failed, nothing to do
-          }
+          debugPrint('Immediate update failed: $e');
         }
       }
     } catch (e) {
-      // This is expected during development (app not on Play Store)
+      // This is expected during development (app not on Play Store or signature mismatch)
       debugPrint('In-app update check failed: $e');
     }
   }

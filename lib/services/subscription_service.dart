@@ -12,16 +12,19 @@ class SubscriptionService {
   SubscriptionService._internal();
 
   bool _initialized = false;
+  bool _isInitializing = false;
 
   /// Initialize RevenueCat with API key from Firestore
   Future<void> init() async {
-    if (_initialized) return;
-    if (kIsWeb) {
-      debugPrint('SubscriptionService: RevenueCat is not supported on web.');
-      return;
-    }
-
+    if (_initialized || _isInitializing) return;
+    _isInitializing = true;
     try {
+      if (kIsWeb) {
+        debugPrint('SubscriptionService: RevenueCat is not supported on web.');
+        _initialized = true;
+        return;
+      }
+
       final data = await ConfigService().getGeneralConfig();
       final apiKey = data[FirestoreAppConfigFields.revenueCatApiKey] as String?;
 
@@ -35,12 +38,12 @@ class SubscriptionService {
       PurchasesConfiguration configuration = PurchasesConfiguration(apiKey);
       await Purchases.configure(configuration);
 
-      _initialized = true;
-
       // Listen for updates
       Purchases.addCustomerInfoUpdateListener((info) {
         _handleCustomerInfoUpdate(info);
       });
+
+      _initialized = true;
 
       // Login if user is already authenticated
       final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -49,6 +52,8 @@ class SubscriptionService {
       }
     } catch (e) {
       debugPrint('SubscriptionService init failed: $e');
+    } finally {
+      _isInitializing = false;
     }
   }
 
