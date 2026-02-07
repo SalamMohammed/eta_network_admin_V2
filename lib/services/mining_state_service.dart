@@ -9,6 +9,9 @@ import 'subscription_service.dart';
 import 'notification_service.dart';
 import 'config_service.dart';
 import 'user_service.dart';
+import 'coin_service.dart';
+import 'sql_api_service.dart';
+import 'background_service.dart';
 
 class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   static final MiningStateService _instance = MiningStateService._internal();
@@ -550,6 +553,12 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         unawaited(
           NotificationService().scheduleMiningFinished(_lastEnd!.toDate()),
         );
+        // Also schedule background manager wakeup if enabled
+        if (_managerEnabled) {
+          unawaited(
+            BackgroundService.scheduleManagerWakeup(_lastEnd!.toDate()),
+          );
+        }
       }
 
       _maybeNotify(force: true);
@@ -618,6 +627,10 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       _startRealtimeDocListener();
       // Also refresh manually to ensure we catch anything the listener might miss during reconnection
       _refresh();
+      // Re-schedule just in case something was missed or cleared
+      if (_lastEnd != null && _managerEnabled) {
+        BackgroundService.scheduleManagerWakeup(_lastEnd!.toDate());
+      }
     }
   }
 
@@ -783,6 +796,175 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     _lastManagerFetch = null;
 
     notifyListeners();
+  }
+
+  /// Runs the manager logic in the background (or foreground).
+  /// Fetches fresh data to ensure accuracy.
+  Future<void> runManagerLogic() async {
+    debugPrint('[MiningStateService] runManagerLogic started');
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      debugPrint('[MiningStateService] No user logged in');
+      return;
+    }
+
+    // 1. Refresh state to get latest config/subscription
+    await _refresh();
+
+    // If manager not enabled, stop.
+    if (!_managerEnabled || !_managerGlobalEnabled) {
+      debugPrint('[MiningStateService] Manager disabled');
+      return;
+    }
+
+    final devId = await DeviceId.get();
+    final now = DateTime.now();
+
+    // 2. Start OWN coin if needed
+    if (_managerEtaAuto && !_miningActive) {
+      debugPrint('[MiningStateService] Starting OWN coin mining...');
+      try {
+        await startMining();
+      } catch (e) {
+        debugPrint('[MiningStateService] Failed to start own mining: $e');
+      }
+    }
+
+    // 3. Manage community coins
+    // Need to fetch my coins first.
+    // Use hybrid loading logic similar to HomePage
+    List<Map<String, dynamic>> allCoins = [];
+    if (_managerEnabled) {
+      // Pro users might use SQL
+      try {
+        final sqlCoins = await SqlApiService.getMyCoins(uid);
+        if (sqlCoins != null) allCoins = sqlCoins;
+      } catch (e) {
+        debugPrint('[MiningStateService] SQL fetch failed: $e');
+        // Fallback to Firestore? Usually if SQL fails, we might want to try Firestore
+        // But logic dictates strict separation usually. Let's assume SQL for Pro.
+      }
+    } else {
+      // Standard users (though manager usually implies Pro)
+      final qs = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .collection(FirestoreUserSubCollections.coins)
+          .get();
+      allCoins = qs.docs.map((d) => d.data()).toList();
+    }
+
+    if (allCoins.isEmpty) {
+      debugPrint('[MiningStateService] No coins found');
+      return;
+    }
+
+    int activeManaged = 0;
+    // First pass: count active
+    for (final data in allCoins) {
+      final ownerId =
+          (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
+      if (ownerId == uid) continue; // Skip own coin (handled by startMining)
+
+      if (_managedCoinSelections.isNotEmpty &&
+          !_managedCoinSelections.contains(ownerId)) {
+        continue;
+      }
+
+      final dynamic rawEnd = data[FirestoreUserCoinMiningFields.lastMiningEnd];
+      DateTime? end;
+      if (rawEnd is Timestamp) {
+        end = rawEnd.toDate();
+      } else if (rawEnd is String) {
+        end = DateTime.tryParse(rawEnd);
+      }
+
+      final isActive = end != null && now.isBefore(end);
+      if (isActive) activeManaged++;
+    }
+
+    // Second pass: start mining if slots available
+    for (final data in allCoins) {
+      if (activeManaged >= _managerMaxCommunity) break;
+
+      final ownerId =
+          (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
+      if (ownerId == uid) continue;
+
+      if (_managedCoinSelections.isNotEmpty &&
+          !_managedCoinSelections.contains(ownerId)) {
+        continue;
+      }
+
+      final dynamic rawEnd = data[FirestoreUserCoinMiningFields.lastMiningEnd];
+      DateTime? end;
+      if (rawEnd is Timestamp) {
+        end = rawEnd.toDate();
+      } else if (rawEnd is String) {
+        end = DateTime.tryParse(rawEnd);
+      }
+
+      final isActive = end != null && now.isBefore(end);
+      if (!isActive) {
+        debugPrint('[MiningStateService] Starting community coin: $ownerId');
+        try {
+          await CoinService.startCoinMining(ownerId, deviceId: devId);
+          activeManaged++;
+        } catch (e) {
+          debugPrint('[MiningStateService] Failed to start coin $ownerId: $e');
+        }
+      }
+    }
+
+    // 4. Schedule NEXT wakeup
+    // We need to find the earliest end time among ALL active coins (own + community)
+    // to ensure we wake up exactly when a session ends.
+    DateTime? earliestEnd;
+
+    // Check own coin
+    if (_lastEnd != null) {
+      final end = _lastEnd!.toDate();
+      if (end.isAfter(now)) {
+        earliestEnd = end;
+      }
+    }
+
+    // Check community coins (re-fetch or use list if updated?
+    // Ideally we should use updated list, but using existing list + assumptions is okay for now)
+    // Actually, startCoinMining returns updated data, but we didn't update the list.
+    // Let's just use the current known end times. If we just started one, it ends in 24h.
+    // If we have an existing one ending in 1h, that's the one we want.
+
+    for (final data in allCoins) {
+      final ownerId =
+          (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
+      if (_managedCoinSelections.isNotEmpty &&
+          !_managedCoinSelections.contains(ownerId))
+        continue;
+
+      // Note: If we just started it, we don't have the new end time here unless we re-fetch.
+      // But usually new session > existing session. So earliest is likely an existing one.
+      // Unless all were inactive and we started all. Then next is 24h.
+
+      final dynamic rawEnd = data[FirestoreUserCoinMiningFields.lastMiningEnd];
+      DateTime? end;
+      if (rawEnd is Timestamp) {
+        end = rawEnd.toDate();
+      } else if (rawEnd is String) {
+        end = DateTime.tryParse(rawEnd);
+      }
+
+      if (end != null && end.isAfter(now)) {
+        if (earliestEnd == null || end.isBefore(earliestEnd)) {
+          earliestEnd = end;
+        }
+      }
+    }
+
+    if (earliestEnd != null) {
+      debugPrint('[MiningStateService] Scheduling next wakeup at $earliestEnd');
+      await BackgroundService.scheduleManagerWakeup(earliestEnd);
+    }
   }
 
   @override

@@ -6,6 +6,7 @@ import 'auth/auth_gate.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'services/notification_service.dart';
 import 'services/ads_service.dart';
+import 'services/background_service.dart';
 import 'shared/constants.dart';
 
 Future<void> main() async {
@@ -38,5 +39,6 @@ Future<void> _initBackgroundServices() async {
     await NotificationService().init();
     await NotificationService().ensureTokenRegistered();
     await AdsService().init();
+    await BackgroundService.init();
   } catch (_) {}
 }

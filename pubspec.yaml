@@ -53,6 +53,8 @@ dependencies:
   google_mobile_ads: ^6.0.0
   in_app_update: ^4.2.5
   play_install_referrer: ^0.5.0
+  workmanager: ^0.5.2
+  android_alarm_manager_plus: ^4.0.0
   
 dev_dependencies:
   flutter_launcher_icons: ^0.13.1
