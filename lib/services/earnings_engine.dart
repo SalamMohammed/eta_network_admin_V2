@@ -100,13 +100,18 @@ class EarningsEngine {
         final double rateAds =
             (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
             0.0;
+        final bool managerEnabled =
+            (data[FirestoreUserFields.managerEnabled] as bool?) ?? false;
 
-        final List<String> managedCoinSelections =
-            (realtimeData[FirestoreUserFields.managedCoinSelections] as List?)
-                ?.cast<String>() ??
-            (data[FirestoreUserFields.managedCoinSelections] as List?)
-                ?.cast<String>() ??
-            [];
+        final List<String> managedCoinSelections = managerEnabled
+            ? ((realtimeData[FirestoreUserFields.managedCoinSelections]
+                          as List?)
+                      ?.cast<String>() ??
+                  (data[FirestoreUserFields.managedCoinSelections] as List?)
+                      ?.cast<String>() ??
+                  [])
+            : [];
+
         final double managerBonusPerHour =
             (realtimeData[FirestoreUserFields.managerBonusPerHour] as num?)
                 ?.toDouble() ??
@@ -352,15 +357,14 @@ class EarningsEngine {
       }
 
       // Write to realtime subcollection INSTEAD of main user doc
-      transaction.set(realtimeRef, {
+      final Map<String, dynamic> writeData = {
         FirestoreUserFields.totalPoints: FieldValue.increment(earned),
         FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
         FirestoreUserFields.hourlyRate: hourlyRate,
-        FirestoreUserFields.managedCoinSelections: managedCoinSelections,
         FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-        // Persist components if not present (migration check logic handles this separately, but safe to write if needed)
-      }, SetOptions(merge: true));
+      };
+      transaction.set(realtimeRef, writeData, SetOptions(merge: true));
 
       if (earned > 0) {
         final newLogDoc = pointLogsRef.doc();
@@ -610,7 +614,7 @@ class EarningsEngine {
         return false;
       }
 
-      transaction.set(realtimeRef, {
+      final Map<String, dynamic> writeData = {
         FirestoreUserFields.hourlyRate: newHourlyRate,
         FirestoreUserFields.rateBase: baseRate,
         FirestoreUserFields.rateStreak: rateStreak,
@@ -620,7 +624,8 @@ class EarningsEngine {
         FirestoreUserFields.managerBonusPerHour: rateManager,
         FirestoreUserFields.rateAds: rateAds,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      };
+      transaction.set(realtimeRef, writeData, SetOptions(merge: true));
 
       return true;
     });
@@ -650,10 +655,6 @@ class EarningsEngine {
     // syncRes contains totalPoints merged from realtime+user
     double totalPoints =
         (syncRes[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
-    final List<String> managedCoinSelections =
-        (syncRes[FirestoreUserFields.managedCoinSelections] as List?)
-            ?.cast<String>() ??
-        [];
     final double managerBonusPerHour =
         (syncRes[FirestoreUserFields.managerBonusPerHour] as num?)
             ?.toDouble() ??
@@ -854,7 +855,7 @@ class EarningsEngine {
 
     batch.update(userRef, userUpdates);
 
-    batch.set(realtimeRef, {
+    final Map<String, dynamic> realtimeUpdates = {
       FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(start),
       FirestoreUserFields.hourlyRate: hourlyRate,
       // Save Components
@@ -865,9 +866,9 @@ class EarningsEngine {
       FirestoreUserFields.rateManager: rateManager,
       FirestoreUserFields.managerBonusPerHour: rateManager,
       FirestoreUserFields.rateAds: rateAds,
+    };
 
-      FirestoreUserFields.managedCoinSelections: managedCoinSelections,
-    }, SetOptions(merge: true));
+    batch.set(realtimeRef, realtimeUpdates, SetOptions(merge: true));
 
     // Streak Log
     if (streakIncremented) {

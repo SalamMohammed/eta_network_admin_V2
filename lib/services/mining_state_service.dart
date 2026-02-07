@@ -883,9 +883,27 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     // 1. Refresh state to get latest config/subscription
+    // OPTIMIZATION: Check if user is pro and manager enabled BEFORE refreshing
+    final userDoc = await FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .get();
+    final userData = userDoc.data() ?? {};
+    final bool isPro =
+        userData[FirestoreUserFields.role] == FirestoreUserRoles.pro;
+    final bool managerEnabled =
+        (userData[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+
+    if (!isPro || !managerEnabled) {
+      debugPrint(
+        '[MiningStateService] Access denied: not pro user or manager disabled',
+      );
+      return;
+    }
+
     await _refresh();
 
-    // If manager not enabled, stop.
+    // If manager not enabled (double check after refresh), stop.
     if (!_managerEnabled || !_managerGlobalEnabled) {
       debugPrint('[MiningStateService] Manager disabled');
       return;
