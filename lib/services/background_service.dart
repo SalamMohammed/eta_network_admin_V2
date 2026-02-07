@@ -55,6 +55,9 @@ class BackgroundService {
         );
 
         // Initialize AlarmManager (Android exact timing)
+        // Note: android_alarm_manager_plus may show deprecation warnings during build.
+        // This is expected and harmless; we need it for 'exact: true' precision
+        // which Workmanager cannot provide.
         if (defaultTargetPlatform == TargetPlatform.android) {
           await AndroidAlarmManager.initialize();
         }

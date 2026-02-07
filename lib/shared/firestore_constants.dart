@@ -53,6 +53,14 @@ class FirestoreUserFields {
   static const String subscription = 'subscription';
   static const String thumbnailUrl = 'thumbnailUrl';
   static const String fcmToken = 'fcmToken';
+
+  // Rate Components
+  static const String rateBase = 'rateBase';
+  static const String rateStreak = 'rateStreak';
+  static const String rateRank = 'rateRank';
+  static const String rateReferral = 'rateReferral';
+  static const String rateManager = 'rateManager';
+  static const String rateAds = 'rateAds';
 }
 
 class FirestoreUserSubscriptionFields {
@@ -190,6 +198,7 @@ class FirestoreManagerFields {
   static const String storeProductId = 'storeProductId';
   static const String bestValue = 'bestValue';
   static const String isActive = 'isActive';
+  static const String expiresAt = 'expiresAt';
   static const String createdAt = 'createdAt';
   static const String updatedAt = 'updatedAt';
 }

@@ -8,6 +8,16 @@ import 'config_service.dart';
 import 'user_service.dart';
 
 class EarningsEngine {
+  static final Map<String, DateTime> _lastLocalWrites = {};
+
+  static void _pruneLocalWrites() {
+    final now = DateTime.now();
+    // Remove entries older than 20 minutes to prevent memory leaks
+    _lastLocalWrites.removeWhere(
+      (key, time) => now.difference(time).inMinutes > 20,
+    );
+  }
+
   static Future<Map<String, dynamic>> syncEarnings() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
@@ -27,7 +37,161 @@ class EarningsEngine {
     if (userSnap == null || !userSnap.exists) return {};
     final data = userSnap.data() ?? {};
 
-    return FirebaseFirestore.instance.runTransaction((transaction) async {
+    // Check local cache BEFORE transaction to avoid unnecessary reads
+    final lastWrite = _lastLocalWrites[uid];
+    final bool recentlyWrittenLocally =
+        lastWrite != null &&
+        DateTime.now().difference(lastWrite).inMinutes < 10;
+
+    final Timestamp? endTs =
+        data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+    final DateTime now = DateTime.now();
+    final DateTime? end = endTs?.toDate();
+    final bool isSessionComplete =
+        end != null && !now.isBefore(end); // now >= end
+
+    if (recentlyWrittenLocally && !isSessionComplete) {
+      // Throttle: Perform READ-ONLY operation (no transaction)
+      // Note: We still need to fetch realtime doc to get the components and latest sync time
+      // But we can do a simple GET instead of a transaction.
+      // Or better yet, just return what we have if we assume it hasn't changed much?
+      // No, we need to calculate 'earned' points based on elapsed time since last sync.
+
+      try {
+        final realtimeSnap = await realtimeRef.get();
+        final realtimeData = realtimeSnap.data() ?? {};
+
+        final Timestamp? startTs =
+            data[FirestoreUserFields.lastMiningStart] as Timestamp?;
+        final Timestamp? syncedTs =
+            (realtimeData[FirestoreUserFields.lastSyncedAt] as Timestamp?) ??
+            (data[FirestoreUserFields.lastSyncedAt] as Timestamp?);
+
+        final double hourlyRate =
+            (realtimeData[FirestoreUserFields.hourlyRate] as num?)
+                ?.toDouble() ??
+            (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+            0.0;
+
+        final double totalPoints =
+            (realtimeData[FirestoreUserFields.totalPoints] as num?)
+                ?.toDouble() ??
+            (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+            0.0;
+
+        final double rateBase =
+            (realtimeData[FirestoreUserFields.rateBase] as num?)?.toDouble() ??
+            0.0;
+        final double rateStreak =
+            (realtimeData[FirestoreUserFields.rateStreak] as num?)
+                ?.toDouble() ??
+            0.0;
+        final double rateRank =
+            (realtimeData[FirestoreUserFields.rateRank] as num?)?.toDouble() ??
+            0.0;
+        final double rateReferral =
+            (realtimeData[FirestoreUserFields.rateReferral] as num?)
+                ?.toDouble() ??
+            0.0;
+        final double rateManager =
+            (realtimeData[FirestoreUserFields.rateManager] as num?)
+                ?.toDouble() ??
+            0.0;
+        final double rateAds =
+            (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
+            0.0;
+
+        final List<String> managedCoinSelections =
+            (realtimeData[FirestoreUserFields.managedCoinSelections] as List?)
+                ?.cast<String>() ??
+            (data[FirestoreUserFields.managedCoinSelections] as List?)
+                ?.cast<String>() ??
+            [];
+        final double managerBonusPerHour =
+            (realtimeData[FirestoreUserFields.managerBonusPerHour] as num?)
+                ?.toDouble() ??
+            (data[FirestoreUserFields.managerBonusPerHour] as num?)
+                ?.toDouble() ??
+            0.0;
+
+        if (startTs == null) {
+          return {
+            FirestoreUserFields.totalPoints: totalPoints,
+            FirestoreUserFields.hourlyRate: hourlyRate,
+            FirestoreUserFields.managedCoinSelections: managedCoinSelections,
+            FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
+            FirestoreUserFields.lastMiningStart: startTs,
+            FirestoreUserFields.lastMiningEnd: endTs,
+            'userData': data,
+            FirestoreUserFields.rateBase: rateBase,
+            FirestoreUserFields.rateStreak: rateStreak,
+            FirestoreUserFields.rateRank: rateRank,
+            FirestoreUserFields.rateReferral: rateReferral,
+            FirestoreUserFields.rateManager: rateManager,
+            FirestoreUserFields.rateAds: rateAds,
+            '_didWrite': false,
+          };
+        }
+
+        final sessionEnd = end ?? now;
+        final effectiveEnd = now.isBefore(sessionEnd) ? now : sessionEnd;
+        final from = (syncedTs ?? startTs).toDate();
+
+        if (!effectiveEnd.isAfter(from)) {
+          // Already synced up to this point
+          return {
+            FirestoreUserFields.totalPoints: totalPoints,
+            FirestoreUserFields.hourlyRate: hourlyRate,
+            FirestoreUserFields.managedCoinSelections: managedCoinSelections,
+            FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
+            FirestoreUserFields.lastMiningStart: startTs,
+            FirestoreUserFields.lastMiningEnd: endTs,
+            'userData': data,
+            FirestoreUserFields.rateBase: rateBase,
+            FirestoreUserFields.rateStreak: rateStreak,
+            FirestoreUserFields.rateRank: rateRank,
+            FirestoreUserFields.rateReferral: rateReferral,
+            FirestoreUserFields.rateManager: rateManager,
+            FirestoreUserFields.rateAds: rateAds,
+            '_didWrite': false,
+          };
+        }
+
+        final elapsedHours =
+            effectiveEnd.difference(from).inMilliseconds / (1000 * 60 * 60);
+        final earned = elapsedHours * hourlyRate;
+
+        debugPrint(
+          '[EarningsEngine] Throttled locally: skipped write. Last write: $lastWrite, Now: $now',
+        );
+
+        return {
+          FirestoreUserFields.totalPoints: totalPoints + earned,
+          FirestoreUserFields.hourlyRate: hourlyRate,
+          FirestoreUserFields.managedCoinSelections: managedCoinSelections,
+          FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
+          FirestoreUserFields.lastMiningStart: startTs,
+          FirestoreUserFields.lastMiningEnd: endTs,
+          FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(from),
+          'userData': data,
+          FirestoreUserFields.rateBase: rateBase,
+          FirestoreUserFields.rateStreak: rateStreak,
+          FirestoreUserFields.rateRank: rateRank,
+          FirestoreUserFields.rateReferral: rateReferral,
+          FirestoreUserFields.rateManager: rateManager,
+          FirestoreUserFields.rateAds: rateAds,
+          '_didWrite': false,
+        };
+      } catch (e) {
+        debugPrint(
+          '[EarningsEngine] Local throttle read failed: $e. Falling back to transaction.',
+        );
+      }
+    }
+
+    final result = await FirebaseFirestore.instance.runTransaction((
+      transaction,
+    ) async {
       // NOTE: We do NOT read userRef inside transaction to save a read.
       // We rely on UserService cache (5s freshness).
       // This means we might calculate based on slightly stale hourlyRate,
@@ -46,8 +210,58 @@ class EarningsEngine {
           (realtimeData[FirestoreUserFields.lastSyncedAt] as Timestamp?) ??
           (data[FirestoreUserFields.lastSyncedAt] as Timestamp?);
 
+      // Prefer realtime doc for hourlyRate, fallback to user doc
       final double hourlyRate =
-          (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+          (realtimeData[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+          (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+          0.0;
+
+      // Prefer realtime doc for managedCoinSelections, fallback to user doc
+      final List<String> managedCoinSelections =
+          (realtimeData[FirestoreUserFields.managedCoinSelections] as List?)
+              ?.cast<String>() ??
+          (data[FirestoreUserFields.managedCoinSelections] as List?)
+              ?.cast<String>() ??
+          [];
+
+      // Prefer realtime doc for managerBonusPerHour, fallback to user doc
+      final double managerBonusPerHour =
+          (realtimeData[FirestoreUserFields.managerBonusPerHour] as num?)
+              ?.toDouble() ??
+          (data[FirestoreUserFields.managerBonusPerHour] as num?)?.toDouble() ??
+          0.0;
+
+      // Read Rate Components (Realtime Only - New Logic)
+      final double rateBase =
+          (realtimeData[FirestoreUserFields.rateBase] as num?)?.toDouble() ??
+          0.0;
+      final double rateStreak =
+          (realtimeData[FirestoreUserFields.rateStreak] as num?)?.toDouble() ??
+          0.0;
+      final double rateRank =
+          (realtimeData[FirestoreUserFields.rateRank] as num?)?.toDouble() ??
+          0.0;
+      final double rateReferral =
+          (realtimeData[FirestoreUserFields.rateReferral] as num?)
+              ?.toDouble() ??
+          0.0;
+      final double rateManager =
+          (realtimeData[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
+          0.0;
+      final double rateAds =
+          (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
+          0.0;
+
+      // Check if migration is needed
+      final bool needsMigration =
+          (!realtimeData.containsKey(FirestoreUserFields.hourlyRate) &&
+              data.containsKey(FirestoreUserFields.hourlyRate)) ||
+          (!realtimeData.containsKey(
+                FirestoreUserFields.managedCoinSelections,
+              ) &&
+              data.containsKey(FirestoreUserFields.managedCoinSelections)) ||
+          (!realtimeData.containsKey(FirestoreUserFields.managerBonusPerHour) &&
+              data.containsKey(FirestoreUserFields.managerBonusPerHour));
 
       // Prefer realtime doc for totalPoints, fallback to user doc
       double totalPoints =
@@ -59,9 +273,17 @@ class EarningsEngine {
         return {
           FirestoreUserFields.totalPoints: totalPoints,
           FirestoreUserFields.hourlyRate: hourlyRate,
+          FirestoreUserFields.managedCoinSelections: managedCoinSelections,
+          FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
           FirestoreUserFields.lastMiningStart: startTs,
           FirestoreUserFields.lastMiningEnd: endTs,
           'userData': data,
+          FirestoreUserFields.rateBase: rateBase,
+          FirestoreUserFields.rateStreak: rateStreak,
+          FirestoreUserFields.rateRank: rateRank,
+          FirestoreUserFields.rateReferral: rateReferral,
+          FirestoreUserFields.rateManager: rateManager,
+          FirestoreUserFields.rateAds: rateAds,
         };
       }
       final now = DateTime.now();
@@ -73,29 +295,59 @@ class EarningsEngine {
         return {
           FirestoreUserFields.totalPoints: totalPoints,
           FirestoreUserFields.hourlyRate: hourlyRate,
+          FirestoreUserFields.managedCoinSelections: managedCoinSelections,
+          FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
           FirestoreUserFields.lastMiningStart: startTs,
           FirestoreUserFields.lastMiningEnd: endTs,
           'userData': data,
+          FirestoreUserFields.rateBase: rateBase,
+          FirestoreUserFields.rateStreak: rateStreak,
+          FirestoreUserFields.rateRank: rateRank,
+          FirestoreUserFields.rateReferral: rateReferral,
+          FirestoreUserFields.rateManager: rateManager,
+          FirestoreUserFields.rateAds: rateAds,
         };
       }
       final elapsedHours =
           effectiveEnd.difference(from).inMilliseconds / (1000 * 60 * 60);
       final earned = elapsedHours * hourlyRate;
 
-      // Throttle writes: only write if > 0.1 points or > 10 minutes elapsed
-      // This reduces excessive Cloud Function invocations
+      // Throttle writes: strict 10-minute rule to prevent frequent updates
+      // UNLESS:
+      // 1. Migration is needed
+      // 2. Session is completing (effectiveEnd reached endTs)
       final diffMinutes = effectiveEnd.difference(from).inMinutes;
-      if (earned <= 0 || (earned < 0.1 && diffMinutes < 10)) {
+      final bool isSessionComplete =
+          endTs != null && !effectiveEnd.isBefore(endTs.toDate());
+
+      // Check local cache for strict throttle to prevent writes when toggling background/foreground
+      final lastWrite = _lastLocalWrites[uid];
+      final bool recentlyWrittenLocally =
+          lastWrite != null &&
+          DateTime.now().difference(lastWrite).inMinutes < 10;
+
+      if (!needsMigration &&
+          !isSessionComplete &&
+          (diffMinutes < 10 || recentlyWrittenLocally)) {
         return {
           FirestoreUserFields.totalPoints:
               totalPoints + earned, // Return calculated total for UI
           FirestoreUserFields.hourlyRate: hourlyRate,
+          FirestoreUserFields.managedCoinSelections: managedCoinSelections,
+          FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
           FirestoreUserFields.lastMiningStart: startTs,
           FirestoreUserFields.lastMiningEnd: endTs,
           FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(
             from,
           ), // Keep old sync time
           'userData': data,
+          FirestoreUserFields.rateBase: rateBase,
+          FirestoreUserFields.rateStreak: rateStreak,
+          FirestoreUserFields.rateRank: rateRank,
+          FirestoreUserFields.rateReferral: rateReferral,
+          FirestoreUserFields.rateManager: rateManager,
+          FirestoreUserFields.rateAds: rateAds,
+          '_didWrite': false,
         };
       }
 
@@ -103,27 +355,277 @@ class EarningsEngine {
       transaction.set(realtimeRef, {
         FirestoreUserFields.totalPoints: FieldValue.increment(earned),
         FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
+        FirestoreUserFields.hourlyRate: hourlyRate,
+        FirestoreUserFields.managedCoinSelections: managedCoinSelections,
+        FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+        // Persist components if not present (migration check logic handles this separately, but safe to write if needed)
       }, SetOptions(merge: true));
 
-      final newLogDoc = pointLogsRef.doc();
-      transaction.set(newLogDoc, {
-        FirestorePointLogFields.userId: uid,
-        FirestorePointLogFields.type: FirestorePointLogTypes.tap,
-        FirestorePointLogFields.amount: earned,
-        FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
-        FirestorePointLogFields.description: 'Session earnings',
-      });
+      if (earned > 0) {
+        final newLogDoc = pointLogsRef.doc();
+        transaction.set(newLogDoc, {
+          FirestorePointLogFields.userId: uid,
+          FirestorePointLogFields.type: FirestorePointLogTypes.tap,
+          FirestorePointLogFields.amount: earned,
+          FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
+          FirestorePointLogFields.description: 'Session earnings',
+        });
+      }
 
       return {
         FirestoreUserFields.totalPoints: (totalPoints + earned),
         FirestoreUserFields.hourlyRate: hourlyRate,
+        FirestoreUserFields.managedCoinSelections: managedCoinSelections,
+        FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
         FirestoreUserFields.lastMiningStart: startTs,
         FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
         FirestoreUserFields.lastMiningEnd: endTs,
         'userData': data,
+        FirestoreUserFields.rateBase: rateBase,
+        FirestoreUserFields.rateStreak: rateStreak,
+        FirestoreUserFields.rateRank: rateRank,
+        FirestoreUserFields.rateReferral: rateReferral,
+        FirestoreUserFields.rateManager: rateManager,
+        FirestoreUserFields.rateAds: rateAds,
+        '_didWrite': true,
       };
     });
+
+    if (result['_didWrite'] == true) {
+      _pruneLocalWrites();
+      _lastLocalWrites[uid] = DateTime.now();
+    }
+
+    return result;
+  }
+
+  static Future<void> applyAdBoost({
+    required String uid,
+    required double boostAmount,
+  }) async {
+    final userRef = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid);
+    final realtimeRef = userRef
+        .collection(FirestoreUserSubCollections.earnings)
+        .doc(FirestoreEarningsDocs.realtime);
+
+    await FirebaseFirestore.instance.runTransaction((transaction) async {
+      final realtimeSnap = await transaction.get(realtimeRef);
+      final data = realtimeSnap.data() ?? {};
+
+      final double currentRate =
+          (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+      final double currentAds =
+          (data[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
+
+      final double newAds = currentAds + boostAmount;
+      final double newRate = currentRate + boostAmount;
+
+      transaction.set(realtimeRef, {
+        FirestoreUserFields.rateAds: newAds,
+        FirestoreUserFields.hourlyRate: newRate,
+        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    });
+  }
+
+  static Future<bool> recalculateRates({required String uid}) async {
+    final userRef = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid);
+    final realtimeRef = userRef
+        .collection(FirestoreUserSubCollections.earnings)
+        .doc(FirestoreEarningsDocs.realtime);
+
+    // PRE-FETCH: Load Configs and Referral Count outside transaction to avoid blocking/timeouts
+    final generalCfgFuture = ConfigService().getGeneralConfig();
+    final streakCfgFuture = ConfigService().getStreakConfig();
+    final ranksCfgFuture = ConfigService().getRanksConfig();
+    final refCfgFuture = ConfigService().getReferralConfig();
+
+    final DateTime activeThreshold = DateTime.now().subtract(
+      const Duration(hours: 48),
+    );
+    final referralCountFuture = FirebaseFirestore.instance
+        .collection(FirestoreConstants.users)
+        .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
+        .where(
+          FirestoreUserFields.lastMiningEnd,
+          isGreaterThan: Timestamp.fromDate(activeThreshold),
+        )
+        .count()
+        .get();
+
+    final results = await Future.wait([
+      generalCfgFuture,
+      streakCfgFuture,
+      ranksCfgFuture,
+      refCfgFuture,
+      referralCountFuture,
+    ]);
+
+    final generalCfg = results[0] as Map<String, dynamic>;
+    final streakCfg = results[1] as Map<String, dynamic>;
+    final ranksCfg = results[2] as Map<String, dynamic>;
+    final refCfg = results[3] as Map<String, dynamic>;
+    final referralCountAgg = results[4] as AggregateQuerySnapshot;
+    final int referralCount = referralCountAgg.count ?? 0;
+
+    final result = await FirebaseFirestore.instance.runTransaction((
+      transaction,
+    ) async {
+      final realtimeSnap = await transaction.get(realtimeRef);
+      final realtimeData = realtimeSnap.data() ?? {};
+
+      final userSnap = await transaction.get(userRef);
+      if (!userSnap.exists) return false;
+      final userData = userSnap.data()!;
+
+      // Check if mining is active
+      final Timestamp? lastEndTs =
+          userData[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+      final DateTime now = DateTime.now();
+      if (lastEndTs == null || now.isAfter(lastEndTs.toDate())) {
+        return false; // Not mining
+      }
+
+      // Recalculate Components
+      final int streakDays =
+          (userData[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
+      final double streakMultiplier = _streakMultiplier(streakDays, streakCfg);
+
+      final String currentRank =
+          (userData[FirestoreUserFields.rank] as String?) ?? 'Explorer';
+      final double rankMultiplier = _rankMultiplierByName(
+        currentRank,
+        ranksCfg,
+      );
+
+      final double referralMultiplier = _calculateReferralMultiplier(
+        referralCount,
+        refCfg,
+      );
+
+      final double baseRate =
+          (generalCfg[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
+          0.2;
+
+      // Manager
+      double rateManager = 0.0;
+      final String? activeManagerId =
+          userData[FirestoreUserFields.activeManagerId] as String?;
+      final bool managerEnabled =
+          (userData[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+
+      if (managerEnabled &&
+          activeManagerId != null &&
+          activeManagerId.isNotEmpty) {
+        final managerRef = FirebaseFirestore.instance
+            .collection(FirestoreConstants.managers)
+            .doc(activeManagerId);
+        final managerDoc = await transaction.get(managerRef);
+
+        if (managerDoc.exists) {
+          final mData = managerDoc.data()!;
+          final expiresAt =
+              mData[FirestoreManagerFields.expiresAt] as Timestamp?;
+          final bool isExpired =
+              expiresAt != null && expiresAt.toDate().isBefore(now);
+          if (!isExpired) {
+            final double multiplier =
+                (mData[FirestoreManagerFields.managerMultiplier] as num?)
+                    ?.toDouble() ??
+                0.0;
+            rateManager = baseRate * multiplier;
+          }
+        }
+      }
+
+      // Calculate new components
+      final double streakFrac = (streakMultiplier - 1.0).clamp(0.0, 1000.0);
+      final double rankFrac = (rankMultiplier - 1.0).clamp(0.0, 1000.0);
+      final double referralFrac = (referralMultiplier - 1.0).clamp(0.0, 1000.0);
+
+      final double rateStreak = baseRate * streakFrac;
+      final double rateRank = baseRate * rankFrac;
+      final double rateReferral = baseRate * referralFrac;
+
+      // Ads & Migration Logic
+      double rateAds =
+          (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
+          0.0;
+
+      final double currentHourlyRate =
+          (realtimeData[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+          0.0;
+
+      // Detect if we need to migrate ads (active session, rate mismatch, no ads recorded)
+      final double calculatedWithoutAds =
+          baseRate + rateStreak + rateRank + rateReferral + rateManager;
+
+      // If we have a significant discrepancy and ads are 0, assume the difference is ads
+      if (rateAds == 0.0 && currentHourlyRate > calculatedWithoutAds + 0.001) {
+        final double diff = currentHourlyRate - calculatedWithoutAds;
+        if (diff > 0) {
+          rateAds = diff;
+          debugPrint('EarningsEngine: Migrated implicit ad bonus: $rateAds');
+        }
+      }
+
+      final double newHourlyRate = calculatedWithoutAds + rateAds;
+
+      // Dirty Check: Prevent writes if nothing changed
+      final double currentBase =
+          (realtimeData[FirestoreUserFields.rateBase] as num?)?.toDouble() ??
+          0.0;
+      final double currentStreak =
+          (realtimeData[FirestoreUserFields.rateStreak] as num?)?.toDouble() ??
+          0.0;
+      final double currentRateRank =
+          (realtimeData[FirestoreUserFields.rateRank] as num?)?.toDouble() ??
+          0.0;
+      final double currentReferral =
+          (realtimeData[FirestoreUserFields.rateReferral] as num?)
+              ?.toDouble() ??
+          0.0;
+      final double currentManager =
+          (realtimeData[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
+          0.0;
+      final double currentAds =
+          (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
+          0.0;
+
+      final bool changed =
+          (newHourlyRate - currentHourlyRate).abs() > 0.001 ||
+          (baseRate - currentBase).abs() > 0.001 ||
+          (rateStreak - currentStreak).abs() > 0.001 ||
+          (rateRank - currentRateRank).abs() > 0.001 ||
+          (rateReferral - currentReferral).abs() > 0.001 ||
+          (rateManager - currentManager).abs() > 0.001 ||
+          (rateAds - currentAds).abs() > 0.001;
+
+      if (!changed) {
+        return false;
+      }
+
+      transaction.set(realtimeRef, {
+        FirestoreUserFields.hourlyRate: newHourlyRate,
+        FirestoreUserFields.rateBase: baseRate,
+        FirestoreUserFields.rateStreak: rateStreak,
+        FirestoreUserFields.rateRank: rateRank,
+        FirestoreUserFields.rateReferral: rateReferral,
+        FirestoreUserFields.rateManager: rateManager,
+        FirestoreUserFields.managerBonusPerHour: rateManager,
+        FirestoreUserFields.rateAds: rateAds,
+        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      return true;
+    });
+
+    return result;
   }
 
   static Future<Map<String, dynamic>> startMining({
@@ -148,6 +650,14 @@ class EarningsEngine {
     // syncRes contains totalPoints merged from realtime+user
     double totalPoints =
         (syncRes[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
+    final List<String> managedCoinSelections =
+        (syncRes[FirestoreUserFields.managedCoinSelections] as List?)
+            ?.cast<String>() ??
+        [];
+    final double managerBonusPerHour =
+        (syncRes[FirestoreUserFields.managerBonusPerHour] as num?)
+            ?.toDouble() ??
+        0.0;
 
     final bool isBanned = (data['isBanned'] as bool?) ?? false;
     if (isBanned) {
@@ -161,7 +671,10 @@ class EarningsEngine {
     if (lastEndTs != null && now.isBefore(lastEndTs.toDate())) {
       return {
         FirestoreUserFields.hourlyRate:
-            (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0,
+            (syncRes[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+            (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+            0.0,
+        FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
         FirestoreUserFields.lastMiningStart:
             data[FirestoreUserFields.lastMiningStart],
         FirestoreUserFields.lastMiningEnd: lastEndTs,
@@ -198,9 +711,11 @@ class EarningsEngine {
 
     // 6. Compute Streak (Memory)
     final streakRes = _calculateStreak(data, streakCfg);
-    final int newStreakDays = streakRes['streakDays'];
-    final int? streakLastUpdatedDay = streakRes['streakLastUpdatedDay'];
-    final bool streakIncremented = streakRes['incremented'];
+    final int newStreakDays =
+        streakRes[FirestoreUserFields.streakDays] as int? ?? 0;
+    final int? streakLastUpdatedDay =
+        streakRes[FirestoreUserFields.streakLastUpdatedDay] as int?;
+    final bool streakIncremented = (streakRes['incremented'] as bool?) ?? false;
 
     // 7. Compute Rank (Memory)
     // 7a. Get Active Referrals (1 AGGREGATION QUERY)
@@ -243,26 +758,58 @@ class EarningsEngine {
       refCfg,
     );
 
-    debugPrint(
-      'EarningsEngine: rate calc → baseRate=${baseRate.toStringAsFixed(6)}, sessionHours=$sessionHours',
-    );
-    debugPrint(
-      'EarningsEngine: streak → days=$newStreakDays, multiplier=${streakMultiplier.toStringAsFixed(6)}',
-    );
-    debugPrint(
-      'EarningsEngine: rank → name=$bestRank, multiplier=${rankMultiplier.toStringAsFixed(6)}',
-    );
-    debugPrint('EarningsEngine: referrals → count=$referralCount');
+    // 8a. Calculate Manager Bonus
+    double rateManager = 0.0;
+    final String? activeManagerId =
+        data[FirestoreUserFields.activeManagerId] as String?;
+    final bool managerEnabled =
+        (data[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+
+    if (managerEnabled &&
+        activeManagerId != null &&
+        activeManagerId.isNotEmpty) {
+      final managerDoc = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.managers)
+          .doc(activeManagerId)
+          .get();
+
+      if (managerDoc.exists) {
+        final mData = managerDoc.data()!;
+        final expiresAt = mData[FirestoreManagerFields.expiresAt] as Timestamp?;
+        final bool isExpired =
+            expiresAt != null && expiresAt.toDate().isBefore(now);
+
+        if (!isExpired) {
+          final double multiplier =
+              (mData[FirestoreManagerFields.managerMultiplier] as num?)
+                  ?.toDouble() ??
+              0.0;
+          rateManager = baseRate * multiplier;
+        }
+      }
+    }
+
+    // 8b. Ads Bonus (Start with 0 for new session)
+    final double rateAds = 0.0;
 
     final double streakFrac = (streakMultiplier - 1.0).clamp(0.0, 1000.0);
     final double rankFrac = (rankMultiplier - 1.0).clamp(0.0, 1000.0);
     final double referralFrac = (referralMultiplier - 1.0).clamp(0.0, 1000.0);
-    final double streakBonus = baseRate * streakFrac;
-    final double rankBonus = baseRate * rankFrac;
-    final double referralBonus = baseRate * referralFrac;
-    final double hourlyRate =
-        baseRate + streakBonus + rankBonus + referralBonus;
 
+    final double rateStreak = baseRate * streakFrac;
+    final double rateRank = baseRate * rankFrac;
+    final double rateReferral = baseRate * referralFrac;
+
+    // Total Hourly Rate Summation
+    final double hourlyRate =
+        baseRate + rateStreak + rateRank + rateReferral + rateManager + rateAds;
+
+    debugPrint(
+      'EarningsEngine: rate calc → baseRate=${baseRate.toStringAsFixed(6)}, sessionHours=$sessionHours',
+    );
+    debugPrint(
+      'EarningsEngine: components → streak=$rateStreak, rank=$rateRank, ref=$rateReferral, manager=$rateManager, ads=$rateAds',
+    );
     debugPrint(
       'EarningsEngine: final hourlyRate=${hourlyRate.toStringAsFixed(6)}',
     );
@@ -289,7 +836,7 @@ class EarningsEngine {
     final batch = FirebaseFirestore.instance.batch();
 
     final Map<String, dynamic> userUpdates = {
-      FirestoreUserFields.hourlyRate: hourlyRate,
+      // MOVED to realtime: FirestoreUserFields.hourlyRate: hourlyRate,
       FirestoreUserFields.lastMiningStart: Timestamp.fromDate(start),
       FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(end),
       FirestoreUserFields.deviceId: deviceId,
@@ -309,6 +856,17 @@ class EarningsEngine {
 
     batch.set(realtimeRef, {
       FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(start),
+      FirestoreUserFields.hourlyRate: hourlyRate,
+      // Save Components
+      FirestoreUserFields.rateBase: baseRate,
+      FirestoreUserFields.rateStreak: rateStreak,
+      FirestoreUserFields.rateRank: rateRank,
+      FirestoreUserFields.rateReferral: rateReferral,
+      FirestoreUserFields.rateManager: rateManager,
+      FirestoreUserFields.managerBonusPerHour: rateManager,
+      FirestoreUserFields.rateAds: rateAds,
+
+      FirestoreUserFields.managedCoinSelections: managedCoinSelections,
     }, SetOptions(merge: true));
 
     // Streak Log
@@ -357,11 +915,18 @@ class EarningsEngine {
       FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(end),
       FirestoreUserFields.streakDays: newStreakDays,
       FirestoreUserFields.totalPoints: totalPoints,
+      FirestoreUserFields.rateBase: baseRate,
+      FirestoreUserFields.rateStreak: rateStreak,
+      FirestoreUserFields.rateRank: rateRank,
+      FirestoreUserFields.rateReferral: rateReferral,
+      FirestoreUserFields.rateManager: rateManager,
+      FirestoreUserFields.managerBonusPerHour: rateManager,
+      FirestoreUserFields.rateAds: rateAds,
       'debug': {
         'baseRate': baseRate,
-        'streakBonus': streakBonus,
-        'rankBonus': rankBonus,
-        'referralBonus': referralBonus,
+        'streakBonus': rateStreak,
+        'rankBonus': rateRank,
+        'referralBonus': rateReferral,
         'hourlyRate': hourlyRate,
       },
     };
@@ -443,25 +1008,49 @@ class EarningsEngine {
     }
   }
 
-  static Future<void> migrateLegacyPoints({
+  static Future<void> migrateLegacyData({
     required String uid,
-    required double legacyPoints,
+    required Map<String, dynamic> userData,
   }) async {
-    if (legacyPoints <= 0) return;
     final realtimeRef = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
         .collection(FirestoreUserSubCollections.earnings)
         .doc(FirestoreEarningsDocs.realtime);
 
-    // Check if migration is needed (only if doc doesn't exist)
-    final snap = await realtimeRef.get();
-    if (snap.exists) return;
+    final realtimeSnap = await realtimeRef.get();
+    final realtimeData = realtimeSnap.data() ?? {};
 
-    await realtimeRef.set({
-      FirestoreUserFields.totalPoints: legacyPoints,
-      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-    });
+    final Map<String, dynamic> updates = {};
+
+    // Check totalPoints
+    if (!realtimeData.containsKey(FirestoreUserFields.totalPoints)) {
+      final val = userData[FirestoreUserFields.totalPoints];
+      if (val != null) updates[FirestoreUserFields.totalPoints] = val;
+    }
+
+    // Check hourlyRate
+    if (!realtimeData.containsKey(FirestoreUserFields.hourlyRate)) {
+      final val = userData[FirestoreUserFields.hourlyRate];
+      if (val != null) updates[FirestoreUserFields.hourlyRate] = val;
+    }
+
+    // Check managedCoinSelections
+    if (!realtimeData.containsKey(FirestoreUserFields.managedCoinSelections)) {
+      final val = userData[FirestoreUserFields.managedCoinSelections];
+      if (val != null) updates[FirestoreUserFields.managedCoinSelections] = val;
+    }
+
+    // Check managerBonusPerHour
+    if (!realtimeData.containsKey(FirestoreUserFields.managerBonusPerHour)) {
+      final val = userData[FirestoreUserFields.managerBonusPerHour];
+      if (val != null) updates[FirestoreUserFields.managerBonusPerHour] = val;
+    }
+
+    if (updates.isNotEmpty) {
+      updates[FirestoreUserFields.updatedAt] = FieldValue.serverTimestamp();
+      await realtimeRef.set(updates, SetOptions(merge: true));
+    }
   }
 
   static Map<String, dynamic> _calculateStreak(
@@ -517,8 +1106,10 @@ class EarningsEngine {
     if (updated < 1) updated = 1;
 
     return {
-      'streakDays': updated,
-      'streakLastUpdatedDay': incremented ? todayInt : lastUpdatedDay,
+      FirestoreUserFields.streakDays: updated,
+      FirestoreUserFields.streakLastUpdatedDay: incremented
+          ? todayInt
+          : lastUpdatedDay,
       'incremented': incremented,
     };
   }
@@ -582,7 +1173,7 @@ class EarningsEngine {
           (cfg[FirestoreReferralConfigFields.referrerPercentPerReferral]
                   as num?)
               ?.toDouble() ??
-          ((FirestoreAppConfigFields.referralBonusStep != '')
+          (cfg.containsKey(FirestoreAppConfigFields.referralBonusStep)
               ? (cfg[FirestoreAppConfigFields.referralBonusStep] as num?)
                         ?.toDouble() ??
                     0.0
@@ -652,94 +1243,6 @@ class EarningsEngine {
     }
     debugPrint(
       'EarningsEngine: rank table → rank=$rank, multiplier=${out.toStringAsFixed(6)}',
-    );
-    return out;
-  }
-
-  static Future<double> _referralMultiplier(int count) async {
-    final cfgSnap = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.appConfig)
-        .doc(FirestoreAppConfigDocs.referrals)
-        .get();
-    final cfg = cfgSnap.data() ?? {};
-    final Map<String, dynamic> tiersRaw =
-        (cfg[FirestoreReferralConfigFields.referralBonusTiers]
-            as Map<String, dynamic>?) ??
-        {};
-    final List<MapEntry<int, double>> tiers =
-        tiersRaw.entries
-            .map(
-              (e) => MapEntry(
-                int.tryParse(e.key) ?? 0,
-                (e.value as num?)?.toDouble() ?? 0.0,
-              ),
-            )
-            .where((e) => e.key > 0 && e.value > 0.0)
-            .toList()
-          ..sort((a, b) => a.key.compareTo(b.key));
-
-    int maxCount =
-        (cfg[FirestoreReferralConfigFields.rewardedReferralMaxCount] as num?)
-            ?.toInt() ??
-        (cfg[FirestoreReferralConfigFields.referrerMaxCount] as num?)
-            ?.toInt() ??
-        100;
-    if (maxCount <= 0) {
-      maxCount = 0;
-    }
-
-    int effective = count;
-    if (maxCount > 0) {
-      effective = count.clamp(0, maxCount);
-    } else {
-      effective = count.clamp(0, 1000000);
-    }
-
-    double percentPerReferralRaw;
-    if (tiers.isNotEmpty) {
-      int thresholdForLog = 0;
-      double selectedPercent = 0.0;
-      for (final t in tiers) {
-        if (effective <= t.key) {
-          thresholdForLog = t.key;
-          selectedPercent = t.value;
-          break;
-        }
-      }
-      if (thresholdForLog == 0) {
-        final last = tiers.last;
-        thresholdForLog = last.key;
-        selectedPercent = last.value;
-      }
-      percentPerReferralRaw = selectedPercent;
-      debugPrint(
-        'EarningsEngine: referral tiers → count=$count, effective=$effective, threshold<$thresholdForLog, percentPerReferralRaw=${percentPerReferralRaw.toStringAsFixed(6)}',
-      );
-    } else {
-      percentPerReferralRaw =
-          (cfg[FirestoreReferralConfigFields.referrerPercentPerReferral]
-                  as num?)
-              ?.toDouble() ??
-          ((FirestoreAppConfigFields.referralBonusStep != '')
-              ? (cfg[FirestoreAppConfigFields.referralBonusStep] as num?)
-                        ?.toDouble() ??
-                    0.0
-              : 0.0);
-      debugPrint(
-        'EarningsEngine: referral legacy config → percentPerReferralRaw=${percentPerReferralRaw.toStringAsFixed(6)}',
-      );
-    }
-
-    final double percentPerReferral = (percentPerReferralRaw <= 0.0)
-        ? 0.0
-        : (percentPerReferralRaw / 100.0);
-    final double totalPercent = percentPerReferral * effective;
-    final double out = 1.0 + totalPercent;
-    debugPrint(
-      'EarningsEngine: referral config → effective=$effective, percentPerReferralRaw=${percentPerReferralRaw.toStringAsFixed(6)}, totalPercent=${totalPercent.toStringAsFixed(6)}, maxCount=$maxCount',
-    );
-    debugPrint(
-      'EarningsEngine: referral calc → effectiveCount=$effective, multiplier=${out.toStringAsFixed(6)}',
     );
     return out;
   }

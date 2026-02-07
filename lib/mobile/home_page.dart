@@ -1120,21 +1120,17 @@ class _MobileHomePageState extends State<MobileHomePage>
                   (m[FirestoreManagerFields.maxCommunityCoinsManaged] as num?)
                       ?.toInt() ??
                   0;
-              final userRef = FirebaseFirestore.instance
-                  .collection(FirestoreConstants.users)
-                  .doc(uid);
-              final userSnap = await userRef.get();
-              final d = userSnap.data() ?? {};
-              final sel =
-                  ((d[FirestoreUserFields.managedCoinSelections] as List?)
-                      ?.cast<String>()) ??
-                  const [];
+              final sel = _miningService.managedCoinSelections;
               if (max >= 0 && sel.length > max) {
                 final trimmed = sel.take(max).toList();
-                await userRef.set({
-                  FirestoreUserFields.managedCoinSelections: trimmed,
-                  FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-                }, SetOptions(merge: true));
+                await FirebaseFirestore.instance
+                    .collection(FirestoreConstants.users)
+                    .doc(uid)
+                    .collection(FirestoreUserSubCollections.earnings)
+                    .doc(FirestoreEarningsDocs.realtime)
+                    .set({
+                      FirestoreUserFields.managedCoinSelections: trimmed,
+                    }, SetOptions(merge: true));
               }
             }
             await _refresh();
@@ -1157,9 +1153,10 @@ class _MobileHomePageState extends State<MobileHomePage>
             await FirebaseFirestore.instance
                 .collection(FirestoreConstants.users)
                 .doc(uid)
+                .collection(FirestoreUserSubCollections.earnings)
+                .doc(FirestoreEarningsDocs.realtime)
                 .set({
                   FirestoreUserFields.managedCoinSelections: ids,
-                  FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
                 }, SetOptions(merge: true));
             await _refresh();
           },

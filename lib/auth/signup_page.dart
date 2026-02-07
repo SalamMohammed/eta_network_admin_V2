@@ -78,7 +78,7 @@ class _SignupPageState extends State<SignupPage> {
             FirestoreUserFields.role: FirestoreUserRoles.free,
             FirestoreUserFields.rank: FirestoreUserRanks.explorer,
             FirestoreUserFields.totalPoints: 0,
-            FirestoreUserFields.hourlyRate: 0,
+            // hourlyRate is now in earnings/realtime subcollection
             FirestoreUserFields.lastMiningStart: null,
             FirestoreUserFields.lastMiningEnd: null,
             FirestoreUserFields.streakDays: 0,
@@ -94,6 +94,18 @@ class _SignupPageState extends State<SignupPage> {
               FirestoreUserSubscriptionFields.autoRenew: false,
             },
           }, SetOptions(merge: true));
+
+      // Initialize earnings/realtime subcollection
+      await FirebaseFirestore.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .collection(FirestoreUserSubCollections.earnings)
+          .doc(FirestoreEarningsDocs.realtime)
+          .set({
+            FirestoreUserFields.hourlyRate: 0,
+            FirestoreUserFields.managedCoinSelections: [],
+            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+          });
 
       final b = Uint8List(0);
       final r = FirebaseStorage.instance.ref().child('users/$uid/thumbnail');

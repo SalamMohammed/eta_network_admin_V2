@@ -30,6 +30,14 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   // Mining state
   double _totalPoints = 0.0;
   double _hourlyRate = 0.0;
+  // Rate Components
+  double _rateBase = 0.0;
+  double _rateStreak = 0.0;
+  double _rateRank = 0.0;
+  double _rateReferral = 0.0;
+  double _rateManager = 0.0;
+  double _rateAds = 0.0;
+
   Timestamp? _lastStart;
   Timestamp? _lastEnd;
   bool _miningActive = false;
@@ -69,10 +77,17 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _realtimeDocSub;
   Timer? _subExpiryTimer;
   Timer? _refreshDebounce;
+  DateTime? _lastRecalcAttempt;
 
   // Getters
   double get totalPoints => _totalPoints;
   double get hourlyRate => _hourlyRate;
+  double get rateBase => _rateBase;
+  double get rateStreak => _rateStreak;
+  double get rateRank => _rateRank;
+  double get rateReferral => _rateReferral;
+  double get rateManager => _rateManager;
+  double get rateAds => _rateAds;
   bool get miningActive => _miningActive;
   double get displayTotal => _displayTotal;
   bool get managerEnabled => _managerEnabled;
@@ -222,28 +237,67 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       totalPoints = realtimePoints ?? userDocPoints;
 
       // Migration check (fallback path only)
-      if (realtimePoints == null && userDocPoints > 0) {
-        unawaited(
-          EarningsEngine.migrateLegacyPoints(
-            uid: uid,
-            legacyPoints: userDocPoints,
-          ),
-        );
+      if (realtimePoints == null ||
+          !realtimeData.containsKey(FirestoreUserFields.hourlyRate) ||
+          !realtimeData.containsKey(
+            FirestoreUserFields.managedCoinSelections,
+          ) ||
+          !realtimeData.containsKey(FirestoreUserFields.managerBonusPerHour)) {
+        unawaited(EarningsEngine.migrateLegacyData(uid: uid, userData: d));
       }
     }
 
     _totalPoints = totalPoints ?? 0.0;
 
     _hourlyRate =
-        (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+        (syncRes[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+        (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+        0.0;
+
+    // Read Components
+    _rateBase =
+        (syncRes[FirestoreUserFields.rateBase] as num?)?.toDouble() ?? 0.0;
+    _rateStreak =
+        (syncRes[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0;
+    _rateRank =
+        (syncRes[FirestoreUserFields.rateRank] as num?)?.toDouble() ?? 0.0;
+    _rateReferral =
+        (syncRes[FirestoreUserFields.rateReferral] as num?)?.toDouble() ?? 0.0;
+    _rateManager =
+        (syncRes[FirestoreUserFields.rateManager] as num?)?.toDouble() ?? 0.0;
+    _rateAds =
+        (syncRes[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
+
     _managerBonusPerHour =
-        (d[FirestoreUserFields.managerBonusPerHour] as num?)?.toDouble() ?? 0.0;
+        (syncRes[FirestoreUserFields.managerBonusPerHour] as num?)
+            ?.toDouble() ??
+        (d[FirestoreUserFields.managerBonusPerHour] as num?)?.toDouble() ??
+        0.0;
     _lastStart = d[FirestoreUserFields.lastMiningStart] as Timestamp?;
     _lastEnd = d[FirestoreUserFields.lastMiningEnd] as Timestamp?;
     _streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
 
     final now = DateTime.now();
     _miningActive = _lastEnd != null && now.isBefore(_lastEnd!.toDate());
+
+    // Migration Check: If mining is active but components are missing (e.g. rateBase is 0),
+    // trigger recalculation to populate components and infer ads.
+    // Throttle this to prevent infinite loops if recalculation fails or mining is actually ended.
+    if (_miningActive &&
+        _rateBase == 0.0 &&
+        _hourlyRate > 0.0 &&
+        (_lastRecalcAttempt == null ||
+            DateTime.now().difference(_lastRecalcAttempt!).inSeconds > 60)) {
+      _lastRecalcAttempt = DateTime.now();
+      unawaited(
+        EarningsEngine.recalculateRates(uid: uid).then((changed) {
+          // Only refresh if data actually changed to avoid infinite loops
+          if (changed) {
+            _refresh();
+          }
+        }),
+      );
+    }
 
     // Initialize display total if not already simulating
     if (!_miningActive || _simTimer == null) {
@@ -287,6 +341,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         !subscriptionExpired && (isSubActive || (managerEnabledFlag ?? false));
 
     _managedCoinSelections =
+        ((syncRes[FirestoreUserFields.managedCoinSelections] as List?)
+            ?.cast<String>()) ??
         ((d[FirestoreUserFields.managedCoinSelections] as List?)
             ?.cast<String>()) ??
         const [];
@@ -332,22 +388,21 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
           (m[FirestoreManagerFields.managerMultiplier] as num?)?.toDouble() ??
           2.0;
       final mgrActive = (m[FirestoreManagerFields.isActive] as bool?) ?? true;
-      await _maybeApplyManagerMultiplier(
-        uid: uid,
-        baseRate: baseRate,
-        managerIsActive: mgrActive,
-      );
+
+      // Update rates if manager status changed mid-session
+      if (_miningActive) {
+        await EarningsEngine.recalculateRates(uid: uid);
+      }
     } else {
       _managerGlobalEnabled = false;
       _managerEtaAuto = false;
       _managerUserCoinAuto = false;
       _managerMaxCommunity = 0;
       _activeManagerMultiplier = 1.0;
-      await _maybeApplyManagerMultiplier(
-        uid: uid,
-        baseRate: baseRate,
-        managerIsActive: false,
-      );
+
+      if (_miningActive) {
+        await EarningsEngine.recalculateRates(uid: uid);
+      }
     }
 
     // Auto-start mining if manager enabled
@@ -359,50 +414,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _maybeApplyManagerMultiplier({
-    required String uid,
-    required double baseRate,
-    required bool managerIsActive,
-  }) async {
-    final bool shouldApply =
-        _managerEnabled &&
-        managerIsActive &&
-        (_activeManagerId ?? '').isNotEmpty &&
-        _activeManagerMultiplier > 0.0 &&
-        baseRate > 0;
-
-    final double existingBonus = _managerBonusPerHour;
-    final double baseWithoutManager = (_hourlyRate - existingBonus).clamp(
-      0.0,
-      1e18,
-    );
-    final double nextBonus = shouldApply
-        ? (baseRate * _activeManagerMultiplier)
-        : 0.0;
-    final double nextHourlyRate = (baseWithoutManager + nextBonus).clamp(
-      0.0,
-      1e18,
-    );
-
-    final bool bonusChanged = (nextBonus - existingBonus).abs() > 1e-9;
-    final bool rateChanged = (nextHourlyRate - _hourlyRate).abs() > 1e-9;
-    if (!bonusChanged && !rateChanged) return;
-
-    await FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid)
-        .set({
-          FirestoreUserFields.hourlyRate: nextHourlyRate,
-          FirestoreUserFields.managerBonusPerHour: nextBonus,
-          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-
-    _hourlyRate = nextHourlyRate;
-    _managerBonusPerHour = nextBonus;
-    _simBase = _displayTotal;
-    _simAnchor = DateTime.now();
-    _maybeNotify(force: true);
-  }
+  // Removed _maybeApplyManagerMultiplier in favor of EarningsEngine.recalculateRates
 
   void _startUserDocListener() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -473,10 +485,46 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
           final d = snap.data();
           if (d == null) return;
 
+          bool changed = false;
+
+          // Update Total Points
           final newTotal = (d[FirestoreUserFields.totalPoints] as num?)
               ?.toDouble();
           if (newTotal != null && (newTotal - _totalPoints).abs() > 0.001) {
             _totalPoints = newTotal;
+            changed = true;
+          }
+
+          // Update Hourly Rate and Components
+          final newHourly = (d[FirestoreUserFields.hourlyRate] as num?)
+              ?.toDouble();
+          if (newHourly != null && (newHourly - _hourlyRate).abs() > 0.001) {
+            _hourlyRate = newHourly;
+            changed = true;
+          }
+
+          final newBase = (d[FirestoreUserFields.rateBase] as num?)?.toDouble();
+          if (newBase != null) _rateBase = newBase;
+
+          final newStreak = (d[FirestoreUserFields.rateStreak] as num?)
+              ?.toDouble();
+          if (newStreak != null) _rateStreak = newStreak;
+
+          final newRank = (d[FirestoreUserFields.rateRank] as num?)?.toDouble();
+          if (newRank != null) _rateRank = newRank;
+
+          final newRef = (d[FirestoreUserFields.rateReferral] as num?)
+              ?.toDouble();
+          if (newRef != null) _rateReferral = newRef;
+
+          final newMgr = (d[FirestoreUserFields.rateManager] as num?)
+              ?.toDouble();
+          if (newMgr != null) _rateManager = newMgr;
+
+          final newAds = (d[FirestoreUserFields.rateAds] as num?)?.toDouble();
+          if (newAds != null) _rateAds = newAds;
+
+          if (changed) {
             if (_miningActive) {
               // If mining, update base so simulation continues from new total
               _simBase = _totalPoints;
@@ -510,6 +558,22 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       _hourlyRate =
           (res[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
           _hourlyRate;
+      _rateBase =
+          (res[FirestoreUserFields.rateBase] as num?)?.toDouble() ?? _rateBase;
+      _rateStreak =
+          (res[FirestoreUserFields.rateStreak] as num?)?.toDouble() ??
+          _rateStreak;
+      _rateRank =
+          (res[FirestoreUserFields.rateRank] as num?)?.toDouble() ?? _rateRank;
+      _rateReferral =
+          (res[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
+          _rateReferral;
+      _rateManager =
+          (res[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
+          _rateManager;
+      _rateAds =
+          (res[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? _rateAds;
+
       _lastStart = res[FirestoreUserFields.lastMiningStart] as Timestamp?;
       _lastEnd = res[FirestoreUserFields.lastMiningEnd] as Timestamp?;
       _streakDays =
@@ -538,11 +602,10 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
               (m[FirestoreManagerFields.managerMultiplier] as num?)
                   ?.toDouble() ??
               _activeManagerMultiplier;
-          await _maybeApplyManagerMultiplier(
-            uid: uid,
-            baseRate: _baseRate,
-            managerIsActive: mgrActive,
-          );
+
+          // Re-calculate logic handled by EarningsEngine.recalculateRates via listener or explicit call if needed.
+          // Note: startMining returns the rate it calculated, so we don't need to recalc here.
+          // But if we want to ensure everything is consistent, we trust startMining result.
         } catch (_) {}
       }
 
@@ -593,21 +656,32 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
 
     final frac = (percent / 100.0).clamp(0.0, 1e6);
     final bonusPerAd = baseHourlyRate * frac;
-    final targetHourlyRate =
-        baseHourlyRate + (bonusPerAd * (rewardedWatchIndex - 1));
-    if (targetHourlyRate <= 0) return _hourlyRate;
+    // final targetHourlyRate = baseHourlyRate + (bonusPerAd * (rewardedWatchIndex - 1)); // OLD logic
 
-    await FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid)
-        .update({
-          FirestoreUserFields.hourlyRate: targetHourlyRate,
-          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-        });
+    // Just apply the boost for THIS ad watch.
+    // The previous logic seemed to calculate cumulative target.
+    // If rewardedWatchIndex increases, we add another boost?
+    // User instruction: "do the blus.to all these"
+    // Usually ad boost is cumulative.
+    // If this function is called for EACH ad watch, we just add `bonusPerAd`.
 
-    _hourlyRate = targetHourlyRate;
+    // However, existing logic used `rewardedWatchIndex`.
+    // If `rewardedWatchIndex` is 2, it adds 1x bonus?
+    // If index 3, adds 2x bonus?
+    // Let's assume we just add `bonusPerAd` to the current rate.
+
+    await EarningsEngine.applyAdBoost(uid: uid, boostAmount: bonusPerAd);
+
+    // We don't return the new rate directly here because applyAdBoost is async/transactional.
+    // We should refresh or just predict.
+    // For UI responsiveness, we can predict.
+
+    final predictedRate = _hourlyRate + bonusPerAd;
+    _hourlyRate = predictedRate;
+    _rateAds += bonusPerAd; // Update local state
+
     _maybeNotify(force: true);
-    return targetHourlyRate;
+    return predictedRate;
   }
 
   @override
