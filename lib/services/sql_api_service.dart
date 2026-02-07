@@ -198,7 +198,7 @@ class SqlApiService {
       'hourlyRate': hourlyRate,
       'lastMiningStart': start.toIso8601String(),
       'lastMiningEnd': end.toIso8601String(),
-      'lastSyncedAt': start.toIso8601String(),
+      'lastSyncedAt': start.toIso8601String(), // Reset sync cursor
       'deviceId': deviceId,
     });
 

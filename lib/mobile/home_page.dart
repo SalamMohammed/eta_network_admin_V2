@@ -2853,7 +2853,7 @@ class _CoinSelectDialog extends StatefulWidget {
 }
 
 class _CoinSelectDialogState extends State<_CoinSelectDialog> {
-  List<QueryDocumentSnapshot<Map<String, dynamic>>> coins = const [];
+  List<Map<String, dynamic>> coins = const [];
   late List<String> selectedIds = [...widget.current];
   final TextEditingController searchCtrl = TextEditingController();
   String query = '';
@@ -2873,52 +2873,63 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
   Future<void> _load() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    final qs = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid)
-        .collection(FirestoreUserSubCollections.coins)
-        .get();
-    coins = qs.docs
+
+    List<Map<String, dynamic>> loaded = [];
+    if (MiningStateService().managerEnabled) {
+      loaded = await SqlApiService.getMyCoins(uid) ?? [];
+    } else {
+      final qs = await FirebaseFirestore.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .collection(FirestoreUserSubCollections.coins)
+          .get();
+      loaded = qs.docs.map((d) => d.data()).toList();
+    }
+
+    coins = loaded
         .where(
-          (d) =>
-              (d.data()[FirestoreUserCoinMiningFields.ownerId] as String?) !=
-              uid,
+          (d) => (d[FirestoreUserCoinMiningFields.ownerId] as String?) != uid,
         )
         .toList();
     setState(() {});
   }
 
-  String _ownerId(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    return (doc.data()[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
+  String _ownerId(Map<String, dynamic> data) {
+    return (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
   }
 
-  String _name(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    return (doc.data()[FirestoreUserCoinMiningFields.name] as String?) ?? '—';
+  String _name(Map<String, dynamic> data) {
+    return (data[FirestoreUserCoinMiningFields.name] as String?) ?? '—';
   }
 
-  String _symbol(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    return (doc.data()[FirestoreUserCoinMiningFields.symbol] as String?) ?? '';
+  String _symbol(Map<String, dynamic> data) {
+    return (data[FirestoreUserCoinMiningFields.symbol] as String?) ?? '';
   }
 
-  String _imageUrl(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    return (doc.data()[FirestoreUserCoinMiningFields.imageUrl] as String?) ??
-        '';
+  String _imageUrl(Map<String, dynamic> data) {
+    return (data[FirestoreUserCoinMiningFields.imageUrl] as String?) ?? '';
   }
 
-  double _rate(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-    return (doc.data()[FirestoreUserCoinMiningFields.hourlyRate] as num?)
-            ?.toDouble() ??
-        0.0;
+  double _rate(Map<String, dynamic> data) {
+    final v = data[FirestoreUserCoinMiningFields.hourlyRate];
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v) ?? 0.0;
+    return 0.0;
   }
 
-  bool _isActive(
-    QueryDocumentSnapshot<Map<String, dynamic>> doc, {
-    required DateTime now,
-  }) {
-    final end =
-        doc.data()[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
-    if (end == null) return false;
-    return now.isBefore(end.toDate());
+  bool _isActive(Map<String, dynamic> data, {required DateTime now}) {
+    final raw = data[FirestoreUserCoinMiningFields.lastMiningEnd];
+    if (raw == null) return false;
+    if (raw is Timestamp) return now.isBefore(raw.toDate());
+    if (raw is String) {
+      try {
+        final d = DateTime.parse(raw);
+        return now.isBefore(d);
+      } catch (_) {
+        return false;
+      }
+    }
+    return false;
   }
 
   @override
@@ -2931,7 +2942,7 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
     const blue = Color(0xFF1677FF);
 
     final now = DateTime.now();
-    final byId = <String, QueryDocumentSnapshot<Map<String, dynamic>>>{};
+    final byId = <String, Map<String, dynamic>>{};
     for (final d in coins) {
       final id = _ownerId(d);
       if (id.isNotEmpty) byId[id] = d;
@@ -3102,7 +3113,7 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
             );
           }
 
-          Widget coinRow(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+          Widget coinRow(Map<String, dynamic> doc) {
             final ownerId = _ownerId(doc);
             final selected = selectedIds.contains(ownerId);
             final name = _name(doc);

@@ -25,6 +25,13 @@ class CoinService with WidgetsBindingObserver {
   static bool _isPaused = false;
   static final List<Function> _resumeCallbacks = [];
   static final List<Function> _pauseCallbacks = [];
+  static final List<VoidCallback> _refreshMyCoinsCallbacks = [];
+
+  static void triggerMyCoinsRefresh() {
+    for (final callback in _refreshMyCoinsCallbacks) {
+      callback();
+    }
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -90,17 +97,23 @@ class CoinService with WidgetsBindingObserver {
         }
       }
 
+      void forceFetch() {
+        fetch();
+      }
+
       controller.onListen = () {
         fetch();
         startTimer();
         _resumeCallbacks.add(onResume);
         _pauseCallbacks.add(onPause);
+        _refreshMyCoinsCallbacks.add(forceFetch);
       };
 
       controller.onCancel = () {
         timer?.cancel();
         _resumeCallbacks.remove(onResume);
         _pauseCallbacks.remove(onPause);
+        _refreshMyCoinsCallbacks.remove(forceFetch);
       };
 
       return controller.stream.asBroadcastStream();
@@ -387,6 +400,7 @@ class CoinService with WidgetsBindingObserver {
     if (useSqlBackend) {
       try {
         await SqlApiService.addToMyCoins(coinOwnerId);
+        triggerMyCoinsRefresh();
         return;
       } catch (e) {
         debugPrint('[CoinService] SQL add to my coins failed | error=$e');
@@ -511,6 +525,8 @@ class CoinService with WidgetsBindingObserver {
         end: endDt,
         deviceId: deviceId,
       );
+
+      triggerMyCoinsRefresh();
 
       // Return the updated record in a format compatible with the app
       // Ensure fields match what the UI expects (mapped from PHP response)
