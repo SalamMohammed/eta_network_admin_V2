@@ -358,7 +358,8 @@ class EarningsEngine {
 
       // Write to realtime subcollection INSTEAD of main user doc
       final Map<String, dynamic> writeData = {
-        FirestoreUserFields.totalPoints: FieldValue.increment(earned),
+        // Use explicit set instead of increment to ensure base is correct if migrating
+        FirestoreUserFields.totalPoints: totalPoints + earned,
         FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
         FirestoreUserFields.hourlyRate: hourlyRate,
         FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
@@ -404,7 +405,9 @@ class EarningsEngine {
     return result;
   }
 
-  static Future<void> applyAdBoost({
+  /// Boosts the hourly rate by a specific amount (Ad Reward).
+  /// Updates rateAds and hourlyRate in Firestore.
+  static Future<double> boostAdRate({
     required String uid,
     required double boostAmount,
   }) async {
@@ -414,25 +417,66 @@ class EarningsEngine {
     final realtimeRef = userRef
         .collection(FirestoreUserSubCollections.earnings)
         .doc(FirestoreEarningsDocs.realtime);
+    final logRef = FirebaseFirestore.instance
+        .collection(FirestoreConstants.pointLogs)
+        .doc();
 
-    await FirebaseFirestore.instance.runTransaction((transaction) async {
+    return FirebaseFirestore.instance.runTransaction((transaction) async {
       final realtimeSnap = await transaction.get(realtimeRef);
-      final data = realtimeSnap.data() ?? {};
+      // If doc doesn't exist, we can't boost a rate that doesn't exist.
+      // However, startMining should have created it.
+      // If it doesn't exist, we assume 0 defaults.
+      final data = realtimeSnap.exists ? (realtimeSnap.data() ?? {}) : {};
 
-      final double currentRate =
-          (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
       final double currentAds =
           (data[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
-
       final double newAds = currentAds + boostAmount;
-      final double newRate = currentRate + boostAmount;
+
+      final double currentHourlyRate =
+          (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+
+      // We add boostAmount to currentHourlyRate.
+      // This assumes other components haven't changed since last sync.
+      // This is a safe assumption for a quick boost action.
+      final double newHourlyRate = currentHourlyRate + boostAmount;
 
       transaction.set(realtimeRef, {
         FirestoreUserFields.rateAds: newAds,
-        FirestoreUserFields.hourlyRate: newRate,
+        FirestoreUserFields.hourlyRate: newHourlyRate,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+
+      transaction.set(logRef, {
+        FirestorePointLogFields.userId: uid,
+        FirestorePointLogFields.type:
+            FirestorePointLogTypes.bonus, // Or create a new type if needed
+        FirestorePointLogFields.amount:
+            0, // Rate boost doesn't give immediate points
+        FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
+        FirestorePointLogFields.description: 'Ad Reward: Rate +$boostAmount/hr',
+      });
+
+      return newAds;
     });
+  }
+
+  @Deprecated('Use boostAdRate instead')
+  static Future<void> grantAdReward({
+    required String uid,
+    required double rewardAmount,
+  }) async {
+    // Legacy redirect or no-op if we want to force switch
+    // For now, let's keep it but logging warning
+    debugPrint('grantAdReward is deprecated. Use boostAdRate.');
+  }
+
+  @Deprecated('Use grantAdReward instead')
+  static Future<void> applyAdBoost({
+    required String uid,
+    required double boostAmount,
+  }) async {
+    // Redirect to grantAdReward for backward compatibility during migration
+    await grantAdReward(uid: uid, rewardAmount: boostAmount);
   }
 
   static Future<bool> recalculateRates({required String uid}) async {
@@ -556,8 +600,9 @@ class EarningsEngine {
       final double rateRank = baseRate * rankFrac;
       final double rateReferral = baseRate * referralFrac;
 
-      // Ads & Migration Logic
-      double rateAds =
+      // Ads Logic
+      // Restore rateAds from Firestore to persist ad boosts
+      final double rateAds =
           (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
           0.0;
 
@@ -565,20 +610,15 @@ class EarningsEngine {
           (realtimeData[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
           0.0;
 
-      // Detect if we need to migrate ads (active session, rate mismatch, no ads recorded)
-      final double calculatedWithoutAds =
-          baseRate + rateStreak + rateRank + rateReferral + rateManager;
+      final double calculatedHourlyRate =
+          baseRate +
+          rateStreak +
+          rateRank +
+          rateReferral +
+          rateManager +
+          rateAds;
 
-      // If we have a significant discrepancy and ads are 0, assume the difference is ads
-      if (rateAds == 0.0 && currentHourlyRate > calculatedWithoutAds + 0.001) {
-        final double diff = currentHourlyRate - calculatedWithoutAds;
-        if (diff > 0) {
-          rateAds = diff;
-          debugPrint('EarningsEngine: Migrated implicit ad bonus: $rateAds');
-        }
-      }
-
-      final double newHourlyRate = calculatedWithoutAds + rateAds;
+      final double newHourlyRate = calculatedHourlyRate;
 
       // Dirty Check: Prevent writes if nothing changed
       final double currentBase =

@@ -180,7 +180,8 @@ class _MobileHomePageState extends State<MobileHomePage>
       setState(() {
         _rewardedSessionStartMs = sessionStartMs;
         _rewardedWatchedThisSession = 0;
-        _rewardedSessionBaseHourlyRate = _miningService.hourlyRate;
+        // Use rateBase (admin configured base rate) instead of hourlyRate (which includes boosts)
+        _rewardedSessionBaseHourlyRate = _miningService.rateBase;
       });
       await _persistRewardedSessionLimiter();
       return;
@@ -188,9 +189,7 @@ class _MobileHomePageState extends State<MobileHomePage>
 
     if (_rewardedSessionBaseHourlyRate <= 0) {
       if (!mounted) return;
-      setState(
-        () => _rewardedSessionBaseHourlyRate = _miningService.hourlyRate,
-      );
+      setState(() => _rewardedSessionBaseHourlyRate = _miningService.rateBase);
       await _persistRewardedSessionLimiter();
     }
   }
@@ -239,23 +238,20 @@ class _MobileHomePageState extends State<MobileHomePage>
             final next = _rewardedWatchedThisSession + 1;
             setState(() => _rewardedWatchedThisSession = next);
             await _persistRewardedSessionLimiter();
-            if (next >= 2) {
-              final before = _miningService.hourlyRate;
-              final after = await _miningService.applyRewardedAdHourlyBoost(
-                baseHourlyRate: _rewardedSessionBaseHourlyRate,
-                percent: _adsService.config.rewardBonusPercent,
-                rewardedWatchIndex: next,
-              );
-              if (!mounted) return;
-              if (after > before) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Mining rate boosted: ${before.toStringAsFixed(2)} → ${after.toStringAsFixed(2)} ETA/hr',
-                    ),
+
+            // Fixed: Claim reward for every ad watched (previously required 2+)
+            final boostAmount = await _miningService.boostAdRate(
+              percent: _adsService.config.rewardBonusPercent,
+            );
+            if (!mounted) return;
+            if (boostAmount > 0) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Rate boosted: +${boostAmount.toStringAsFixed(4)} ETA/hr',
                   ),
-                );
-              }
+                ),
+              );
             }
           } catch (e) {
             debugPrint('Rewarded bonus apply failed: $e');
@@ -265,9 +261,10 @@ class _MobileHomePageState extends State<MobileHomePage>
             ).showSnackBar(SnackBar(content: Text('Ad bonus failed: $e')));
           }
         }());
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Reward: ${reward.amount} ${reward.type}')),
-        );
+        // Hide generic AdMob reward message to avoid confusion
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //   SnackBar(content: Text('Reward: ${reward.amount} ${reward.type}')),
+        // );
       },
     );
     return true;

@@ -632,56 +632,57 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Boosts the ad rate by a calculated amount.
+  /// Returns the amount of rate increase (boostAmount).
+  /// Boosts the ad rate by a calculated amount.
+  /// Returns the amount of rate increase (boostAmount).
+  Future<double> boostAdRate({required double percent}) async {
+    // Strictly use the admin-configured base rate (fetched from config/Firestore)
+    // This ensures we calculate bonus based on the correct base, not total points or stale UI state.
+    final baseRateToUse = _rateBase;
+
+    if (baseRateToUse <= 0) return 0.0;
+    if (percent <= 0) return 0.0;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return 0.0;
+
+    if (!_miningActive) {
+      return 0.0;
+    }
+
+    final frac = (percent / 100.0).clamp(0.0, 1e6);
+    final boostAmount = baseRateToUse * frac;
+
+    // Call new engine method
+    await EarningsEngine.boostAdRate(uid: uid, boostAmount: boostAmount);
+
+    // Update local state immediately for UI responsiveness
+    _rateAds += boostAmount;
+    _hourlyRate += boostAmount;
+
+    // Notify UI
+    notifyListeners();
+
+    return boostAmount;
+  }
+
+  @Deprecated('Use boostAdRate instead')
+  Future<double> claimAdReward({
+    required double baseHourlyRate,
+    required double percent,
+  }) async {
+    return boostAdRate(percent: percent);
+  }
+
+  @Deprecated('Use boostAdRate instead')
   Future<double> applyRewardedAdHourlyBoost({
     required double baseHourlyRate,
     required double percent,
     required int rewardedWatchIndex,
   }) async {
-    if (rewardedWatchIndex < 2) return _hourlyRate;
-    if (baseHourlyRate <= 0) return _hourlyRate;
-    if (percent <= 0) return _hourlyRate;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return _hourlyRate;
-    if (!_miningActive || _lastStart == null || _lastEnd == null) {
-      return _hourlyRate;
-    }
-
-    final syncRes = await EarningsEngine.syncEarnings();
-    _totalPoints =
-        (syncRes[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
-        _totalPoints;
-    _displayTotal = _totalPoints;
-    _simBase = _totalPoints;
-    _simAnchor = DateTime.now();
-
-    final frac = (percent / 100.0).clamp(0.0, 1e6);
-    final bonusPerAd = baseHourlyRate * frac;
-    // final targetHourlyRate = baseHourlyRate + (bonusPerAd * (rewardedWatchIndex - 1)); // OLD logic
-
-    // Just apply the boost for THIS ad watch.
-    // The previous logic seemed to calculate cumulative target.
-    // If rewardedWatchIndex increases, we add another boost?
-    // User instruction: "do the blus.to all these"
-    // Usually ad boost is cumulative.
-    // If this function is called for EACH ad watch, we just add `bonusPerAd`.
-
-    // However, existing logic used `rewardedWatchIndex`.
-    // If `rewardedWatchIndex` is 2, it adds 1x bonus?
-    // If index 3, adds 2x bonus?
-    // Let's assume we just add `bonusPerAd` to the current rate.
-
-    await EarningsEngine.applyAdBoost(uid: uid, boostAmount: bonusPerAd);
-
-    // We don't return the new rate directly here because applyAdBoost is async/transactional.
-    // We should refresh or just predict.
-    // For UI responsiveness, we can predict.
-
-    final predictedRate = _hourlyRate + bonusPerAd;
-    _hourlyRate = predictedRate;
-    _rateAds += bonusPerAd; // Update local state
-
-    _maybeNotify(force: true);
-    return predictedRate;
+    // Forward to new logic
+    final boost = await boostAdRate(percent: percent);
+    return _hourlyRate;
   }
 
   @override
