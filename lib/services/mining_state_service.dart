@@ -171,6 +171,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       await _refresh();
 
       // Start listeners
+      UserService().setLiveMode(true);
       _startUserDocListener();
       _startRealtimeDocListener();
       _startSimulationIfNeeded();
@@ -425,6 +426,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         .doc(uid)
         .snapshots()
         .listen((snap) {
+          // Push update to UserService cache and enable live mode if we have data
+          if (snap.exists) {
+            UserService().updateCache(snap);
+          }
+
           final d = snap.data();
           if (d == null) return;
           final sub =
@@ -482,6 +488,9 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         .doc(FirestoreEarningsDocs.realtime)
         .snapshots()
         .listen((snap) {
+          if (snap.exists) {
+            UserService().updateRealtimeCache(snap);
+          }
           final d = snap.data();
           if (d == null) return;
 
@@ -690,14 +699,17 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     if (state == AppLifecycleState.paused) {
       _simTimer?.cancel();
       _simTimer = null;
+      _refreshDebounce?.cancel(); // Cancel pending refresh
       _userDocSub?.cancel();
       _userDocSub = null;
+      UserService().setLiveMode(false);
       _realtimeDocSub?.cancel();
       _realtimeDocSub = null;
       _subExpiryTimer?.cancel();
       _subExpiryTimer = null;
     } else if (state == AppLifecycleState.resumed) {
       _ensureTimerRunning();
+      UserService().setLiveMode(true);
       _startUserDocListener();
       _startRealtimeDocListener();
       // Also refresh manually to ensure we catch anything the listener might miss during reconnection
@@ -835,6 +847,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     _simTimer = null;
     _userDocSub?.cancel();
     _userDocSub = null;
+    UserService().setLiveMode(false);
     _realtimeDocSub?.cancel();
     _realtimeDocSub = null;
     _subExpiryTimer?.cancel();

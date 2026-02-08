@@ -58,8 +58,9 @@ class EarningsEngine {
       // No, we need to calculate 'earned' points based on elapsed time since last sync.
 
       try {
-        final realtimeSnap = await realtimeRef.get();
-        final realtimeData = realtimeSnap.data() ?? {};
+        // OPTIMIZATION: Use UserService cache for realtime doc to avoid redundant reads
+        final realtimeSnap = await UserService().getRealtimeDoc(uid);
+        final realtimeData = realtimeSnap?.data() ?? {};
 
         final Timestamp? startTs =
             data[FirestoreUserFields.lastMiningStart] as Timestamp?;
