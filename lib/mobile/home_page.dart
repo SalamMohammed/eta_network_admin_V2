@@ -80,11 +80,14 @@ class _MobileHomePageState extends State<MobileHomePage>
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       _userCoinStream = CoinService.watchUserCoin(uid);
-      _minedCoinsStream = CoinService.watchMyCoins(uid);
+
+      // Share the stream to avoid double polling
+      final myCoinsStream = CoinService.watchMyCoins(uid);
+      _minedCoinsStream = myCoinsStream;
       _liveCoinsStream = CoinService.watchLiveCoins(sort: _liveSort);
 
       // Cache coins for Manager (Zero-Read Polling)
-      _managerCoinsSub = CoinService.watchMyCoins(uid).listen((coins) {
+      _managerCoinsSub = myCoinsStream.listen((coins) {
         if (mounted) {
           _managerCachedCoins = coins;
           // Trigger check immediately when data updates
@@ -2869,7 +2872,8 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
     if (uid == null) return;
 
     List<Map<String, dynamic>> loaded = [];
-    if (MiningStateService().managerEnabled) {
+    // Use SQL if enabled, otherwise fall back to Firestore
+    if (CoinService.useSqlBackend) {
       loaded = await SqlApiService.getMyCoins(uid) ?? [];
     } else {
       final qs = await FirebaseFirestore.instance

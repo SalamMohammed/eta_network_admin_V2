@@ -18,7 +18,10 @@ class EarningsEngine {
     );
   }
 
-  static Future<Map<String, dynamic>> syncEarnings() async {
+  static Future<Map<String, dynamic>> syncEarnings({
+    Map<String, dynamic>? cachedManagerData,
+    String? cachedManagerId,
+  }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
 
@@ -480,7 +483,11 @@ class EarningsEngine {
     await grantAdReward(uid: uid, rewardAmount: boostAmount);
   }
 
-  static Future<bool> recalculateRates({required String uid}) async {
+  static Future<bool> recalculateRates({
+    required String uid,
+    Map<String, dynamic>? cachedManagerData,
+    String? cachedManagerId,
+  }) async {
     final userRef = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
@@ -571,13 +578,10 @@ class EarningsEngine {
       if (managerEnabled &&
           activeManagerId != null &&
           activeManagerId.isNotEmpty) {
-        final managerRef = FirebaseFirestore.instance
-            .collection(FirestoreConstants.managers)
-            .doc(activeManagerId);
-        final managerDoc = await transaction.get(managerRef);
-
-        if (managerDoc.exists) {
-          final mData = managerDoc.data()!;
+        // OPTIMIZATION: Use cached manager data if ID matches
+        if (cachedManagerId == activeManagerId && cachedManagerData != null) {
+          final mData = cachedManagerData;
+          // Copied logic from below to process mData
           final expiresAt =
               mData[FirestoreManagerFields.expiresAt] as Timestamp?;
           final bool isExpired =
@@ -588,6 +592,27 @@ class EarningsEngine {
                     ?.toDouble() ??
                 0.0;
             rateManager = baseRate * multiplier;
+          }
+        } else {
+          // Fallback: Fetch from Firestore (Read Cost: 1)
+          final managerRef = FirebaseFirestore.instance
+              .collection(FirestoreConstants.managers)
+              .doc(activeManagerId);
+          final managerDoc = await transaction.get(managerRef);
+
+          if (managerDoc.exists) {
+            final mData = managerDoc.data()!;
+            final expiresAt =
+                mData[FirestoreManagerFields.expiresAt] as Timestamp?;
+            final bool isExpired =
+                expiresAt != null && expiresAt.toDate().isBefore(now);
+            if (!isExpired) {
+              final double multiplier =
+                  (mData[FirestoreManagerFields.managerMultiplier] as num?)
+                      ?.toDouble() ??
+                  0.0;
+              rateManager = baseRate * multiplier;
+            }
           }
         }
       }
@@ -677,6 +702,8 @@ class EarningsEngine {
   static Future<Map<String, dynamic>> startMining({
     String? deviceId,
     DateTime? maxEnd,
+    Map<String, dynamic>? cachedManagerData,
+    String? cachedManagerId,
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
@@ -810,13 +837,18 @@ class EarningsEngine {
     if (managerEnabled &&
         activeManagerId != null &&
         activeManagerId.isNotEmpty) {
-      final managerDoc = await FirebaseFirestore.instance
-          .collection(FirestoreConstants.managers)
-          .doc(activeManagerId)
-          .get();
+      Map<String, dynamic>? mData;
+      if (cachedManagerId == activeManagerId && cachedManagerData != null) {
+        mData = cachedManagerData;
+      } else {
+        final managerDoc = await FirebaseFirestore.instance
+            .collection(FirestoreConstants.managers)
+            .doc(activeManagerId)
+            .get();
+        mData = managerDoc.data();
+      }
 
-      if (managerDoc.exists) {
-        final mData = managerDoc.data()!;
+      if (mData != null) {
         final expiresAt = mData[FirestoreManagerFields.expiresAt] as Timestamp?;
         final bool isExpired =
             expiresAt != null && expiresAt.toDate().isBefore(now);

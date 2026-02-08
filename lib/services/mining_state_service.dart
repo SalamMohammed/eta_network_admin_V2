@@ -194,7 +194,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
 
     // Sync earnings to ensure accuracy before loading
     // OPTIMIZATION: Capture result to avoid redundant reads
-    final syncRes = await EarningsEngine.syncEarnings();
+    // Pass cached manager data to avoid redundant manager doc read in syncEarnings
+    final syncRes = await EarningsEngine.syncEarnings(
+      cachedManagerData: _cachedManagerData,
+      cachedManagerId: _cachedManagerId,
+    );
 
     // Load App Config
     final g = await ConfigService().getGeneralConfig();
@@ -291,7 +295,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
             DateTime.now().difference(_lastRecalcAttempt!).inSeconds > 60)) {
       _lastRecalcAttempt = DateTime.now();
       unawaited(
-        EarningsEngine.recalculateRates(uid: uid).then((changed) {
+        EarningsEngine.recalculateRates(
+          uid: uid,
+          cachedManagerData: _cachedManagerData,
+          cachedManagerId: _cachedManagerId,
+        ).then((changed) {
           // Only refresh if data actually changed to avoid infinite loops
           if (changed) {
             _refresh();
@@ -392,7 +400,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
 
       // Update rates if manager status changed mid-session
       if (_miningActive) {
-        await EarningsEngine.recalculateRates(uid: uid);
+        await EarningsEngine.recalculateRates(
+          uid: uid,
+          cachedManagerData: _cachedManagerData,
+          cachedManagerId: _cachedManagerId,
+        );
       }
     } else {
       _managerGlobalEnabled = false;
@@ -402,7 +414,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       _activeManagerMultiplier = 1.0;
 
       if (_miningActive) {
-        await EarningsEngine.recalculateRates(uid: uid);
+        await EarningsEngine.recalculateRates(
+          uid: uid,
+          cachedManagerData: _cachedManagerData,
+          cachedManagerId: _cachedManagerId,
+        );
       }
     }
 
@@ -420,13 +436,18 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   void _startUserDocListener() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+
+    // Enable "Live Mode" in UserService so it trusts our pushed updates
+    // instead of fetching redundantly.
+    UserService().setLiveMode(true);
+
     _userDocSub?.cancel();
     _userDocSub = FirebaseFirestore.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
         .snapshots()
         .listen((snap) {
-          // Push update to UserService cache and enable live mode if we have data
+          // Push update to UserService cache
           if (snap.exists) {
             UserService().updateCache(snap);
           }
@@ -562,6 +583,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       final res = await EarningsEngine.startMining(
         deviceId: devId,
         maxEnd: maxEnd,
+        cachedManagerData: _cachedManagerData,
+        cachedManagerId: _cachedManagerId,
       );
 
       _hourlyRate =
@@ -847,13 +870,15 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     _simTimer = null;
     _userDocSub?.cancel();
     _userDocSub = null;
-    UserService().setLiveMode(false);
     _realtimeDocSub?.cancel();
     _realtimeDocSub = null;
     _subExpiryTimer?.cancel();
     _subExpiryTimer = null;
     _refreshDebounce?.cancel();
     _refreshDebounce = null;
+
+    // Disable Live Mode as we are no longer pushing updates
+    UserService().setLiveMode(false);
 
     _isInitializing = false;
     _initialized = false;
@@ -898,10 +923,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
 
     // 1. Refresh state to get latest config/subscription
     // OPTIMIZATION: Check if user is pro and manager enabled BEFORE refreshing
-    final userDoc = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid)
-        .get();
+    final userDoc = await UserService().getUser(uid);
+    if (userDoc == null) {
+      debugPrint('[MiningStateService] Failed to fetch user data');
+      return;
+    }
     final userData = userDoc.data() ?? {};
     final bool isPro =
         userData[FirestoreUserFields.role] == FirestoreUserRoles.pro;
@@ -940,24 +966,20 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     // Need to fetch my coins first.
     // Use hybrid loading logic similar to HomePage
     List<Map<String, dynamic>> allCoins = [];
-    if (_managerEnabled) {
-      // Pro users might use SQL
-      try {
-        final sqlCoins = await SqlApiService.getMyCoins(uid);
-        if (sqlCoins != null) allCoins = sqlCoins;
-      } catch (e) {
-        debugPrint('[MiningStateService] SQL fetch failed: $e');
-        // Fallback to Firestore? Usually if SQL fails, we might want to try Firestore
-        // But logic dictates strict separation usually. Let's assume SQL for Pro.
-      }
-    } else {
-      // Standard users (though manager usually implies Pro)
-      final qs = await FirebaseFirestore.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .collection(FirestoreUserSubCollections.coins)
-          .get();
-      allCoins = qs.docs.map((d) => d.data()).toList();
+
+    // STRICT CHECK: Only run community coin logic if manager is actively enabled
+    if (!_managerEnabled) {
+      debugPrint(
+        '[MiningStateService] Manager disabled, skipping community coins',
+      );
+      return;
+    }
+
+    try {
+      final sqlCoins = await SqlApiService.getMyCoins(uid);
+      if (sqlCoins != null) allCoins = sqlCoins;
+    } catch (e) {
+      debugPrint('[MiningStateService] SQL fetch failed: $e');
     }
 
     if (allCoins.isEmpty) {

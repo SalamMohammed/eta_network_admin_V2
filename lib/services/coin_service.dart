@@ -579,8 +579,27 @@ class CoinService with WidgetsBindingObserver {
           0.0,
     }, SetOptions(merge: true));
     await batch.commit();
-    final updated = await ref.get();
-    return updated.data() ?? {};
+
+    // OPTIMIZATION: Merge local data instead of re-fetching
+    final Map<String, dynamic> mergedData = Map<String, dynamic>.from(data);
+    mergedData.addAll({
+      FirestoreUserCoinMiningFields.ownerId: coinOwnerId,
+      FirestoreUserCoinMiningFields.name: name,
+      FirestoreUserCoinMiningFields.symbol: symbol,
+      FirestoreUserCoinMiningFields.imageUrl: imageUrl,
+      FirestoreUserCoinMiningFields.description: description,
+      FirestoreUserCoinMiningFields.socialLinks: links,
+      FirestoreUserCoinMiningFields.hourlyRate: rate,
+      FirestoreUserCoinMiningFields.lastMiningStart: Timestamp.fromDate(now),
+      FirestoreUserCoinMiningFields.lastMiningEnd: end,
+      FirestoreUserCoinMiningFields.lastSyncedAt: Timestamp.fromDate(now),
+      FirestoreUserCoinMiningFields.totalPoints:
+          (data[FirestoreUserCoinMiningFields.totalPoints] as num?)
+              ?.toDouble() ??
+          0.0,
+    });
+    
+    return mergedData;
   }
 
   static Future<void> syncCoinEarnings({
