@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:purchases_flutter/purchases_flutter.dart';
 import '../shared/firestore_constants.dart';
+import '../utils/firestore_helper.dart';
 import 'config_service.dart';
 import 'user_service.dart';
 
@@ -178,7 +179,7 @@ class SubscriptionService {
     DateTime? expiresAt;
     bool autoRenew = false;
 
-    final userRef = FirebaseFirestore.instance
+    final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
 
@@ -348,7 +349,7 @@ class SubscriptionService {
   }
 
   Future<String?> _getManagerIdFromPlan(String planId) async {
-    final qs = await FirebaseFirestore.instance
+    final qs = await FirestoreHelper.instance
         .collection(FirestoreConstants.managers)
         .where(FirestoreManagerFields.storeProductId, isEqualTo: planId)
         .limit(1)

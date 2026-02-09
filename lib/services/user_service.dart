@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import '../utils/firestore_helper.dart';
 import '../shared/firestore_constants.dart';
 
 class UserService {
@@ -59,7 +60,7 @@ class UserService {
     }
 
     debugPrint('UserService: Fetching user document from Firestore');
-    _pendingRequest = FirebaseFirestore.instance
+    _pendingRequest = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
         .get();
@@ -111,7 +112,7 @@ class UserService {
     }
 
     debugPrint('UserService: Fetching realtime document from Firestore');
-    _pendingRealtimeRequest = FirebaseFirestore.instance
+    _pendingRealtimeRequest = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
         .collection(FirestoreUserSubCollections.earnings)

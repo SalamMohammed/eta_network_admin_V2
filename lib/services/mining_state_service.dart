@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/widgets.dart';
+import '../utils/firestore_helper.dart';
 import '../shared/firestore_constants.dart';
 import 'earnings_engine.dart';
 import '../shared/device_id.dart';
@@ -53,14 +54,16 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   String? _activeManagerId;
   List<String> _managedCoinSelections = const [];
   Timestamp? _subscriptionExpiresAt;
-  double _managerBonusPerHour = 0.0;
   double _activeManagerMultiplier = 1.0;
-  double _baseRate = 0.2;
 
   // Manager Cache
   Map<String, dynamic>? _cachedManagerData;
   String? _cachedManagerId;
   DateTime? _lastManagerFetch;
+
+  // Referral Cache
+  int? _activeReferralCount;
+  DateTime? _lastReferralCountFetch;
 
   // Simulation state
   double _displayTotal = 0.0;
@@ -109,7 +112,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     final now = DateTime.now();
     final end = _lastEnd?.toDate();
     if (end != null && now.isBefore(end)) {
-      await FirebaseFirestore.instance
+      await FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
           .set({
@@ -134,12 +137,12 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     final now = DateTime.now();
-    final coinsRef = FirebaseFirestore.instance
+    final coinsRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
         .collection(FirestoreUserSubCollections.coins);
     final snap = await coinsRef.get();
-    final batch = FirebaseFirestore.instance.batch();
+    final batch = FirestoreHelper.instance.batch();
     int updates = 0;
     for (final d in snap.docs) {
       final data = d.data();
@@ -202,13 +205,32 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
 
     // Load App Config
     final g = await ConfigService().getGeneralConfig();
-    final baseRate =
-        (g[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ?? 0.2;
-    _baseRate = baseRate;
     _sessionHours =
         ((g[FirestoreAppConfigFields.sessionDurationHours] as num?)
             ?.toDouble() ??
         24.0);
+
+    // Fetch Active Referral Count (Throttled 10m)
+    // Used for recalculating rates without expensive queries every time
+    if (_activeReferralCount == null ||
+        _lastReferralCountFetch == null ||
+        DateTime.now().difference(_lastReferralCountFetch!).inMinutes > 10) {
+      try {
+        final countQuery = await FirestoreHelper.instance
+            .collection(FirestoreConstants.users)
+            .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
+            .where(
+              FirestoreUserFields.lastMiningEnd,
+              isGreaterThan: Timestamp.fromDate(DateTime.now()),
+            )
+            .count()
+            .get();
+        _activeReferralCount = countQuery.count;
+        _lastReferralCountFetch = DateTime.now();
+      } catch (e) {
+        debugPrint('Failed to fetch active referral count: $e');
+      }
+    }
 
     // Load User Data
     // OPTIMIZATION: Use data from syncRes if available to avoid UserService call
@@ -227,7 +249,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
 
     if (totalPoints == null) {
       // Fallback: Manually fetch if syncRes failed (unlikely)
-      final userRef = FirebaseFirestore.instance
+      final userRef = FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(uid);
       final realtimeSnap = await userRef
@@ -240,19 +262,9 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       final userDocPoints =
           (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
       totalPoints = realtimePoints ?? userDocPoints;
-
-      // Migration check (fallback path only)
-      if (realtimePoints == null ||
-          !realtimeData.containsKey(FirestoreUserFields.hourlyRate) ||
-          !realtimeData.containsKey(
-            FirestoreUserFields.managedCoinSelections,
-          ) ||
-          !realtimeData.containsKey(FirestoreUserFields.managerBonusPerHour)) {
-        unawaited(EarningsEngine.migrateLegacyData(uid: uid, userData: d));
-      }
     }
 
-    _totalPoints = totalPoints ?? 0.0;
+    _totalPoints = totalPoints;
 
     _hourlyRate =
         (syncRes[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
@@ -273,11 +285,6 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     _rateAds =
         (syncRes[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
 
-    _managerBonusPerHour =
-        (syncRes[FirestoreUserFields.managerBonusPerHour] as num?)
-            ?.toDouble() ??
-        (d[FirestoreUserFields.managerBonusPerHour] as num?)?.toDouble() ??
-        0.0;
     _lastStart = d[FirestoreUserFields.lastMiningStart] as Timestamp?;
     _lastEnd = d[FirestoreUserFields.lastMiningEnd] as Timestamp?;
     _streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
@@ -299,10 +306,32 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
           uid: uid,
           cachedManagerData: _cachedManagerData,
           cachedManagerId: _cachedManagerId,
-        ).then((changed) {
-          // Only refresh if data actually changed to avoid infinite loops
-          if (changed) {
-            _refresh();
+          activeReferralCount: _activeReferralCount,
+        ).then((rates) {
+          // Update local state from returned rates
+          if (rates.isNotEmpty) {
+            _rateBase =
+                (rates[FirestoreUserFields.rateBase] as num?)?.toDouble() ??
+                _rateBase;
+            _rateStreak =
+                (rates[FirestoreUserFields.rateStreak] as num?)?.toDouble() ??
+                _rateStreak;
+            _rateRank =
+                (rates[FirestoreUserFields.rateRank] as num?)?.toDouble() ??
+                _rateRank;
+            _rateReferral =
+                (rates[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
+                _rateReferral;
+            _rateManager =
+                (rates[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
+                _rateManager;
+            _rateAds =
+                (rates[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
+                _rateAds;
+            _hourlyRate =
+                (rates[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+                _hourlyRate;
+            notifyListeners();
           }
         }),
       );
@@ -331,7 +360,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         final roleToWrite = existingRole == FirestoreUserRoles.admin
             ? FirestoreUserRoles.admin
             : FirestoreUserRoles.free;
-        await FirebaseFirestore.instance
+        await FirestoreHelper.instance
             .collection(FirestoreConstants.users)
             .doc(uid)
             .set({
@@ -373,7 +402,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       if (shouldUseCache) {
         m = _cachedManagerData!;
       } else {
-        final mgr = await FirebaseFirestore.instance
+        final mgr = await FirestoreHelper.instance
             .collection(FirestoreConstants.managers)
             .doc(_activeManagerId)
             .get();
@@ -396,7 +425,6 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       _activeManagerMultiplier =
           (m[FirestoreManagerFields.managerMultiplier] as num?)?.toDouble() ??
           2.0;
-      final mgrActive = (m[FirestoreManagerFields.isActive] as bool?) ?? true;
 
       // Update rates if manager status changed mid-session
       if (_miningActive) {
@@ -404,6 +432,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
           uid: uid,
           cachedManagerData: _cachedManagerData,
           cachedManagerId: _cachedManagerId,
+          activeReferralCount: _activeReferralCount,
         );
       }
     } else {
@@ -418,6 +447,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
           uid: uid,
           cachedManagerData: _cachedManagerData,
           cachedManagerId: _cachedManagerId,
+          activeReferralCount: _activeReferralCount,
         );
       }
     }
@@ -442,7 +472,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     UserService().setLiveMode(true);
 
     _userDocSub?.cancel();
-    _userDocSub = FirebaseFirestore.instance
+    _userDocSub = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
         .snapshots()
@@ -502,7 +532,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     _realtimeDocSub?.cancel();
-    _realtimeDocSub = FirebaseFirestore.instance
+    _realtimeDocSub = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
         .collection(FirestoreUserSubCollections.earnings)
@@ -578,13 +608,19 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<Map<String, dynamic>> startMining({DateTime? maxEnd}) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      throw Exception('User not logged in');
+    }
     final devId = _deviceId ?? await DeviceId.get();
     try {
       final res = await EarningsEngine.startMining(
+        uid: uid,
         deviceId: devId,
         maxEnd: maxEnd,
         cachedManagerData: _cachedManagerData,
         cachedManagerId: _cachedManagerId,
+        activeReferralCount: _activeReferralCount,
       );
 
       _hourlyRate =
@@ -620,16 +656,27 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
           _totalPoints;
       _displayTotal = _totalPoints;
 
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid != null && (_activeManagerId ?? '').isNotEmpty) {
+      if ((_activeManagerId ?? '').isNotEmpty) {
         try {
-          final mgr = await FirebaseFirestore.instance
-              .collection(FirestoreConstants.managers)
-              .doc(_activeManagerId)
-              .get();
-          final m = mgr.data() ?? {};
-          final mgrActive =
-              (m[FirestoreManagerFields.isActive] as bool?) ?? true;
+          // OPTIMIZATION: Use cached manager data if valid
+          Map<String, dynamic> m = {};
+          if (_cachedManagerData != null &&
+              _cachedManagerId == _activeManagerId &&
+              _lastManagerFetch != null &&
+              DateTime.now().difference(_lastManagerFetch!).inMinutes < 10) {
+            m = _cachedManagerData!;
+          } else {
+            final mgr = await FirestoreHelper.instance
+                .collection(FirestoreConstants.managers)
+                .doc(_activeManagerId)
+                .get();
+            m = mgr.data() ?? {};
+            // Update cache
+            _cachedManagerData = m;
+            _cachedManagerId = _activeManagerId;
+            _lastManagerFetch = DateTime.now();
+          }
+
           _activeManagerMultiplier =
               (m[FirestoreManagerFields.managerMultiplier] as num?)
                   ?.toDouble() ??
@@ -668,7 +715,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   /// Returns the amount of rate increase (boostAmount).
   /// Boosts the ad rate by a calculated amount.
   /// Returns the amount of rate increase (boostAmount).
-  Future<double> boostAdRate({required double percent}) async {
+  Future<double> boostAdRateNew({required double percent}) async {
     // Strictly use the admin-configured base rate (fetched from config/Firestore)
     // This ensures we calculate bonus based on the correct base, not total points or stale UI state.
     final baseRateToUse = _rateBase;
@@ -703,7 +750,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     required double baseHourlyRate,
     required double percent,
   }) async {
-    return boostAdRate(percent: percent);
+    return boostAdRateNew(percent: percent);
   }
 
   @Deprecated('Use boostAdRate instead')
@@ -713,7 +760,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     required int rewardedWatchIndex,
   }) async {
     // Forward to new logic
-    final boost = await boostAdRate(percent: percent);
+    await boostAdRateNew(percent: percent);
     return _hourlyRate;
   }
 
@@ -901,7 +948,6 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     _activeManagerId = null;
     _managedCoinSelections = const [];
     _subscriptionExpiresAt = null;
-    _managerBonusPerHour = 0.0;
     _activeManagerMultiplier = 1.0;
 
     _cachedManagerData = null;
@@ -977,7 +1023,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
 
     try {
       final sqlCoins = await SqlApiService.getMyCoins(uid);
-      if (sqlCoins != null) allCoins = sqlCoins;
+      if (sqlCoins != null) {
+        allCoins = sqlCoins;
+        // Inject into CoinService cache to avoid redundant reads in UI
+        CoinService.updateMyCoinsCache(sqlCoins);
+      }
     } catch (e) {
       debugPrint('[MiningStateService] SQL fetch failed: $e');
     }
@@ -1036,7 +1086,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       if (!isActive) {
         debugPrint('[MiningStateService] Starting community coin: $ownerId');
         try {
-          await CoinService.startCoinMining(ownerId, deviceId: devId);
+          await CoinService.startCoinMining(
+            ownerId,
+            deviceId: devId,
+            cachedCoinData: data,
+          );
           activeManaged++;
         } catch (e) {
           debugPrint('[MiningStateService] Failed to start coin $ownerId: $e');
@@ -1067,8 +1121,9 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       final ownerId =
           (data[FirestoreUserCoinMiningFields.ownerId] as String?) ?? '';
       if (_managedCoinSelections.isNotEmpty &&
-          !_managedCoinSelections.contains(ownerId))
+          !_managedCoinSelections.contains(ownerId)) {
         continue;
+      }
 
       // Note: If we just started it, we don't have the new end time here unless we re-fetch.
       // But usually new session > existing session. So earliest is likely an existing one.
@@ -1096,6 +1151,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   @override
+  // ignore: must_call_super
   void dispose() {
     // Singleton should not be disposed.
     // WidgetsBinding.instance.removeObserver(this);

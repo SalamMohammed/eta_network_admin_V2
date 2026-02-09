@@ -1,11 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../shared/firestore_constants.dart';
 
+import '../utils/firestore_helper.dart';
+
 class RankEngine {
   static Future<void> updateUserRank(String uid) async {
-    final users = FirebaseFirestore.instance.collection(
-      FirestoreConstants.users,
-    );
+    final users = FirestoreHelper.instance.collection(FirestoreConstants.users);
     final userRef = users.doc(uid);
     final userSnap = await userRef.get();
     if (!userSnap.exists) return;
@@ -13,16 +13,21 @@ class RankEngine {
     final int streakDays =
         (data[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
 
-    final DateTime activeThreshold = DateTime.now().subtract(const Duration(hours: 48));
-    final referralsQ = await FirebaseFirestore.instance
+    final DateTime activeThreshold = DateTime.now().subtract(
+      const Duration(hours: 48),
+    );
+    final referralsQ = await FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
-        .where(FirestoreUserFields.lastMiningEnd, isGreaterThan: Timestamp.fromDate(activeThreshold))
+        .where(
+          FirestoreUserFields.lastMiningEnd,
+          isGreaterThan: Timestamp.fromDate(activeThreshold),
+        )
         .count()
         .get();
     final int activeReferrals = referralsQ.count ?? 0;
 
-    final cfgSnap = await FirebaseFirestore.instance
+    final cfgSnap = await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.ranks)
         .get();
@@ -62,12 +67,12 @@ class RankEngine {
     final String currentRank =
         (data[FirestoreUserFields.rank] as String?) ?? '';
     if (bestRank != currentRank) {
-      final batch = FirebaseFirestore.instance.batch();
+      final batch = FirestoreHelper.instance.batch();
       batch.update(userRef, {
         FirestoreUserFields.rank: bestRank,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       });
-      final logRef = FirebaseFirestore.instance
+      final logRef = FirestoreHelper.instance
           .collection(FirestoreConstants.pointLogs)
           .doc();
       batch.set(logRef, {
@@ -85,7 +90,7 @@ class RankEngine {
     int limit = 50,
     DocumentSnapshot? startAfter,
   }) async {
-    Query q = FirebaseFirestore.instance
+    Query q = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .orderBy(FirestoreUserFields.createdAt)
         .limit(limit);
@@ -105,17 +110,18 @@ class RankEngine {
     required String currentRank,
   }) {
     final Map<String, dynamic> rules =
-        (ranksCfg[FirestoreRankConfigFields.rankRules] as Map<String, dynamic>?) ??
-            {};
+        (ranksCfg[FirestoreRankConfigFields.rankRules]
+            as Map<String, dynamic>?) ??
+        {};
     final Map<String, dynamic> mults =
         (ranksCfg[FirestoreRankConfigFields.rankMultipliers]
             as Map<String, dynamic>?) ??
-            {};
+        {};
 
     String bestRank = currentRank;
     // If current rank is not in config (or empty), default to Explorer or lowest
     if (!mults.containsKey(bestRank) && mults.isNotEmpty) {
-        bestRank = 'Explorer'; 
+      bestRank = 'Explorer';
     }
     double bestMult = (mults[bestRank] as num?)?.toDouble() ?? 1.0;
 

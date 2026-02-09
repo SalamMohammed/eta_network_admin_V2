@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../shared/firestore_constants.dart';
 import '../../shared/theme/colors.dart';
+import '../../utils/firestore_helper.dart';
 
 class AdsMonetizationPage extends StatefulWidget {
   const AdsMonetizationPage({super.key});
@@ -45,7 +46,7 @@ class _AdsMonetizationPageState extends State<AdsMonetizationPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final doc = await FirebaseFirestore.instance
+      final doc = await FirestoreHelper.instance
           .collection(FirestoreConstants.appConfig)
           .doc(FirestoreAppConfigDocs.ads)
           .get();
@@ -95,7 +96,7 @@ class _AdsMonetizationPageState extends State<AdsMonetizationPage> {
   Future<void> _save() async {
     setState(() => _loading = true);
     try {
-      await FirebaseFirestore.instance
+      await FirestoreHelper.instance
           .collection(FirestoreConstants.appConfig)
           .doc(FirestoreAppConfigDocs.ads)
           .set({

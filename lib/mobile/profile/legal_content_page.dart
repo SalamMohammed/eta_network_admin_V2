@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../shared/firestore_constants.dart';
 import '../../shared/theme/colors.dart';
+import '../../utils/firestore_helper.dart';
 
 class LegalContentPage extends StatelessWidget {
   final String title;
@@ -24,7 +25,7 @@ class LegalContentPage extends StatelessWidget {
         title: Text(title),
       ),
       body: FutureBuilder<DocumentSnapshot>(
-        future: FirebaseFirestore.instance
+        future: FirestoreHelper.instance
             .collection(FirestoreConstants.appConfig)
             .doc(FirestoreAppConfigDocs.legal)
             .get(),

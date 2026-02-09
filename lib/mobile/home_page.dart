@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../utils/firestore_helper.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../shared/firestore_constants.dart';
@@ -243,7 +244,7 @@ class _MobileHomePageState extends State<MobileHomePage>
             await _persistRewardedSessionLimiter();
 
             // Fixed: Claim reward for every ad watched (previously required 2+)
-            final boostAmount = await _miningService.boostAdRate(
+            final boostAmount = await _miningService.boostAdRateNew(
               percent: _adsService.config.rewardBonusPercent,
             );
             if (!mounted) return;
@@ -344,7 +345,11 @@ class _MobileHomePageState extends State<MobileHomePage>
       final ownActive = ownEnd != null && DateTime.now().isBefore(ownEnd);
       if (!ownActive && ownData.isNotEmpty) {
         try {
-          await CoinService.startCoinMining(uid, deviceId: devId);
+          await CoinService.startCoinMining(
+            uid,
+            deviceId: devId,
+            cachedCoinData: ownData,
+          );
         } catch (e) {
           debugPrint('Manager own coin start failed: $e');
         }
@@ -407,7 +412,11 @@ class _MobileHomePageState extends State<MobileHomePage>
       final isActive = end != null && now.isBefore(end);
       if (!isActive && activeManaged < _miningService.managerMaxCommunity) {
         try {
-          await CoinService.startCoinMining(ownerId, deviceId: devId);
+          await CoinService.startCoinMining(
+            ownerId,
+            deviceId: devId,
+            cachedCoinData: data,
+          );
           activeManaged++;
         } catch (e) {
           debugPrint('Manager community coin start failed: $e');
@@ -1103,7 +1112,7 @@ class _MobileHomePageState extends State<MobileHomePage>
         return _ManagerSelectDialog(
           currentId: _miningService.activeManagerId,
           onSelected: (id) async {
-            await FirebaseFirestore.instance
+            await FirestoreHelper.instance
                 .collection(FirestoreConstants.users)
                 .doc(uid)
                 .set({
@@ -1111,7 +1120,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                   FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
                 }, SetOptions(merge: true));
             if (id != null) {
-              final mgr = await FirebaseFirestore.instance
+              final mgr = await FirestoreHelper.instance
                   .collection(FirestoreConstants.managers)
                   .doc(id)
                   .get();
@@ -1123,7 +1132,7 @@ class _MobileHomePageState extends State<MobileHomePage>
               final sel = _miningService.managedCoinSelections;
               if (max >= 0 && sel.length > max) {
                 final trimmed = sel.take(max).toList();
-                await FirebaseFirestore.instance
+                await FirestoreHelper.instance
                     .collection(FirestoreConstants.users)
                     .doc(uid)
                     .collection(FirestoreUserSubCollections.earnings)
@@ -1150,7 +1159,7 @@ class _MobileHomePageState extends State<MobileHomePage>
           current: _miningService.managedCoinSelections,
           maxCount: _miningService.managerMaxCommunity,
           onSelected: (ids) async {
-            await FirebaseFirestore.instance
+            await FirestoreHelper.instance
                 .collection(FirestoreConstants.users)
                 .doc(uid)
                 .collection(FirestoreUserSubCollections.earnings)
@@ -1999,7 +2008,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
     // Load Managers
-    final qs = await FirebaseFirestore.instance
+    final qs = await FirestoreHelper.instance
         .collection(FirestoreConstants.managers)
         .where(FirestoreManagerFields.isActive, isEqualTo: true)
         .get();
@@ -2876,7 +2885,7 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
     if (CoinService.useSqlBackend) {
       loaded = await SqlApiService.getMyCoins(uid) ?? [];
     } else {
-      final qs = await FirebaseFirestore.instance
+      final qs = await FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
           .collection(FirestoreUserSubCollections.coins)

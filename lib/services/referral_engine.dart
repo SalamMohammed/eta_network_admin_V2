@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../shared/firestore_constants.dart';
+import '../utils/firestore_helper.dart';
 
 class ReferralEngine {
   static Future<void> processReferralOnSignup({
@@ -9,9 +10,7 @@ class ReferralEngine {
     String? inviteeUsername,
   }) async {
     if (referralCode == null || referralCode.isEmpty) return;
-    final users = FirebaseFirestore.instance.collection(
-      FirestoreConstants.users,
-    );
+    final users = FirestoreHelper.instance.collection(FirestoreConstants.users);
     final qs = await users
         .where(FirestoreUserFields.referralCode, isEqualTo: referralCode)
         .limit(1)
@@ -31,7 +30,7 @@ class ReferralEngine {
       return;
     }
 
-    final cfgRef = FirebaseFirestore.instance
+    final cfgRef = FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.referrals);
     final cfgSnap = await cfgRef.get();
@@ -42,8 +41,8 @@ class ReferralEngine {
         (cfg[FirestoreReferralConfigFields.inviteeBonus] as num?)?.toDouble() ??
         0.0;
 
-    final batch = FirebaseFirestore.instance.batch();
-    final referralsCol = FirebaseFirestore.instance.collection(
+    final batch = FirestoreHelper.instance.batch();
+    final referralsCol = FirestoreHelper.instance.collection(
       FirestoreConstants.referrals,
     );
     final referralDoc = referralsCol.doc();
@@ -61,7 +60,7 @@ class ReferralEngine {
         FirestoreReferralFields.inviteeUsername: inviteeUsername,
     });
 
-    final points = FirebaseFirestore.instance.collection(
+    final points = FirestoreHelper.instance.collection(
       FirestoreConstants.pointLogs,
     );
     final inviteeLog = points.doc();
@@ -77,7 +76,7 @@ class ReferralEngine {
     final realtimeRef = inviteeRef
         .collection(FirestoreUserSubCollections.earnings)
         .doc(FirestoreEarningsDocs.realtime);
-        
+
     batch.set(realtimeRef, {
       FirestoreUserFields.totalPoints: FieldValue.increment(inviteeFixedBonus),
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),

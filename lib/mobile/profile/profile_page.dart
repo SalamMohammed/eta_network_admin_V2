@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../utils/firestore_helper.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../auth/auth_gate.dart';
@@ -9,10 +10,12 @@ import '../../services/referral_engine.dart';
 import '../../services/earnings_engine.dart';
 import '../../services/mining_state_service.dart';
 import '../../services/sql_api_service.dart';
+import '../../services/user_service.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
 import 'legal_content_page.dart';
+import 'package:eta_network_admin/mobile/profile/firestore_logs_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -55,34 +58,49 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> _load() async {
-    await EarningsEngine.syncEarnings();
+    // OPTIMIZATION: Use the result from syncEarnings to avoid redundant user doc read
+    final syncRes = await EarningsEngine.syncEarnings();
     final u = FirebaseAuth.instance.currentUser;
     if (u == null) return;
     uid = u.uid;
     email = u.email ?? '';
-    final snap = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid)
-        .get();
-    final d = snap.data() ?? {};
-    setState(() {
-      username = (d[FirestoreUserFields.username] as String?) ?? '';
-      rank = (d[FirestoreUserFields.rank] as String?) ?? '';
-      referralLocked = (d[FirestoreUserFields.referralLocked] as bool?) ?? true;
-      invitedBy = d[FirestoreUserFields.invitedBy] as String?;
-      streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
-      thumbnailUrl = (d[FirestoreUserFields.thumbnailUrl] as String?) ?? '';
-      totalSessions =
-          (d[FirestoreUserFields.totalSessions] as num?)?.toInt() ?? 0;
-    });
-    final statsSnap = await FirebaseFirestore.instance
+
+    // Use synced data directly
+    final d = (syncRes['userData'] as Map<String, dynamic>?) ?? {};
+
+    // If syncRes didn't return user data (unlikely), fallback to UserService cache
+    final Map<String, dynamic> userData = d.isNotEmpty
+        ? d
+        : (await UserService().getUser(uid))?.data() ?? {};
+
+    if (mounted) {
+      setState(() {
+        username = (userData[FirestoreUserFields.username] as String?) ?? '';
+        rank = (userData[FirestoreUserFields.rank] as String?) ?? '';
+        referralLocked =
+            (userData[FirestoreUserFields.referralLocked] as bool?) ?? true;
+        invitedBy = userData[FirestoreUserFields.invitedBy] as String?;
+        streakDays =
+            (userData[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
+        thumbnailUrl =
+            (userData[FirestoreUserFields.thumbnailUrl] as String?) ?? '';
+        totalSessions =
+            (userData[FirestoreUserFields.totalSessions] as num?)?.toInt() ?? 0;
+      });
+    }
+
+    // Referral Stats - Optimized to use cache or specific field fetch if possible
+    // For now, we still fetch the doc but use FirestoreHelper
+    final statsSnap = await FirestoreHelper.instance
         .collection(FirestoreConstants.referralStats)
         .doc(uid)
         .get();
     final statsData = statsSnap.data() ?? {};
-    setState(() {
-      referralCount = (statsData['active48hCount'] as num?)?.toInt() ?? 0;
-    });
+    if (mounted) {
+      setState(() {
+        referralCount = (statsData['active48hCount'] as num?)?.toInt() ?? 0;
+      });
+    }
   }
 
   Future<void> _submitReferral() async {
@@ -497,6 +515,30 @@ class _ProfilePageState extends State<ProfilePage> {
                           onTap: () =>
                               _openSecurityPage(context, s, cardBg, cardBg2),
                         ),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: s(14)),
+                          child: Container(
+                            height: 1,
+                            color: Colors.white.withValues(alpha: 0.06),
+                          ),
+                        ),
+                        _settingsTile(
+                          scale: s,
+                          icon: Icons.monitor_heart_outlined,
+                          title: 'Firestore Monitor',
+                          subtitle: null,
+                          trailing: Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white54,
+                            size: s(24),
+                          ),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const FirestoreLogsPage(),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -755,7 +797,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final r = FirebaseStorage.instance.ref().child('users/$uidLocal/thumbnail');
     await r.putData(bytes, SettableMetadata(contentType: ct ?? 'image/png'));
     final url = await r.getDownloadURL();
-    await FirebaseFirestore.instance
+    await FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uidLocal)
         .set({
@@ -776,7 +818,7 @@ class _ProfilePageState extends State<ProfilePage> {
       // Stop local activity: no-op here (handled by navigation), but ensure sign-out at end.
 
       // Delete Firestore data (cascade)
-      final db = FirebaseFirestore.instance;
+      final db = FirestoreHelper.instance;
       final users = db.collection(FirestoreConstants.users);
       final referrals = db.collection(FirestoreConstants.referrals);
       final points = db.collection(FirestoreConstants.pointLogs);
@@ -1177,7 +1219,7 @@ class _AccountInfoSheetState extends State<_AccountInfoSheet> {
   @override
   void initState() {
     super.initState();
-    _userRef = FirebaseFirestore.instance
+    _userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(widget.uid);
 

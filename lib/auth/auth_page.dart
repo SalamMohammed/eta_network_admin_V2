@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import '../shared/theme/colors.dart';
 import '../shared/firestore_constants.dart';
+import '../utils/firestore_helper.dart';
 import '../entry/selector_page.dart';
 import 'dart:typed_data';
 
@@ -32,7 +33,7 @@ class _AuthPageState extends State<AuthPage> {
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
-        await FirebaseFirestore.instance
+        await FirestoreHelper.instance
             .collection(FirestoreConstants.users)
             .doc(cred.user!.uid)
             .set({
@@ -49,7 +50,7 @@ class _AuthPageState extends State<AuthPage> {
         );
         await r.putData(b, SettableMetadata(contentType: 'image/png'));
         final u = await r.getDownloadURL();
-        await FirebaseFirestore.instance
+        await FirestoreHelper.instance
             .collection(FirestoreConstants.users)
             .doc(cred.user!.uid)
             .set({

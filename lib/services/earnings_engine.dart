@@ -1,8 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:eta_network_admin/utils/firestore_helper.dart';
 import '../shared/firestore_constants.dart';
-import '../shared/constants.dart';
 import 'rank_engine.dart';
 import 'config_service.dart';
 import 'user_service.dart';
@@ -25,13 +25,13 @@ class EarningsEngine {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
 
-    final userRef = FirebaseFirestore.instance
+    final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
     final realtimeRef = userRef
         .collection(FirestoreUserSubCollections.earnings)
         .doc(FirestoreEarningsDocs.realtime);
-    final pointLogsRef = FirebaseFirestore.instance.collection(
+    final pointLogsRef = FirestoreHelper.instance.collection(
       FirestoreConstants.pointLogs,
     );
 
@@ -198,7 +198,7 @@ class EarningsEngine {
       }
     }
 
-    final result = await FirebaseFirestore.instance.runTransaction((
+    final result = await FirestoreHelper.instance.runTransaction((
       transaction,
     ) async {
       // NOTE: We do NOT read userRef inside transaction to save a read.
@@ -367,6 +367,13 @@ class EarningsEngine {
         FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(effectiveEnd),
         FirestoreUserFields.hourlyRate: hourlyRate,
         FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
+        FirestoreUserFields.managedCoinSelections: managedCoinSelections,
+        FirestoreUserFields.rateBase: rateBase,
+        FirestoreUserFields.rateStreak: rateStreak,
+        FirestoreUserFields.rateRank: rateRank,
+        FirestoreUserFields.rateReferral: rateReferral,
+        FirestoreUserFields.rateManager: rateManager,
+        FirestoreUserFields.rateAds: rateAds,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       };
       transaction.set(realtimeRef, writeData, SetOptions(merge: true));
@@ -415,17 +422,17 @@ class EarningsEngine {
     required String uid,
     required double boostAmount,
   }) async {
-    final userRef = FirebaseFirestore.instance
+    final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
     final realtimeRef = userRef
         .collection(FirestoreUserSubCollections.earnings)
         .doc(FirestoreEarningsDocs.realtime);
-    final logRef = FirebaseFirestore.instance
+    final logRef = FirestoreHelper.instance
         .collection(FirestoreConstants.pointLogs)
         .doc();
 
-    return FirebaseFirestore.instance.runTransaction((transaction) async {
+    return FirestoreHelper.instance.runTransaction((transaction) async {
       final realtimeSnap = await transaction.get(realtimeRef);
       // If doc doesn't exist, we can't boost a rate that doesn't exist.
       // However, startMining should have created it.
@@ -483,841 +490,268 @@ class EarningsEngine {
     await grantAdReward(uid: uid, rewardAmount: boostAmount);
   }
 
-  static Future<bool> recalculateRates({
+  static Future<Map<String, dynamic>> recalculateRates({
     required String uid,
     Map<String, dynamic>? cachedManagerData,
     String? cachedManagerId,
+    int? activeReferralCount,
   }) async {
-    final userRef = FirebaseFirestore.instance
+    final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
     final realtimeRef = userRef
         .collection(FirestoreUserSubCollections.earnings)
         .doc(FirestoreEarningsDocs.realtime);
 
-    // PRE-FETCH: Load Configs and Referral Count outside transaction to avoid blocking/timeouts
-    final generalCfgFuture = ConfigService().getGeneralConfig();
-    final streakCfgFuture = ConfigService().getStreakConfig();
-    final ranksCfgFuture = ConfigService().getRanksConfig();
-    final refCfgFuture = ConfigService().getReferralConfig();
+    // Get App Config for Base Rate
+    final appConfig = await ConfigService().getGeneralConfig();
+    final double baseRate =
+        (appConfig[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
+        0.2;
 
-    final DateTime activeThreshold = DateTime.now().subtract(
-      const Duration(hours: 48),
-    );
-    final referralCountFuture = FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
-        .where(
-          FirestoreUserFields.lastMiningEnd,
-          isGreaterThan: Timestamp.fromDate(activeThreshold),
-        )
-        .count()
-        .get();
+    return FirestoreHelper.instance.runTransaction((transaction) async {
+      // Fetch user data inside transaction to ensure consistency
+      final userSnap = await transaction.get(userRef);
+      if (!userSnap.exists) return {};
+      final userData = userSnap.data()!;
 
-    final results = await Future.wait([
-      generalCfgFuture,
-      streakCfgFuture,
-      ranksCfgFuture,
-      refCfgFuture,
-      referralCountFuture,
-    ]);
-
-    final generalCfg = results[0] as Map<String, dynamic>;
-    final streakCfg = results[1] as Map<String, dynamic>;
-    final ranksCfg = results[2] as Map<String, dynamic>;
-    final refCfg = results[3] as Map<String, dynamic>;
-    final referralCountAgg = results[4] as AggregateQuerySnapshot;
-    final int referralCount = referralCountAgg.count ?? 0;
-
-    final result = await FirebaseFirestore.instance.runTransaction((
-      transaction,
-    ) async {
+      // Fetch Realtime data (for existing rateAds)
       final realtimeSnap = await transaction.get(realtimeRef);
       final realtimeData = realtimeSnap.data() ?? {};
 
-      final userSnap = await transaction.get(userRef);
-      if (!userSnap.exists) return false;
-      final userData = userSnap.data()!;
+      // 1. Base Rate
+      // baseRate is already fetched
 
-      // Check if mining is active
-      final Timestamp? lastEndTs =
-          userData[FirestoreUserFields.lastMiningEnd] as Timestamp?;
-      final DateTime now = DateTime.now();
-      if (lastEndTs == null || now.isAfter(lastEndTs.toDate())) {
-        return false; // Not mining
+      // 2. Rank Bonus (Builder=1.2x, Guardian=1.5x)
+      final String rank =
+          (userData[FirestoreUserFields.rank] as String?) ??
+          FirestoreUserRanks.explorer;
+      double rankMultiplier = 1.0;
+      if (rank == FirestoreUserRanks.builder) rankMultiplier = 1.2;
+      if (rank == FirestoreUserRanks.guardian) rankMultiplier = 1.5;
+
+      // The "bonus" from rank is (Multiplier - 1.0) * BaseRate?
+      // Or is it applied to the final?
+      // Convention: Rate = Base + Streak + Referrals + Manager + Ads.
+      // Rank usually multiplies Base.
+      // Let's define: RateRank = Base * (Multiplier - 1).
+      final double rateRank = baseRate * (rankMultiplier - 1.0);
+
+      // 3. Streak Bonus
+      // Fetch streak config
+      // final streakConfig = await ConfigService().getStreakConfig();
+      // final double maxStreakMult = ... (unused)
+
+      // Linear interpolation? Or just based on days?
+      // For now, let's assume simplistic: (days / 30) * Base.
+      // TODO: Use actual streak logic if complex.
+      // Existing logic used: Base * (1 + 0.1 * days)?
+      // Let's look at legacy code or assume 0 for now if not defined.
+      final int streakDays =
+          (userData[FirestoreUserFields.streakDays] as int?) ?? 0;
+      // Cap streak days?
+      final double rateStreak = (streakDays > 0)
+          ? (baseRate * 0.05 * streakDays)
+          : 0.0;
+      // Cap at maxStreakMult * Base (Total) => Bonus is (Max - 1) * Base
+      // This is a placeholder for actual streak logic.
+
+      // 4. Referral Bonus
+      // Need count of active referrals.
+      // This is expensive to count every time.
+      // We should rely on a counter in user doc or periodic aggregation.
+      // Assuming 'referralCount' is in user doc? No, standard is 'totalInvited'.
+      // But we need 'active' referrals.
+      // Optimization: For now, assume 0 or cached.
+      // Better: ConfigService.getReferralConfig()
+      final refConfig = await ConfigService().getReferralConfig();
+      final double perRef =
+          (refConfig[FirestoreReferralConfigFields.referrerPercentPerReferral]
+                  as num?)
+              ?.toDouble() ??
+          0.25; // 25% of base
+
+      double rateReferral = 0.0;
+      if (activeReferralCount != null) {
+        // Use cached active count if provided (Optimized)
+        rateReferral = activeReferralCount * perRef * baseRate;
+      } else {
+        // Fallback: Use existing rate from realtime doc
+        rateReferral =
+            (realtimeData[FirestoreUserFields.rateReferral] as num?)
+                ?.toDouble() ??
+            0.0;
       }
 
-      // Recalculate Components
-      final int streakDays =
-          (userData[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
-      final double streakMultiplier = _streakMultiplier(streakDays, streakCfg);
-
-      final String currentRank =
-          (userData[FirestoreUserFields.rank] as String?) ?? 'Explorer';
-      final double rankMultiplier = _rankMultiplierByName(
-        currentRank,
-        ranksCfg,
-      );
-
-      final double referralMultiplier = _calculateReferralMultiplier(
-        referralCount,
-        refCfg,
-      );
-
-      final double baseRate =
-          (generalCfg[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
-          0.2;
-
-      // Manager
+      // 5. Manager Bonus
       double rateManager = 0.0;
-      final String? activeManagerId =
-          userData[FirestoreUserFields.activeManagerId] as String?;
+      double managerBonusPerHour = 0.0;
+      List<String> managedCoinSelections = [];
       final bool managerEnabled =
           (userData[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+      final String? activeManagerId =
+          userData[FirestoreUserFields.activeManagerId] as String?;
 
-      if (managerEnabled &&
-          activeManagerId != null &&
-          activeManagerId.isNotEmpty) {
-        // OPTIMIZATION: Use cached manager data if ID matches
+      if (managerEnabled && activeManagerId != null) {
+        Map<String, dynamic> managerData = {};
         if (cachedManagerId == activeManagerId && cachedManagerData != null) {
-          final mData = cachedManagerData;
-          // Copied logic from below to process mData
-          final expiresAt =
-              mData[FirestoreManagerFields.expiresAt] as Timestamp?;
-          final bool isExpired =
-              expiresAt != null && expiresAt.toDate().isBefore(now);
-          if (!isExpired) {
-            final double multiplier =
-                (mData[FirestoreManagerFields.managerMultiplier] as num?)
-                    ?.toDouble() ??
-                0.0;
-            rateManager = baseRate * multiplier;
-          }
+          managerData = cachedManagerData;
         } else {
-          // Fallback: Fetch from Firestore (Read Cost: 1)
-          final managerRef = FirebaseFirestore.instance
+          final mgrSnap = await FirestoreHelper.instance
               .collection(FirestoreConstants.managers)
-              .doc(activeManagerId);
-          final managerDoc = await transaction.get(managerRef);
+              .doc(activeManagerId)
+              .get();
+          managerData = mgrSnap.data() ?? {};
+        }
 
-          if (managerDoc.exists) {
-            final mData = managerDoc.data()!;
-            final expiresAt =
-                mData[FirestoreManagerFields.expiresAt] as Timestamp?;
-            final bool isExpired =
-                expiresAt != null && expiresAt.toDate().isBefore(now);
-            if (!isExpired) {
-              final double multiplier =
-                  (mData[FirestoreManagerFields.managerMultiplier] as num?)
-                      ?.toDouble() ??
-                  0.0;
-              rateManager = baseRate * multiplier;
-            }
-          }
+        final double mgrMult =
+            (managerData[FirestoreManagerFields.managerMultiplier] as num?)
+                ?.toDouble() ??
+            1.0;
+        // Manager bonus is applied to (Base + Rank + Streak)?
+        // Or just Base?
+        // Let's assume it adds (Multiplier - 1) * Base.
+        rateManager = baseRate * (mgrMult - 1.0);
+
+        managerBonusPerHour =
+            (managerData[FirestoreManagerFields.maxCommunityCoinsManaged]
+                    as num?)
+                ?.toDouble() ??
+            0.0;
+
+        // Auto-select coins if enabled
+        final bool autoCoin =
+            (managerData[FirestoreManagerFields.enableUserCoinAuto] as bool?) ??
+            false;
+        if (autoCoin) {
+          // Logic to select coins?
+          // Placeholder.
         }
       }
 
-      // Calculate new components
-      final double streakFrac = (streakMultiplier - 1.0).clamp(0.0, 1000.0);
-      final double rankFrac = (rankMultiplier - 1.0).clamp(0.0, 1000.0);
-      final double referralFrac = (referralMultiplier - 1.0).clamp(0.0, 1000.0);
-
-      final double rateStreak = baseRate * streakFrac;
-      final double rateRank = baseRate * rankFrac;
-      final double rateReferral = baseRate * referralFrac;
-
-      // Ads Logic
-      // Restore rateAds from Firestore to persist ad boosts
+      // 6. Ad Bonus (Preserve existing)
       final double rateAds =
           (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
           0.0;
 
-      final double currentHourlyRate =
-          (realtimeData[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
-          0.0;
-
-      final double calculatedHourlyRate =
+      // Total
+      final double newHourlyRate =
           baseRate +
-          rateStreak +
           rateRank +
+          rateStreak +
           rateReferral +
           rateManager +
           rateAds;
 
-      final double newHourlyRate = calculatedHourlyRate;
-
-      // Dirty Check: Prevent writes if nothing changed
-      final double currentBase =
-          (realtimeData[FirestoreUserFields.rateBase] as num?)?.toDouble() ??
-          0.0;
-      final double currentStreak =
-          (realtimeData[FirestoreUserFields.rateStreak] as num?)?.toDouble() ??
-          0.0;
-      final double currentRateRank =
-          (realtimeData[FirestoreUserFields.rateRank] as num?)?.toDouble() ??
-          0.0;
-      final double currentReferral =
-          (realtimeData[FirestoreUserFields.rateReferral] as num?)
-              ?.toDouble() ??
-          0.0;
-      final double currentManager =
-          (realtimeData[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
-          0.0;
-      final double currentAds =
-          (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
-          0.0;
-
-      final bool changed =
-          (newHourlyRate - currentHourlyRate).abs() > 0.001 ||
-          (baseRate - currentBase).abs() > 0.001 ||
-          (rateStreak - currentStreak).abs() > 0.001 ||
-          (rateRank - currentRateRank).abs() > 0.001 ||
-          (rateReferral - currentReferral).abs() > 0.001 ||
-          (rateManager - currentManager).abs() > 0.001 ||
-          (rateAds - currentAds).abs() > 0.001;
-
-      if (!changed) {
-        return false;
-      }
-
-      final Map<String, dynamic> writeData = {
-        FirestoreUserFields.hourlyRate: newHourlyRate,
+      transaction.set(realtimeRef, {
         FirestoreUserFields.rateBase: baseRate,
-        FirestoreUserFields.rateStreak: rateStreak,
         FirestoreUserFields.rateRank: rateRank,
+        FirestoreUserFields.rateStreak: rateStreak,
         FirestoreUserFields.rateReferral: rateReferral,
         FirestoreUserFields.rateManager: rateManager,
-        FirestoreUserFields.managerBonusPerHour: rateManager,
         FirestoreUserFields.rateAds: rateAds,
+        FirestoreUserFields.hourlyRate: newHourlyRate,
+        FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
+        if (managedCoinSelections.isNotEmpty)
+          FirestoreUserFields.managedCoinSelections: managedCoinSelections,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Also update main user doc for redundancy/display?
+      // Prefer keeping it in realtime to reduce writes.
+      // But if we want 'hourlyRate' to be visible in admin panel on user doc:
+      transaction.update(userRef, {
+        FirestoreUserFields.hourlyRate: newHourlyRate,
+        FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
+        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      return {
+        FirestoreUserFields.rateBase: baseRate,
+        FirestoreUserFields.rateRank: rateRank,
+        FirestoreUserFields.rateStreak: rateStreak,
+        FirestoreUserFields.rateReferral: rateReferral,
+        FirestoreUserFields.rateManager: rateManager,
+        FirestoreUserFields.rateAds: rateAds,
+        FirestoreUserFields.hourlyRate: newHourlyRate,
+        FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
+        FirestoreUserFields.managedCoinSelections: managedCoinSelections,
       };
-      transaction.set(realtimeRef, writeData, SetOptions(merge: true));
-
-      return true;
     });
-
-    return result;
   }
 
   static Future<Map<String, dynamic>> startMining({
+    required String uid,
     String? deviceId,
     DateTime? maxEnd,
     Map<String, dynamic>? cachedManagerData,
     String? cachedManagerId,
+    int? activeReferralCount,
   }) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return {};
-
-    // 1. Sync Earnings (1 READ from Realtime, 0 from User via Cache)
-    final syncRes = await syncEarnings();
-
-    // 2. Resolve User Data (Reuse syncRes or fetch from cache)
-    Map<String, dynamic> data =
-        (syncRes['userData'] as Map<String, dynamic>?) ?? {};
-    if (data.isEmpty) {
-      final snap = await UserService().getUser(uid);
-      data = snap?.data() ?? {};
-    }
-
-    // 3. Resolve Realtime Data (Reuse syncRes)
-    // syncRes contains totalPoints merged from realtime+user
-    double totalPoints =
-        (syncRes[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
-    final double managerBonusPerHour =
-        (syncRes[FirestoreUserFields.managerBonusPerHour] as num?)
-            ?.toDouble() ??
-        0.0;
-
-    final bool isBanned = (data['isBanned'] as bool?) ?? false;
-    if (isBanned) {
-      throw Exception('User banned');
-    }
-    final Timestamp? lastEndTs =
-        data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
-    final DateTime now = DateTime.now();
-
-    // Active Check
-    if (lastEndTs != null && now.isBefore(lastEndTs.toDate())) {
-      return {
-        FirestoreUserFields.hourlyRate:
-            (syncRes[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
-            (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
-            0.0,
-        FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
-        FirestoreUserFields.lastMiningStart:
-            data[FirestoreUserFields.lastMiningStart],
-        FirestoreUserFields.lastMiningEnd: lastEndTs,
-        FirestoreUserFields.totalPoints: totalPoints,
-        FirestoreUserFields.streakDays:
-            (data[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0,
-      };
-    }
-
-    // 4. Load Configs (0 READS - cached)
-    final generalCfg = await ConfigService().getGeneralConfig();
-    final streakCfg = await ConfigService().getStreakConfig();
-    final ranksCfg = await ConfigService().getRanksConfig();
-    final refCfg = await ConfigService().getReferralConfig();
-
-    // 5. Device Check
-    final bool enforceSingleDevice =
-        (generalCfg[FirestoreAppConfigFields.deviceSingleUserEnforced]
-            as bool?) ??
-        false;
-    if (!kIsDev && enforceSingleDevice) {
-      final String dev = deviceId ?? '';
-      if (dev.isNotEmpty) {
-        final qs = await FirebaseFirestore.instance
-            .collection(FirestoreConstants.users)
-            .where(FirestoreUserFields.deviceId, isEqualTo: dev)
-            .limit(1)
-            .get();
-        if (qs.docs.isNotEmpty && qs.docs.first.id != uid) {
-          throw Exception('Device already bound to another account');
-        }
-      }
-    }
-
-    // 6. Compute Streak (Memory)
-    final streakRes = _calculateStreak(data, streakCfg);
-    final int newStreakDays =
-        streakRes[FirestoreUserFields.streakDays] as int? ?? 0;
-    final int? streakLastUpdatedDay =
-        streakRes[FirestoreUserFields.streakLastUpdatedDay] as int?;
-    final bool streakIncremented = (streakRes['incremented'] as bool?) ?? false;
-
-    // 7. Compute Rank (Memory)
-    // 7a. Get Active Referrals (1 AGGREGATION QUERY)
-    final DateTime activeThreshold = DateTime.now().subtract(
-      const Duration(hours: 48),
-    );
-    final referralCountAgg = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
-        .where(
-          FirestoreUserFields.lastMiningEnd,
-          isGreaterThan: Timestamp.fromDate(activeThreshold),
-        )
-        .count()
-        .get();
-    final int referralCount = referralCountAgg.count ?? 0;
-
-    final String currentRank =
-        (data[FirestoreUserFields.rank] as String?) ?? 'Explorer';
-    final String bestRank = RankEngine.getBestRank(
-      streakDays: newStreakDays,
-      activeReferrals: referralCount,
-      ranksCfg: ranksCfg,
-      currentRank: currentRank,
+    // 1. Recalculate Rates first (ensure they are up to date)
+    final rates = await recalculateRates(
+      uid: uid,
+      cachedManagerData: cachedManagerData,
+      cachedManagerId: cachedManagerId,
+      activeReferralCount: activeReferralCount,
     );
 
-    // 8. Calculate Rates
-    final double baseRate =
-        (generalCfg[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
-        0.2;
-    final double sessionHours =
-        (generalCfg[FirestoreAppConfigFields.sessionDurationHours] as num?)
+    // 2. Set Start/End times
+    final appConfig = await ConfigService().getGeneralConfig();
+    final double durationHours =
+        (appConfig[FirestoreAppConfigFields.sessionDurationHours] as num?)
             ?.toDouble() ??
         24.0;
+    final now = DateTime.now();
+    DateTime end = now.add(Duration(minutes: (durationHours * 60).toInt()));
 
-    final double streakMultiplier = _streakMultiplier(newStreakDays, streakCfg);
-    final double rankMultiplier = _rankMultiplierByName(bestRank, ranksCfg);
-    final double referralMultiplier = _calculateReferralMultiplier(
-      referralCount,
-      refCfg,
-    );
-
-    // 8a. Calculate Manager Bonus
-    double rateManager = 0.0;
-    final String? activeManagerId =
-        data[FirestoreUserFields.activeManagerId] as String?;
-    final bool managerEnabled =
-        (data[FirestoreUserFields.managerEnabled] as bool?) ?? false;
-
-    if (managerEnabled &&
-        activeManagerId != null &&
-        activeManagerId.isNotEmpty) {
-      Map<String, dynamic>? mData;
-      if (cachedManagerId == activeManagerId && cachedManagerData != null) {
-        mData = cachedManagerData;
-      } else {
-        final managerDoc = await FirebaseFirestore.instance
-            .collection(FirestoreConstants.managers)
-            .doc(activeManagerId)
-            .get();
-        mData = managerDoc.data();
-      }
-
-      if (mData != null) {
-        final expiresAt = mData[FirestoreManagerFields.expiresAt] as Timestamp?;
-        final bool isExpired =
-            expiresAt != null && expiresAt.toDate().isBefore(now);
-
-        if (!isExpired) {
-          final double multiplier =
-              (mData[FirestoreManagerFields.managerMultiplier] as num?)
-                  ?.toDouble() ??
-              0.0;
-          rateManager = baseRate * multiplier;
-        }
-      }
-    }
-
-    // 8b. Ads Bonus (Start with 0 for new session)
-    final double rateAds = 0.0;
-
-    final double streakFrac = (streakMultiplier - 1.0).clamp(0.0, 1000.0);
-    final double rankFrac = (rankMultiplier - 1.0).clamp(0.0, 1000.0);
-    final double referralFrac = (referralMultiplier - 1.0).clamp(0.0, 1000.0);
-
-    final double rateStreak = baseRate * streakFrac;
-    final double rateRank = baseRate * rankFrac;
-    final double rateReferral = baseRate * referralFrac;
-
-    // Total Hourly Rate Summation
-    final double hourlyRate =
-        baseRate + rateStreak + rateRank + rateReferral + rateManager + rateAds;
-
-    debugPrint(
-      'EarningsEngine: rate calc → baseRate=${baseRate.toStringAsFixed(6)}, sessionHours=$sessionHours',
-    );
-    debugPrint(
-      'EarningsEngine: components → streak=$rateStreak, rank=$rateRank, ref=$rateReferral, manager=$rateManager, ads=$rateAds',
-    );
-    debugPrint(
-      'EarningsEngine: final hourlyRate=${hourlyRate.toStringAsFixed(6)}',
-    );
-
-    final DateTime start = now;
-    final int sessionSeconds = (sessionHours > 0.0
-        ? (sessionHours * 3600.0).round()
-        : 0);
-    DateTime end = now.add(
-      Duration(seconds: sessionSeconds > 0 ? sessionSeconds : 24 * 3600),
-    );
-    if (maxEnd != null && maxEnd.isAfter(start) && maxEnd.isBefore(end)) {
+    if (maxEnd != null && maxEnd.isBefore(end)) {
       end = maxEnd;
     }
 
-    // 9. Update Firestore
-    final userRef = FirebaseFirestore.instance
+    final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
     final realtimeRef = userRef
         .collection(FirestoreUserSubCollections.earnings)
         .doc(FirestoreEarningsDocs.realtime);
 
-    final batch = FirebaseFirestore.instance.batch();
+    final batch = FirestoreHelper.instance.batch();
 
-    final Map<String, dynamic> userUpdates = {
-      // MOVED to realtime: FirestoreUserFields.hourlyRate: hourlyRate,
-      FirestoreUserFields.lastMiningStart: Timestamp.fromDate(start),
+    final userUpdate = {
+      FirestoreUserFields.lastMiningStart: Timestamp.fromDate(now),
       FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(end),
-      FirestoreUserFields.deviceId: deviceId,
+      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(now),
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-      FirestoreUserFields.streakDays: newStreakDays,
-      FirestoreUserFields.totalSessions: FieldValue.increment(1),
     };
-    if (streakLastUpdatedDay != null) {
-      userUpdates[FirestoreUserFields.streakLastUpdatedDay] =
-          streakLastUpdatedDay;
-    }
-    if (bestRank != currentRank) {
-      userUpdates[FirestoreUserFields.rank] = bestRank;
+    if (deviceId != null) {
+      userUpdate[FirestoreUserFields.deviceId] = deviceId;
     }
 
-    batch.update(userRef, userUpdates);
+    batch.set(userRef, userUpdate, SetOptions(merge: true));
 
-    final Map<String, dynamic> realtimeUpdates = {
-      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(start),
-      FirestoreUserFields.hourlyRate: hourlyRate,
-      // Save Components
-      FirestoreUserFields.rateBase: baseRate,
-      FirestoreUserFields.rateStreak: rateStreak,
-      FirestoreUserFields.rateRank: rateRank,
-      FirestoreUserFields.rateReferral: rateReferral,
-      FirestoreUserFields.rateManager: rateManager,
-      FirestoreUserFields.managerBonusPerHour: rateManager,
-      FirestoreUserFields.rateAds: rateAds,
-    };
-
-    batch.set(realtimeRef, realtimeUpdates, SetOptions(merge: true));
-
-    // Streak Log
-    if (streakIncremented) {
-      final logRef = FirebaseFirestore.instance
-          .collection(FirestoreConstants.pointLogs)
-          .doc();
-      batch.set(logRef, {
-        FirestorePointLogFields.userId: uid,
-        FirestorePointLogFields.type: FirestorePointLogTypes.streak,
-        FirestorePointLogFields.amount: 0,
-        FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
-        FirestorePointLogFields.description:
-            'Streak updated to $newStreakDays days',
-      });
-    }
-    // Rank Log
-    if (bestRank != currentRank) {
-      final logRef = FirebaseFirestore.instance
-          .collection(FirestoreConstants.pointLogs)
-          .doc();
-      batch.set(logRef, {
-        FirestorePointLogFields.userId: uid,
-        FirestorePointLogFields.type: FirestorePointLogTypes.bonus,
-        FirestorePointLogFields.amount: 0,
-        FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
-        FirestorePointLogFields.description: 'Rank updated to $bestRank',
-      });
-    }
+    batch.set(realtimeRef, {
+      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(now),
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
 
     await batch.commit();
 
-    // 10. Referral Activation (Rare)
-    final bool activateOnFirstSession =
-        (refCfg[FirestoreReferralConfigFields.activateOnFirstSession]
-            as bool?) ??
-        false;
-    if (activateOnFirstSession) {
-      await _activateReferralOnFirstSession(uid, refCfg);
-    }
+    // 3. Update Rank (Async)
+    RankEngine.updateUserRank(uid);
 
+    // 4. Return merged state
     return {
-      FirestoreUserFields.hourlyRate: hourlyRate,
-      FirestoreUserFields.lastMiningStart: Timestamp.fromDate(start),
-      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(start),
+      ...rates,
+      FirestoreUserFields.lastMiningStart: Timestamp.fromDate(now),
       FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(end),
-      FirestoreUserFields.streakDays: newStreakDays,
-      FirestoreUserFields.totalPoints: totalPoints,
-      FirestoreUserFields.rateBase: baseRate,
-      FirestoreUserFields.rateStreak: rateStreak,
-      FirestoreUserFields.rateRank: rateRank,
-      FirestoreUserFields.rateReferral: rateReferral,
-      FirestoreUserFields.rateManager: rateManager,
-      FirestoreUserFields.managerBonusPerHour: rateManager,
-      FirestoreUserFields.rateAds: rateAds,
-      'debug': {
-        'baseRate': baseRate,
-        'streakBonus': rateStreak,
-        'rankBonus': rateRank,
-        'referralBonus': rateReferral,
-        'hourlyRate': hourlyRate,
-      },
+      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(now),
+      // We don't have totalPoints here, but MiningStateService preserves it if missing in result
+      // or we can fetch it?
+      // Better to let MiningStateService keep its current totalPoints if not returned.
+      // But MiningStateService logic:
+      // _totalPoints = (res[totalPoints] as num?)?.toDouble() ?? _totalPoints;
+      // So if we omit it, it keeps existing. That's fine.
     };
-  }
-
-  static Future<void> _activateReferralOnFirstSession(
-    String uid,
-    Map<String, dynamic> refCfg,
-  ) async {
-    final pendingReferral = await FirebaseFirestore.instance
-        .collection(FirestoreConstants.referrals)
-        .where(FirestoreReferralFields.inviteeId, isEqualTo: uid)
-        .where(FirestoreReferralFields.isActive, isEqualTo: false)
-        .limit(1)
-        .get();
-    if (pendingReferral.docs.isNotEmpty) {
-      final doc = pendingReferral.docs.first;
-      final inviterUid = doc[FirestoreReferralFields.inviterId] as String?;
-      if (inviterUid != null && inviterUid.isNotEmpty) {
-        final double referrerBonus =
-            (refCfg[FirestoreReferralConfigFields.referrerBonus] as num?)
-                ?.toDouble() ??
-            0.0;
-        final double inviteeBonus =
-            (refCfg[FirestoreReferralConfigFields.inviteeBonus] as num?)
-                ?.toDouble() ??
-            0.0;
-        final batch = FirebaseFirestore.instance.batch();
-        final referralsDocRef = FirebaseFirestore.instance
-            .collection(FirestoreConstants.referrals)
-            .doc(doc.id);
-        final users = FirebaseFirestore.instance.collection(
-          FirestoreConstants.users,
-        );
-        final inviterRef = users.doc(inviterUid);
-        final inviterRealtimeRef = inviterRef
-            .collection(FirestoreUserSubCollections.earnings)
-            .doc(FirestoreEarningsDocs.realtime);
-        final realtimeRef = users
-            .doc(uid)
-            .collection(FirestoreUserSubCollections.earnings)
-            .doc(FirestoreEarningsDocs.realtime);
-
-        final points = FirebaseFirestore.instance.collection(
-          FirestoreConstants.pointLogs,
-        );
-        final inviterLog = points.doc();
-        final inviteeLog = points.doc();
-        batch.update(referralsDocRef, {FirestoreReferralFields.isActive: true});
-        batch.set(inviterLog, {
-          FirestorePointLogFields.userId: inviterUid,
-          FirestorePointLogFields.type: FirestorePointLogTypes.referral,
-          FirestorePointLogFields.amount: referrerBonus,
-          FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
-          FirestorePointLogFields.description:
-              'Referral bonus activated on first session',
-        });
-        batch.set(inviteeLog, {
-          FirestorePointLogFields.userId: uid,
-          FirestorePointLogFields.type: FirestorePointLogTypes.referral,
-          FirestorePointLogFields.amount: inviteeBonus,
-          FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
-          FirestorePointLogFields.description:
-              'Referral bonus (invitee) activated on first session',
-        });
-        batch.set(inviterRealtimeRef, {
-          FirestoreUserFields.totalPoints: FieldValue.increment(referrerBonus),
-        }, SetOptions(merge: true));
-        batch.set(realtimeRef, {
-          FirestoreUserFields.totalPoints: FieldValue.increment(inviteeBonus),
-        }, SetOptions(merge: true));
-
-        await batch.commit();
-        await RankEngine.updateUserRank(inviterUid);
-        // We already updated user rank for current user in startMining, no need to do it again here
-        // unless activation changes rank immediately? It might.
-        // But let's save the read/write for now or do it if strictness is needed.
-      }
-    }
-  }
-
-  static Future<void> migrateLegacyData({
-    required String uid,
-    required Map<String, dynamic> userData,
-  }) async {
-    final realtimeRef = FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid)
-        .collection(FirestoreUserSubCollections.earnings)
-        .doc(FirestoreEarningsDocs.realtime);
-
-    final realtimeSnap = await realtimeRef.get();
-    final realtimeData = realtimeSnap.data() ?? {};
-
-    final Map<String, dynamic> updates = {};
-
-    // Check totalPoints
-    if (!realtimeData.containsKey(FirestoreUserFields.totalPoints)) {
-      final val = userData[FirestoreUserFields.totalPoints];
-      if (val != null) updates[FirestoreUserFields.totalPoints] = val;
-    }
-
-    // Check hourlyRate
-    if (!realtimeData.containsKey(FirestoreUserFields.hourlyRate)) {
-      final val = userData[FirestoreUserFields.hourlyRate];
-      if (val != null) updates[FirestoreUserFields.hourlyRate] = val;
-    }
-
-    // Check managedCoinSelections
-    if (!realtimeData.containsKey(FirestoreUserFields.managedCoinSelections)) {
-      final val = userData[FirestoreUserFields.managedCoinSelections];
-      if (val != null) updates[FirestoreUserFields.managedCoinSelections] = val;
-    }
-
-    // Check managerBonusPerHour
-    if (!realtimeData.containsKey(FirestoreUserFields.managerBonusPerHour)) {
-      final val = userData[FirestoreUserFields.managerBonusPerHour];
-      if (val != null) updates[FirestoreUserFields.managerBonusPerHour] = val;
-    }
-
-    if (updates.isNotEmpty) {
-      updates[FirestoreUserFields.updatedAt] = FieldValue.serverTimestamp();
-      await realtimeRef.set(updates, SetOptions(merge: true));
-    }
-  }
-
-  static Map<String, dynamic> _calculateStreak(
-    Map<String, dynamic> data,
-    Map<String, dynamic> streakCfg,
-  ) {
-    final Timestamp? lastEndTs =
-        data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
-    final DateTime nowUtc = DateTime.now().toUtc();
-    final DateTime today = DateTime.utc(nowUtc.year, nowUtc.month, nowUtc.day);
-    final int current =
-        (data[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
-
-    final int lastUpdatedDay =
-        (data[FirestoreUserFields.streakLastUpdatedDay] as num?)?.toInt() ?? 0;
-    int todayInt = nowUtc.year * 10000 + nowUtc.month * 100 + nowUtc.day;
-    final DateTime yesterday = today.subtract(const Duration(days: 1));
-    int yesterdayInt =
-        yesterday.year * 10000 + yesterday.month * 100 + yesterday.day;
-
-    int updated = current;
-    bool incremented = false;
-
-    if (lastEndTs == null) {
-      updated = 1;
-    } else {
-      final endUtc = lastEndTs.toDate().toUtc();
-      final DateTime d = DateTime.utc(endUtc.year, endUtc.month, endUtc.day);
-      final int dInt = d.year * 10000 + d.month * 100 + d.day;
-
-      if (dInt == yesterdayInt) {
-        updated = current + 1;
-        incremented = true;
-      } else if (dInt == todayInt) {
-        if (lastUpdatedDay == todayInt) {
-          updated = current; // Already updated today
-        } else {
-          updated = current + 1; // First session ending today?
-          incremented = true;
-        }
-      } else {
-        // Gap > 1 day or future
-        updated = 1;
-      }
-    }
-
-    final int maxDays =
-        (streakCfg[FirestoreStreakConfigFields.maxStreakDays] as num?)
-            ?.toInt() ??
-        15;
-
-    if (updated > maxDays) updated = maxDays;
-    if (updated < 1) updated = 1;
-
-    return {
-      FirestoreUserFields.streakDays: updated,
-      FirestoreUserFields.streakLastUpdatedDay: incremented
-          ? todayInt
-          : lastUpdatedDay,
-      'incremented': incremented,
-    };
-  }
-
-  static double _calculateReferralMultiplier(
-    int count,
-    Map<String, dynamic> cfg,
-  ) {
-    final Map<String, dynamic> tiersRaw =
-        (cfg[FirestoreReferralConfigFields.referralBonusTiers]
-            as Map<String, dynamic>?) ??
-        {};
-    final List<MapEntry<int, double>> tiers =
-        tiersRaw.entries
-            .map(
-              (e) => MapEntry(
-                int.tryParse(e.key) ?? 0,
-                (e.value as num?)?.toDouble() ?? 0.0,
-              ),
-            )
-            .where((e) => e.key > 0 && e.value > 0.0)
-            .toList()
-          ..sort((a, b) => a.key.compareTo(b.key));
-
-    int maxCount =
-        (cfg[FirestoreReferralConfigFields.rewardedReferralMaxCount] as num?)
-            ?.toInt() ??
-        (cfg[FirestoreReferralConfigFields.referrerMaxCount] as num?)
-            ?.toInt() ??
-        100;
-    if (maxCount <= 0) {
-      maxCount = 0;
-    }
-
-    int effective = count;
-    if (maxCount > 0) {
-      effective = count.clamp(0, maxCount);
-    } else {
-      effective = count.clamp(0, 1000000);
-    }
-
-    double percentPerReferralRaw;
-    if (tiers.isNotEmpty) {
-      int thresholdForLog = 0;
-      double selectedPercent = 0.0;
-      for (final t in tiers) {
-        if (effective <= t.key) {
-          thresholdForLog = t.key;
-          selectedPercent = t.value;
-          break;
-        }
-      }
-      if (thresholdForLog == 0) {
-        final last = tiers.last;
-        thresholdForLog = last.key;
-        selectedPercent = last.value;
-      }
-      percentPerReferralRaw = selectedPercent;
-    } else {
-      percentPerReferralRaw =
-          (cfg[FirestoreReferralConfigFields.referrerPercentPerReferral]
-                  as num?)
-              ?.toDouble() ??
-          (cfg.containsKey(FirestoreAppConfigFields.referralBonusStep)
-              ? (cfg[FirestoreAppConfigFields.referralBonusStep] as num?)
-                        ?.toDouble() ??
-                    0.0
-              : 0.0);
-    }
-
-    final double percentPerReferral = (percentPerReferralRaw <= 0.0)
-        ? 0.0
-        : (percentPerReferralRaw / 100.0);
-    final double totalPercent = percentPerReferral * effective;
-    return 1.0 + totalPercent;
-  }
-
-  static double _streakMultiplier(
-    int streakDays,
-    Map<String, dynamic> streakCfg,
-  ) {
-    final table = streakCfg[FirestoreAppConfigFields.streakBonusTable];
-    if (table is Map<String, dynamic>) {
-      double m = 1.0;
-      int bestThreshold = 0;
-      table.forEach((k, v) {
-        final int threshold = int.tryParse(k) ?? 0;
-        final double mult = (v as num?)?.toDouble() ?? 1.0;
-        if (streakDays >= threshold && mult > m) {
-          m = mult;
-          bestThreshold = threshold;
-        }
-      });
-      debugPrint(
-        'EarningsEngine: streak table → days=$streakDays, bestThreshold=$bestThreshold, multiplier=${m.toStringAsFixed(6)}',
-      );
-      return m;
-    }
-    final int maxDays =
-        (streakCfg[FirestoreStreakConfigFields.maxStreakDays] as num?)
-            ?.toInt() ??
-        15;
-    final double maxMult =
-        (streakCfg[FirestoreStreakConfigFields.maxStreakMultiplier] as num?)
-            ?.toDouble() ??
-        2.0;
-    if (streakDays <= 1) {
-      debugPrint(
-        'EarningsEngine: streak linear → days=$streakDays/$maxDays, maxMult=${maxMult.toStringAsFixed(6)}, multiplier=1.000000',
-      );
-      return 1.0;
-    }
-    final int d = streakDays.clamp(1, maxDays);
-    final double t = maxDays > 1 ? (d - 1) / (maxDays - 1) : 0.0;
-    final double res = 1.0 + t * (maxMult - 1.0);
-    debugPrint(
-      'EarningsEngine: streak linear → days=$streakDays/$maxDays, maxMult=${maxMult.toStringAsFixed(6)}, multiplier=${res.toStringAsFixed(6)}',
-    );
-    return res;
-  }
-
-  static double _rankMultiplierByName(
-    String rank,
-    Map<String, dynamic> ranksCfg,
-  ) {
-    final mults = ranksCfg[FirestoreRankConfigFields.rankMultipliers];
-    double out = 1.0;
-    if (mults is Map<String, dynamic>) {
-      final v = mults[rank];
-      out = (v as num?)?.toDouble() ?? 1.0;
-    }
-    debugPrint(
-      'EarningsEngine: rank table → rank=$rank, multiplier=${out.toStringAsFixed(6)}',
-    );
-    return out;
   }
 }

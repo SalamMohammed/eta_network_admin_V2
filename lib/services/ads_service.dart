@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/firestore_helper.dart';
 import '../shared/firestore_constants.dart';
 
 class AdsConfig {
@@ -208,7 +209,7 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
 
       // 2. Fetch from Firestore
       debugPrint('AdsService: Fetching config from Firestore');
-      final doc = await FirebaseFirestore.instance
+      final doc = await FirestoreHelper.instance
           .collection(FirestoreConstants.appConfig)
           .doc(FirestoreAppConfigDocs.ads)
           .get();

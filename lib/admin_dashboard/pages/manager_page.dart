@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../shared/theme/colors.dart';
 import '../../shared/firestore_constants.dart';
+import '../../utils/firestore_helper.dart';
 
 class ManagerPage extends StatefulWidget {
   const ManagerPage({super.key});
@@ -20,12 +21,12 @@ class _ManagerPageState extends State<ManagerPage> {
   }
 
   Future<void> _loadManagers() async {
-    final qs = await FirebaseFirestore.instance
+    final qs = await FirestoreHelper.instance
         .collection(FirestoreConstants.managers)
         .orderBy(FirestoreManagerFields.createdAt, descending: true)
         .get();
     managers = qs.docs;
-    final legacySnap = await FirebaseFirestore.instance
+    final legacySnap = await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.manager)
         .get();
@@ -42,7 +43,7 @@ class _ManagerPageState extends State<ManagerPage> {
   }
 
   Future<void> _deleteManager(String id) async {
-    await FirebaseFirestore.instance
+    await FirestoreHelper.instance
         .collection(FirestoreConstants.managers)
         .doc(id)
         .delete();
@@ -59,33 +60,29 @@ class _ManagerPageState extends State<ManagerPage> {
 
   Future<void> _migrateLegacyManager() async {
     final cfg = legacyManagerCfg ?? {};
-    await FirebaseFirestore.instance
-        .collection(FirestoreConstants.managers)
-        .add({
-          FirestoreManagerFields.name: 'Default Manager',
-          FirestoreManagerFields.thumbnailUrl: '',
-          FirestoreManagerFields.enableEtaAuto:
-              (cfg[FirestoreManagerConfigFields.enableEtaAuto] as bool?) ??
-              true,
-          FirestoreManagerFields.enableUserCoinAuto:
-              (cfg[FirestoreManagerConfigFields.enableUserCoinAuto] as bool?) ??
-              true,
-          FirestoreManagerFields.globalCommunity: true,
-          FirestoreManagerFields.maxCommunityCoinsManaged:
-              (cfg[FirestoreManagerConfigFields.maxCommunityCoinsManaged]
-                      as num?)
-                  ?.toInt() ??
-              0,
-          FirestoreManagerFields.managerMultiplier: 2.0,
-          FirestoreManagerFields.isActive: true,
-          FirestoreManagerFields.createdAt: FieldValue.serverTimestamp(),
-          FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
-        });
+    await FirestoreHelper.instance.collection(FirestoreConstants.managers).add({
+      FirestoreManagerFields.name: 'Default Manager',
+      FirestoreManagerFields.thumbnailUrl: '',
+      FirestoreManagerFields.enableEtaAuto:
+          (cfg[FirestoreManagerConfigFields.enableEtaAuto] as bool?) ?? true,
+      FirestoreManagerFields.enableUserCoinAuto:
+          (cfg[FirestoreManagerConfigFields.enableUserCoinAuto] as bool?) ??
+          true,
+      FirestoreManagerFields.globalCommunity: true,
+      FirestoreManagerFields.maxCommunityCoinsManaged:
+          (cfg[FirestoreManagerConfigFields.maxCommunityCoinsManaged] as num?)
+              ?.toInt() ??
+          0,
+      FirestoreManagerFields.managerMultiplier: 2.0,
+      FirestoreManagerFields.isActive: true,
+      FirestoreManagerFields.createdAt: FieldValue.serverTimestamp(),
+      FirestoreManagerFields.updatedAt: FieldValue.serverTimestamp(),
+    });
     await _deleteLegacyManager();
   }
 
   Future<void> _deleteLegacyManager() async {
-    await FirebaseFirestore.instance
+    await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.manager)
         .delete();
@@ -372,11 +369,11 @@ class _CreateManagerDialogState extends State<_CreateManagerDialog> {
       return;
     }
     setState(() => submitting = true);
-    final col = FirebaseFirestore.instance.collection(
+    final col = FirestoreHelper.instance.collection(
       FirestoreConstants.managers,
     );
     final newRef = col.doc();
-    final batch = FirebaseFirestore.instance.batch();
+    final batch = FirestoreHelper.instance.batch();
     if (bestValue) {
       final qs = await col
           .where(FirestoreManagerFields.bestValue, isEqualTo: true)
@@ -597,10 +594,10 @@ class _EditManagerDialogState extends State<_EditManagerDialog> {
       return;
     }
     setState(() => submitting = true);
-    final col = FirebaseFirestore.instance.collection(
+    final col = FirestoreHelper.instance.collection(
       FirestoreConstants.managers,
     );
-    final batch = FirebaseFirestore.instance.batch();
+    final batch = FirestoreHelper.instance.batch();
     if (bestValue) {
       final qs = await col
           .where(FirestoreManagerFields.bestValue, isEqualTo: true)

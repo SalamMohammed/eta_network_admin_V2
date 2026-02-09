@@ -8,6 +8,7 @@ import 'dart:convert';
 import '../../shared/firestore_constants.dart';
 import '../../services/coin_service.dart';
 import '../../services/sql_api_service.dart';
+import '../../utils/firestore_helper.dart';
 
 void showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
   showDialog(
@@ -110,7 +111,7 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
           // Assuming existing logic was Firestore only.
           return null;
         }
-        final qs = await FirebaseFirestore.instance
+        final qs = await FirestoreHelper.instance
             .collectionGroup(FirestoreUserSubCollections.coins)
             .where(FirestoreUserCoinMiningFields.ownerId, isEqualTo: ownerId)
             .get();
@@ -456,7 +457,7 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                   FutureBuilder<
                                     DocumentSnapshot<Map<String, dynamic>>
                                   >(
-                                    future: FirebaseFirestore.instance
+                                    future: FirestoreHelper.instance
                                         .collection(FirestoreConstants.users)
                                         .doc(ownerId)
                                         .get(),
@@ -963,7 +964,7 @@ class _LiveMinedDisplayState extends State<LiveMinedDisplay>
       if (widget.uid == widget.coinOwnerId) {
         stream = CoinService.watchUserCoin(widget.uid);
       } else {
-        stream = FirebaseFirestore.instance
+        stream = FirestoreHelper.instance
             .collection(FirestoreConstants.users)
             .doc(widget.uid)
             .collection(FirestoreUserSubCollections.coins)

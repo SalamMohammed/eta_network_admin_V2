@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/firestore_constants.dart';
 import '../../shared/constants.dart';
+import '../../utils/firestore_helper.dart';
 
 class ReferralsPage extends StatefulWidget {
   const ReferralsPage({super.key});
@@ -265,7 +266,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
       // Try to load from Firestore (Source of Truth)
       // We do this separately so that if stats/team queries fail,
       // the user still gets their code.
-      final userDoc = await FirebaseFirestore.instance
+      final userDoc = await FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
           .get();
@@ -287,7 +288,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
       // Generate if missing
       if (code == null || code.isEmpty) {
         code = _generateReferralCode();
-        await FirebaseFirestore.instance
+        await FirestoreHelper.instance
             .collection(FirestoreConstants.users)
             .doc(uid)
             .set({
@@ -314,7 +315,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
     // PHASE 2: LOAD STATS & TEAM (SECONDARY)
     try {
       // 2. Prepare Referrals Query
-      final referralsRef = FirebaseFirestore.instance
+      final referralsRef = FirestoreHelper.instance
           .collection(FirestoreConstants.referrals)
           .where(FirestoreReferralFields.inviterId, isEqualTo: uid);
 
@@ -325,7 +326,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
           .get();
 
       // 4. Referral stats (denormalized counts)
-      final statsDocFuture = FirebaseFirestore.instance
+      final statsDocFuture = FirestoreHelper.instance
           .collection(FirestoreConstants.referralStats)
           .doc(uid)
           .get();
@@ -334,7 +335,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
       final activeThreshold = DateTime.now().subtract(
         const Duration(hours: 48),
       );
-      final activeCountFuture = FirebaseFirestore.instance
+      final activeCountFuture = FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
           .where(
@@ -370,7 +371,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
       if (inviteeIds.isNotEmpty) {
         final userFutures = inviteeIds
             .map(
-              (id) => FirebaseFirestore.instance
+              (id) => FirestoreHelper.instance
                   .collection(FirestoreConstants.users)
                   .doc(id)
                   .get(),

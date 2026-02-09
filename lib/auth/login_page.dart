@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../shared/theme/colors.dart';
 import '../shared/firestore_constants.dart';
+import '../utils/firestore_helper.dart';
 import 'signup_page.dart';
 import '../entry/selector_page.dart';
 import '../firebase_options.dart';
@@ -40,7 +41,7 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _ensureUserDocExists(User user) async {
-    final ref = FirebaseFirestore.instance
+    final ref = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(user.uid);
     final snap = await ref.get();

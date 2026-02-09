@@ -6,6 +6,7 @@ import 'dart:math';
 import 'dart:typed_data';
 import '../shared/theme/colors.dart';
 import '../shared/firestore_constants.dart';
+import '../utils/firestore_helper.dart';
 import 'login_page.dart';
 import '../entry/selector_page.dart';
 import '../services/referral_engine.dart';
@@ -65,7 +66,7 @@ class _SignupPageState extends State<SignupPage> {
       final uid = cred.user!.uid;
       final username = _emailController.text.trim().split('@').first;
       final referralCode = _generateReferralCode();
-      await FirebaseFirestore.instance
+      await FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
           .set({
@@ -96,7 +97,7 @@ class _SignupPageState extends State<SignupPage> {
           }, SetOptions(merge: true));
 
       // Initialize earnings/realtime subcollection
-      await FirebaseFirestore.instance
+      await FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
           .collection(FirestoreUserSubCollections.earnings)
@@ -111,7 +112,7 @@ class _SignupPageState extends State<SignupPage> {
       final r = FirebaseStorage.instance.ref().child('users/$uid/thumbnail');
       await r.putData(b, SettableMetadata(contentType: 'image/png'));
       final u = await r.getDownloadURL();
-      await FirebaseFirestore.instance
+      await FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
           .set({FirestoreUserFields.thumbnailUrl: u}, SetOptions(merge: true));
@@ -126,7 +127,7 @@ class _SignupPageState extends State<SignupPage> {
 
       await AuthVerificationService.sendVerificationEmail();
 
-      await FirebaseFirestore.instance
+      await FirestoreHelper.instance
           .collection(FirestoreConstants.pointLogs)
           .add({
             FirestorePointLogFields.userId: uid,

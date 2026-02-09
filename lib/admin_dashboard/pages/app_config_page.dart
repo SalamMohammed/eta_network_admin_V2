@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 import '../../shared/theme/colors.dart';
 import '../../shared/firestore_constants.dart';
+import '../../utils/firestore_helper.dart';
 
 class AppConfigPage extends StatefulWidget {
   const AppConfigPage({super.key});
@@ -50,7 +51,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
   }
 
   Future<void> _load() async {
-    final general = await FirebaseFirestore.instance
+    final general = await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.general)
         .get();
@@ -76,7 +77,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
         ((g[FirestoreAppConfigFields.enableSubscriptions] as bool?) ?? false);
     sandboxMode = ((g[FirestoreAppConfigFields.sandboxMode] as bool?) ?? false);
 
-    final referrals = await FirebaseFirestore.instance
+    final referrals = await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.referrals)
         .get();
@@ -118,7 +119,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
       );
     }
 
-    final streak = await FirebaseFirestore.instance
+    final streak = await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.streak)
         .get();
@@ -146,7 +147,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
       );
     }
 
-    final ranks = await FirebaseFirestore.instance
+    final ranks = await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.ranks)
         .get();
@@ -261,7 +262,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
         (parsedSessionHours != null && parsedSessionHours > 0.0)
         ? parsedSessionHours
         : 24.0;
-    await FirebaseFirestore.instance
+    await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.general)
         .set({
@@ -279,7 +280,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
   }
 
   Future<void> _saveUserCoinConfig() async {
-    await FirebaseFirestore.instance
+    await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.userCoin)
         .set({
@@ -307,7 +308,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
       tiers[key] = percent;
     }
 
-    await FirebaseFirestore.instance
+    await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.referrals)
         .set({
@@ -325,7 +326,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
   }
 
   Future<void> _saveStreak() async {
-    await FirebaseFirestore.instance
+    await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.streak)
         .set({
@@ -344,7 +345,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
       if (key.isEmpty) continue;
       table[key] = mult;
     }
-    await FirebaseFirestore.instance
+    await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.streak)
         .set({
@@ -364,7 +365,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
       rules[name] = {'minActiveReferrals': minRefs, 'minStreakDays': minStreak};
       mults[name] = mult;
     }
-    await FirebaseFirestore.instance
+    await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.ranks)
         .set({

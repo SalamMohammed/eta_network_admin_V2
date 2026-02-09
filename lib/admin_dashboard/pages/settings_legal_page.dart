@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import '../../shared/firestore_constants.dart';
 import '../../shared/theme/colors.dart';
+import '../../utils/firestore_helper.dart';
 
 class SettingsLegalPage extends StatefulWidget {
   const SettingsLegalPage({super.key});
@@ -28,7 +29,7 @@ class _SettingsLegalPageState extends State<SettingsLegalPage> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final doc = await FirebaseFirestore.instance
+      final doc = await FirestoreHelper.instance
           .collection(FirestoreConstants.appConfig)
           .doc(FirestoreAppConfigDocs.legal)
           .get();
@@ -61,7 +62,7 @@ class _SettingsLegalPageState extends State<SettingsLegalPage> {
   Future<void> _save() async {
     setState(() => _loading = true);
     try {
-      await FirebaseFirestore.instance
+      await FirestoreHelper.instance
           .collection(FirestoreConstants.appConfig)
           .doc(FirestoreAppConfigDocs.legal)
           .set({

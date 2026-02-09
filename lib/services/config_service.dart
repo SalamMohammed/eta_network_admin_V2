@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/firestore_helper.dart';
 import '../shared/firestore_constants.dart';
 
 class ConfigService {
@@ -92,7 +93,7 @@ class ConfigService {
       }
 
       debugPrint('ConfigService: Fetching $docId config from Firestore');
-      final doc = await FirebaseFirestore.instance
+      final doc = await FirestoreHelper.instance
           .collection(FirestoreConstants.appConfig)
           .doc(docId)
           .get();

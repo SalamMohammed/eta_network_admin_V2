@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../utils/firestore_helper.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../shared/firestore_constants.dart';
@@ -1255,7 +1256,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
     }.where((s) => s.trim().isNotEmpty).toList();
 
     for (final v in nameVariants) {
-      final qs = await FirebaseFirestore.instance
+      final qs = await FirestoreHelper.instance
           .collection(FirestoreConstants.userCoins)
           .where(FirestoreUserCoinFields.name, isEqualTo: v)
           .limit(1)
@@ -1273,7 +1274,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
       rawSymbol.toLowerCase(),
     }.where((s) => s.trim().isNotEmpty).toList();
     for (final v in checkVariants) {
-      final qs = await FirebaseFirestore.instance
+      final qs = await FirestoreHelper.instance
           .collection(FirestoreConstants.userCoins)
           .where(FirestoreUserCoinFields.symbol, isEqualTo: v)
           .limit(1)
@@ -1382,11 +1383,13 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
   Timestamp? _start;
   double _totalBase = 0.0;
   Map<String, dynamic>? _localOverrideData;
+  Stream<DocumentSnapshot<Map<String, dynamic>>>? _miningStream;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _initStream();
   }
 
   @override
@@ -1395,6 +1398,28 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
     if (!_isSameState(widget.miningData, oldWidget.miningData)) {
       _localOverrideData = null;
     }
+    if (widget.coinOwnerId != oldWidget.coinOwnerId ||
+        widget.miningData != oldWidget.miningData) {
+      _initStream();
+    }
+  }
+
+  void _initStream() {
+    if (widget.miningData != null) {
+      _miningStream = null;
+      return;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || widget.coinOwnerId.isEmpty) {
+      _miningStream = null;
+      return;
+    }
+    _miningStream = FirestoreHelper.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .collection(FirestoreUserSubCollections.coins)
+        .doc(widget.coinOwnerId)
+        .snapshots();
   }
 
   bool _isSameState(Map<String, dynamic>? a, Map<String, dynamic>? b) {
@@ -1450,17 +1475,12 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
       return _buildUI();
     }
 
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || widget.coinOwnerId.isEmpty) {
+    if (_miningStream == null) {
       return const SizedBox.shrink();
     }
-    final ref = FirebaseFirestore.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid)
-        .collection(FirestoreUserSubCollections.coins)
-        .doc(widget.coinOwnerId);
+
     return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: ref.snapshots(),
+      stream: _miningStream,
       builder: (context, snap) {
         final d = snap.data?.data();
         if (d != null) {

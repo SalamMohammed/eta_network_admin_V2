@@ -9,6 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../firebase_options.dart';
+import '../utils/firestore_helper.dart';
 import '../shared/firestore_constants.dart';
 
 // Top-level function for handling background messages
@@ -192,7 +193,7 @@ class NotificationService {
       _firebaseMessaging.onTokenRefresh.listen((tok) async {
         final u = FirebaseAuth.instance.currentUser?.uid;
         if (u != null && tok.isNotEmpty) {
-          await FirebaseFirestore.instance
+          await FirestoreHelper.instance
               .collection(FirestoreConstants.users)
               .doc(u)
               .set({
@@ -511,7 +512,7 @@ class NotificationService {
         (nowMs - lastMs > dayMs) ||
         (token.isNotEmpty && token != lastToken);
     if (!shouldVerify) return;
-    await FirebaseFirestore.instance
+    await FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
         .set({
