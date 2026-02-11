@@ -660,11 +660,15 @@ class EarningsEngine {
       // Also update main user doc for redundancy/display?
       // Prefer keeping it in realtime to reduce writes.
       // But if we want 'hourlyRate' to be visible in admin panel on user doc:
+      // OPTIMIZATION: Removed redundant write to userRef to save costs.
+      // Admin panel should read from realtime subcollection or aggregate queries.
+      /*
       transaction.update(userRef, {
         FirestoreUserFields.hourlyRate: newHourlyRate,
         FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       });
+      */
 
       return {
         FirestoreUserFields.rateBase: baseRate,

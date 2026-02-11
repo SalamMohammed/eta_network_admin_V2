@@ -783,7 +783,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       _startUserDocListener();
       _startRealtimeDocListener();
       // Also refresh manually to ensure we catch anything the listener might miss during reconnection
-      _refresh();
+      // Debounce refresh to respect local write throttle and prevent excessive syncs on rapid toggles
+      _refreshDebounce?.cancel();
+      _refreshDebounce = Timer(const Duration(minutes: 2), () {
+        _refresh();
+      });
       // Re-schedule just in case something was missed or cleared
       if (_lastEnd != null && _managerEnabled) {
         BackgroundService.scheduleManagerWakeup(_lastEnd!.toDate());

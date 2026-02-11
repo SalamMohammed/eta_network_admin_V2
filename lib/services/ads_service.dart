@@ -219,7 +219,11 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
         _config = AdsConfig.fromFirestore(data);
 
         // 3. Save to cache
-        await prefs.setString(_prefsKeyAds, jsonEncode(data));
+        // Remove Timestamp fields before encoding to avoid JsonUnsupportedObjectError
+        final cacheData = Map<String, dynamic>.from(data);
+        cacheData.remove(FirestoreUserFields.updatedAt);
+
+        await prefs.setString(_prefsKeyAds, jsonEncode(cacheData));
         await prefs.setInt(
           _prefsKeyAdsTs,
           DateTime.now().millisecondsSinceEpoch,
