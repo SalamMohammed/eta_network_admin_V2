@@ -180,60 +180,55 @@ class CoinService with WidgetsBindingObserver {
         .where(FirestoreUserCoinFields.isActive, whereIn: [true, '1', 1])
         .snapshots()
         .map((snap) {
-          final docs = snap.docs.map((d) => d.data()).toList();
+      final docs = snap.docs.map((d) => d.data()).toList();
 
-          // Helper to parse minersCount safely
-          int getMinersCount(Map<String, dynamic> d) {
-            final v = d[FirestoreUserCoinFields.minersCount];
-            if (v is int) return v;
-            if (v is String) return int.tryParse(v) ?? 0;
-            return 0;
-          }
+      // Helper to parse minersCount safely
+      int getMinersCount(Map<String, dynamic> d) {
+        final v = d[FirestoreUserCoinFields.minersCount];
+        if (v is int) return v;
+        if (v is String) return int.tryParse(v) ?? 0;
+        return 0;
+      }
 
-          // Helper to parse createdAt safely
-          DateTime getCreatedAt(Map<String, dynamic> d) {
-            final v = d[FirestoreUserCoinFields.createdAt];
-            if (v is Timestamp) return v.toDate();
-            if (v is String) return DateTime.tryParse(v) ?? DateTime(1970);
-            return DateTime(1970);
-          }
+      // Helper to parse createdAt safely
+      DateTime getCreatedAt(Map<String, dynamic> d) {
+        final v = d[FirestoreUserCoinFields.createdAt];
+        if (v is Timestamp) return v.toDate();
+        if (v is String) return DateTime.tryParse(v) ?? DateTime(1970);
+        return DateTime(1970);
+      }
 
-          // Helper to get name
-          String getName(Map<String, dynamic> d) {
-            return (d[FirestoreUserCoinFields.name] as String?)
-                    ?.toLowerCase() ??
-                '';
-          }
+      // Helper to get name
+      String getName(Map<String, dynamic> d) {
+        return (d[FirestoreUserCoinFields.name] as String?)?.toLowerCase() ??
+            '';
+      }
 
-          // Sort in memory
-          switch (sort) {
-            case 'popular':
-              docs.sort(
-                (a, b) => getMinersCount(b).compareTo(getMinersCount(a)),
-              );
-              break;
-            case 'name_az':
-              docs.sort((a, b) => getName(a).compareTo(getName(b)));
-              break;
-            case 'name_za':
-              docs.sort((a, b) => getName(b).compareTo(getName(a)));
-              break;
-            case 'old_new':
-              docs.sort((a, b) => getCreatedAt(a).compareTo(getCreatedAt(b)));
-              break;
-            case 'new_old':
-            case 'newest':
-              docs.sort((a, b) => getCreatedAt(b).compareTo(getCreatedAt(a)));
-              break;
-            default:
-              docs.sort(
-                (a, b) => getMinersCount(b).compareTo(getMinersCount(a)),
-              );
-          }
+      // Sort in memory
+      switch (sort) {
+        case 'popular':
+          docs.sort((a, b) => getMinersCount(b).compareTo(getMinersCount(a)));
+          break;
+        case 'name_az':
+          docs.sort((a, b) => getName(a).compareTo(getName(b)));
+          break;
+        case 'name_za':
+          docs.sort((a, b) => getName(b).compareTo(getName(a)));
+          break;
+        case 'old_new':
+          docs.sort((a, b) => getCreatedAt(a).compareTo(getCreatedAt(b)));
+          break;
+        case 'new_old':
+        case 'newest':
+          docs.sort((a, b) => getCreatedAt(b).compareTo(getCreatedAt(a)));
+          break;
+        default:
+          docs.sort((a, b) => getMinersCount(b).compareTo(getMinersCount(a)));
+      }
 
-          // Return top 50 to match typical page size
-          return docs.take(50).toList();
-        });
+      // Return top 50 to match typical page size
+      return docs.take(50).toList();
+    });
   }
 
   static Future<Map<String, dynamic>> getUserCoinConfig() async {
