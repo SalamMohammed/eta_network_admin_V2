@@ -5,6 +5,8 @@ import '../../shared/theme/colors.dart';
 import '../../shared/firestore_constants.dart';
 import '../../utils/firestore_helper.dart';
 
+import '../../services/migration_service.dart';
+
 class AppConfigPage extends StatefulWidget {
   const AppConfigPage({super.key});
   @override
@@ -545,6 +547,26 @@ class _AppConfigPageState extends State<AppConfigPage> {
                     ElevatedButton(
                       onPressed: _saveUserCoinConfig,
                       child: const Text('Save'),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () async {
+                        await MigrationService.runMigration();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Migration started. Check debug console.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Migrate SQL JSON'),
                     ),
                   ],
                 ),

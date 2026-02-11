@@ -52,12 +52,12 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
   void initState() {
     super.initState();
     _data = widget.data;
-    if (CoinService.useSqlBackend) {
+    /* if (CoinService.useSqlBackend) {
       _fetchSqlData();
-    }
+    } */
   }
 
-  Future<void> _fetchSqlData() async {
+  /* Future<void> _fetchSqlData() async {
     final ownerId = (_data['ownerId'] as String?) ?? (_data['uid'] as String?);
     if (ownerId == null || ownerId.isEmpty) return;
 
@@ -74,7 +74,7 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
     } catch (e) {
       debugPrint('Error fetching SQL coin details: $e');
     }
-  }
+  } */
 
   @override
   Widget build(BuildContext context) {
@@ -105,12 +105,12 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
     Future<double?> fetchTotalMinedAll() async {
       if (ownerId.isEmpty) return null;
       try {
-        if (CoinService.useSqlBackend) {
+        /* if (CoinService.useSqlBackend) {
           // For SQL, we might need a different endpoint or aggregation.
           // For now, return null or implement if API supports it.
           // Assuming existing logic was Firestore only.
           return null;
-        }
+        } */
         final qs = await FirestoreHelper.instance
             .collectionGroup(FirestoreUserSubCollections.coins)
             .where(FirestoreUserCoinMiningFields.ownerId, isEqualTo: ownerId)

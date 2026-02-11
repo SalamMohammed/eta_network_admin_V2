@@ -1026,14 +1026,12 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     try {
-      final sqlCoins = await SqlApiService.getMyCoins(uid);
-      if (sqlCoins != null) {
-        allCoins = sqlCoins;
-        // Inject into CoinService cache to avoid redundant reads in UI
-        CoinService.updateMyCoinsCache(sqlCoins);
-      }
+      final coins = await CoinService.getMyCoins(uid);
+      allCoins = coins;
+      // Inject into CoinService cache to avoid redundant reads in UI
+      CoinService.updateMyCoinsCache(coins);
     } catch (e) {
-      debugPrint('[MiningStateService] SQL fetch failed: $e');
+      debugPrint('[MiningStateService] Firestore fetch failed: $e');
     }
 
     if (allCoins.isEmpty) {

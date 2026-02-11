@@ -14,7 +14,7 @@ import 'config_service.dart';
 
 class CoinService with WidgetsBindingObserver {
   // MASTER SWITCH: Set to true to use SQL, false for Firestore
-  static const bool useSqlBackend = true;
+  static const bool useSqlBackend = false;
 
   // Singleton instance for lifecycle management
   static final CoinService _instance = CoinService._internal();
@@ -59,9 +59,9 @@ class CoinService with WidgetsBindingObserver {
   }
 
   static Future<Map<String, dynamic>?> getUserCoin(String uid) async {
-    if (useSqlBackend) {
+    /* if (useSqlBackend) {
       return SqlApiService.getUserCoin(uid);
-    }
+    } */
     final snap = await FirestoreHelper.instance
         .collection(FirestoreConstants.userCoins)
         .doc(uid)
@@ -70,7 +70,7 @@ class CoinService with WidgetsBindingObserver {
   }
 
   static Stream<Map<String, dynamic>?> watchUserCoin(String uid) {
-    if (useSqlBackend) {
+    /* if (useSqlBackend) {
       // Re-implementing using StreamController for full control
       final controller = StreamController<Map<String, dynamic>?>();
       Timer? timer;
@@ -121,7 +121,7 @@ class CoinService with WidgetsBindingObserver {
       };
 
       return controller.stream.asBroadcastStream();
-    }
+    } */
     return FirestoreHelper.instance
         .collection(FirestoreConstants.userCoins)
         .doc(uid)
@@ -137,80 +137,7 @@ class CoinService with WidgetsBindingObserver {
   static String? _lastLiveSort;
 
   static Stream<List<Map<String, dynamic>>> watchMyCoins(String uid) {
-    // Hybrid Mode: Always try to use SQL/Cache for the list if available
-    // This drastically reduces Firestore reads for users with many coins.
-    if (useSqlBackend || _cachedMyCoins != null) {
-      // Poll every 60 seconds (1 request per minute)
-      final controller = StreamController<List<Map<String, dynamic>>>();
-      Timer? timer;
-
-      void fetch() async {
-        if (controller.isClosed) return;
-
-        // Use cache if fresh and available
-        if (_cachedMyCoins != null) {
-          // If we have a cache (even from MiningStateService), use it immediately
-          if (!controller.isClosed) controller.add(_cachedMyCoins!);
-
-          // If it's very fresh, skip re-fetch
-          if (_myCoinsFetchTime != null &&
-              DateTime.now().difference(_myCoinsFetchTime!) <
-                  const Duration(seconds: 60)) {
-            return;
-          }
-        }
-
-        // Only fetch from SQL if configured or if we are in a hybrid fallback mode
-        // But if useSqlBackend is false, calling SqlApiService might return stale data?
-        // However, MiningStateService uses it. So we assume it's the desired "Heavy List" source.
-        try {
-          final fresh = await SqlApiService.getMyCoins(uid);
-          if (fresh != null) {
-            updateMyCoinsCache(fresh);
-            if (!controller.isClosed) controller.add(fresh);
-          }
-        } catch (e) {
-          debugPrint('[CoinService] Watch fetch failed: $e');
-        }
-      }
-
-      void startTimer() {
-        timer?.cancel();
-        timer = Timer.periodic(const Duration(seconds: 60), (_) {
-          if (_isPaused) return;
-          fetch();
-        });
-      }
-
-      void onPause() {
-        timer?.cancel();
-        timer = null;
-      }
-
-      void onResume() {
-        if (!controller.isClosed) {
-          fetch();
-          startTimer();
-        }
-      }
-
-      controller.onListen = () {
-        fetch();
-        startTimer();
-        _resumeCallbacks.add(onResume);
-        _pauseCallbacks.add(onPause);
-      };
-
-      controller.onCancel = () {
-        timer?.cancel();
-        _resumeCallbacks.remove(onResume);
-        _pauseCallbacks.remove(onPause);
-      };
-
-      return controller.stream.asBroadcastStream();
-    }
-
-    // Fallback to Firestore only if NO cache and NO SQL
+    // Directly watch Firestore subcollection
     return FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
@@ -227,32 +154,7 @@ class CoinService with WidgetsBindingObserver {
 
   /// Get the list of coins, preferring cache/SQL
   static Future<List<Map<String, dynamic>>> getMyCoins(String uid) async {
-    if (_cachedMyCoins != null &&
-        _myCoinsFetchTime != null &&
-        DateTime.now().difference(_myCoinsFetchTime!) <
-            const Duration(seconds: 60)) {
-      return _cachedMyCoins!;
-    }
-
-    if (useSqlBackend) {
-      final fresh = await SqlApiService.getMyCoins(uid);
-      if (fresh != null) {
-        updateMyCoinsCache(fresh);
-        return fresh;
-      }
-    }
-
-    // Hybrid: Try SQL even if useSqlBackend is false, if we want to avoid Firestore reads?
-    // But safely:
-    try {
-      final fresh = await SqlApiService.getMyCoins(uid);
-      if (fresh != null) {
-        updateMyCoinsCache(fresh);
-        return fresh;
-      }
-    } catch (_) {}
-
-    // Fallback to Firestore
+    // Directly fetch from Firestore
     final qs = await FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
@@ -264,72 +166,74 @@ class CoinService with WidgetsBindingObserver {
   static Stream<List<Map<String, dynamic>>> watchLiveCoins({
     String sort = 'popular',
   }) {
-    if (useSqlBackend) {
-      // Poll every 60 seconds for market data
-      final controller = StreamController<List<Map<String, dynamic>>>();
-      Timer? timer;
+    // REVISED STRATEGY: Client-Side Sorting
+    // To ensure Live Coins appear immediately without requiring the user to create
+    // complex composite indexes (e.g., isActive + minersCount) in the Firebase Console,
+    // we fetch ALL active coins and sort them in memory.
+    //
+    // This is robust against:
+    // 1. Missing Firestore indexes (common cause of empty results).
+    // 2. Data type inconsistencies (handled by whereIn and safe parsing).
 
-      void fetch() async {
-        if (controller.isClosed) return;
-
-        // Yield cached data immediately if available, matches sort, and fresh (< 60s)
-        if (_cachedLiveCoins != null &&
-            _liveCoinsFetchTime != null &&
-            _lastLiveSort == sort &&
-            DateTime.now().difference(_liveCoinsFetchTime!) <
-                const Duration(seconds: 60)) {
-          if (!controller.isClosed) controller.add(_cachedLiveCoins!);
-        }
-
-        final fresh = await SqlApiService.getLiveCoins(sort: sort);
-        if (fresh != null) {
-          _cachedLiveCoins = fresh;
-          _liveCoinsFetchTime = DateTime.now();
-          _lastLiveSort = sort;
-          if (!controller.isClosed) controller.add(fresh);
-        }
-      }
-
-      void startTimer() {
-        timer?.cancel();
-        timer = Timer.periodic(const Duration(seconds: 60), (_) {
-          fetch();
-        });
-      }
-
-      void onPause() {
-        timer?.cancel();
-        timer = null;
-      }
-
-      void onResume() {
-        if (!controller.isClosed) {
-          fetch();
-          startTimer();
-        }
-      }
-
-      controller.onListen = () {
-        fetch();
-        startTimer();
-        _resumeCallbacks.add(onResume);
-        _pauseCallbacks.add(onPause);
-      };
-
-      controller.onCancel = () {
-        timer?.cancel();
-        _resumeCallbacks.remove(onResume);
-        _pauseCallbacks.remove(onPause);
-      };
-
-      return controller.stream.asBroadcastStream();
-    }
     return FirestoreHelper.instance
         .collection(FirestoreConstants.userCoins)
-        .where(FirestoreUserCoinFields.isActive, isEqualTo: true)
-        .limit(20)
+        .where(FirestoreUserCoinFields.isActive, whereIn: [true, '1', 1])
         .snapshots()
-        .map((snap) => snap.docs.map((d) => d.data()).toList());
+        .map((snap) {
+          final docs = snap.docs.map((d) => d.data()).toList();
+
+          // Helper to parse minersCount safely
+          int getMinersCount(Map<String, dynamic> d) {
+            final v = d[FirestoreUserCoinFields.minersCount];
+            if (v is int) return v;
+            if (v is String) return int.tryParse(v) ?? 0;
+            return 0;
+          }
+
+          // Helper to parse createdAt safely
+          DateTime getCreatedAt(Map<String, dynamic> d) {
+            final v = d[FirestoreUserCoinFields.createdAt];
+            if (v is Timestamp) return v.toDate();
+            if (v is String) return DateTime.tryParse(v) ?? DateTime(1970);
+            return DateTime(1970);
+          }
+
+          // Helper to get name
+          String getName(Map<String, dynamic> d) {
+            return (d[FirestoreUserCoinFields.name] as String?)
+                    ?.toLowerCase() ??
+                '';
+          }
+
+          // Sort in memory
+          switch (sort) {
+            case 'popular':
+              docs.sort(
+                (a, b) => getMinersCount(b).compareTo(getMinersCount(a)),
+              );
+              break;
+            case 'name_az':
+              docs.sort((a, b) => getName(a).compareTo(getName(b)));
+              break;
+            case 'name_za':
+              docs.sort((a, b) => getName(b).compareTo(getName(a)));
+              break;
+            case 'old_new':
+              docs.sort((a, b) => getCreatedAt(a).compareTo(getCreatedAt(b)));
+              break;
+            case 'new_old':
+            case 'newest':
+              docs.sort((a, b) => getCreatedAt(b).compareTo(getCreatedAt(a)));
+              break;
+            default:
+              docs.sort(
+                (a, b) => getMinersCount(b).compareTo(getMinersCount(a)),
+              );
+          }
+
+          // Return top 50 to match typical page size
+          return docs.take(50).toList();
+        });
   }
 
   static Future<Map<String, dynamic>> getUserCoinConfig() async {
@@ -345,15 +249,6 @@ class CoinService with WidgetsBindingObserver {
     String? symbol,
     String? excludeUid,
   }) async {
-    // Switch to SQL if enabled
-    if (useSqlBackend) {
-      return SqlApiService.checkCoinUniqueness(
-        name: name,
-        symbol: symbol,
-        excludeUid: excludeUid ?? '',
-      );
-    }
-
     if (name != null && name.isNotEmpty) {
       final q = await FirestoreHelper.instance
           .collection(FirestoreConstants.userCoins)
@@ -414,7 +309,7 @@ class CoinService with WidgetsBindingObserver {
     }
 
     // Switch to SQL if enabled
-    if (useSqlBackend) {
+    /* if (useSqlBackend) {
       try {
         // Create a copy for SQL to avoid modifying the original map
         final sqlCoin = Map<String, dynamic>.from(coin);
@@ -437,7 +332,7 @@ class CoinService with WidgetsBindingObserver {
         debugPrint('[CoinService] SQL create/update failed | error=$e');
         rethrow;
       }
-    }
+    } */
 
     final ref = FirestoreHelper.instance
         .collection(FirestoreConstants.userCoins)
@@ -456,7 +351,7 @@ class CoinService with WidgetsBindingObserver {
     if (uid == null || coinOwnerId.isEmpty) return;
 
     // Switch to SQL if enabled
-    if (useSqlBackend) {
+    /* if (useSqlBackend) {
       try {
         await SqlApiService.addToMyCoins(coinOwnerId);
         triggerMyCoinsRefresh();
@@ -465,7 +360,7 @@ class CoinService with WidgetsBindingObserver {
         debugPrint('[CoinService] SQL add to my coins failed | error=$e');
         rethrow;
       }
-    }
+    } */
 
     final coinSnap = await FirestoreHelper.instance
         .collection(FirestoreConstants.userCoins)
@@ -504,19 +399,35 @@ class CoinService with WidgetsBindingObserver {
           0.0,
     }, SetOptions(merge: true));
     if (!existing.exists) {
-      await FirestoreHelper.instance
+      // Safely increment minersCount, handling potential String types from migration
+      final coinRef = FirestoreHelper.instance
           .collection(FirestoreConstants.userCoins)
-          .doc(coinOwnerId)
-          .update({
-            FirestoreUserCoinFields.minersCount: FieldValue.increment(1),
+          .doc(coinOwnerId);
+
+      FirestoreHelper.instance
+          .runTransaction((transaction) async {
+            final snapshot = await transaction.get(coinRef);
+            if (!snapshot.exists) return;
+
+            final data = snapshot.data() ?? {};
+            dynamic currentCount = data[FirestoreUserCoinFields.minersCount];
+            int count = 0;
+            if (currentCount is int) {
+              count = currentCount;
+            } else if (currentCount is String) {
+              count = int.tryParse(currentCount) ?? 0;
+            }
+
+            transaction.update(coinRef, {
+              FirestoreUserCoinFields.minersCount: count + 1,
+            });
           })
-          .catchError((_) async {
-            await FirestoreHelper.instance
-                .collection(FirestoreConstants.userCoins)
-                .doc(coinOwnerId)
-                .set({
-                  FirestoreUserCoinFields.minersCount: FieldValue.increment(1),
-                }, SetOptions(merge: true));
+          .catchError((e) {
+            debugPrint('[CoinService] Failed to increment minersCount: $e');
+            // Fallback to simple increment if transaction fails (though unlikely)
+            coinRef.update({
+              FirestoreUserCoinFields.minersCount: FieldValue.increment(1),
+            });
           });
     }
   }
@@ -576,7 +487,7 @@ class CoinService with WidgetsBindingObserver {
     }
     final end = Timestamp.fromDate(endDt);
 
-    if (useSqlBackend) {
+    /* if (useSqlBackend) {
       // 1. Fetch coin details to get the rate
       final coinData = await SqlApiService.getUserCoin(coinOwnerId);
       if (coinData == null) {
@@ -601,7 +512,7 @@ class CoinService with WidgetsBindingObserver {
       // Return the updated record in a format compatible with the app
       // Ensure fields match what the UI expects (mapped from PHP response)
       return updatedRecord;
-    }
+    } */
 
     // Firestore Optimization: Use cached data if available to avoid reads
     Map<String, dynamic> coin = {};
@@ -665,6 +576,29 @@ class CoinService with WidgetsBindingObserver {
     if (lastEnd != null && DateTime.now().isBefore(lastEnd.toDate())) {
       return data;
     }
+
+    // Calculate pending points from previous session if it finished
+    double addedPoints = 0.0;
+    if (lastEnd != null) {
+      final lastSynced =
+          data[FirestoreUserCoinMiningFields.lastSyncedAt] as Timestamp?;
+      if (lastSynced != null) {
+        final oldEnd = lastEnd.toDate();
+        final oldSynced = lastSynced.toDate();
+        // Check if we have un-synced time at the end
+        if (oldSynced.isBefore(oldEnd)) {
+          final durationSeconds = oldEnd.difference(oldSynced).inSeconds;
+          if (durationSeconds > 0) {
+            final oldRate =
+                (data[FirestoreUserCoinMiningFields.hourlyRate] as num?)
+                    ?.toDouble() ??
+                0.0;
+            addedPoints = (durationSeconds / 3600.0) * oldRate;
+          }
+        }
+      }
+    }
+
     final batch = FirestoreHelper.instance.batch();
     batch.set(ref, {
       FirestoreUserCoinMiningFields.ownerId: coinOwnerId,
@@ -677,15 +611,18 @@ class CoinService with WidgetsBindingObserver {
       FirestoreUserCoinMiningFields.lastMiningStart: Timestamp.fromDate(now),
       FirestoreUserCoinMiningFields.lastMiningEnd: end,
       FirestoreUserCoinMiningFields.lastSyncedAt: Timestamp.fromDate(now),
-      FirestoreUserCoinMiningFields.totalPoints:
-          (data[FirestoreUserCoinMiningFields.totalPoints] as num?)
-              ?.toDouble() ??
-          0.0,
+      FirestoreUserCoinMiningFields.totalPoints: FieldValue.increment(
+        addedPoints,
+      ),
     }, SetOptions(merge: true));
     await batch.commit();
 
     // OPTIMIZATION: Merge local data instead of re-fetching
     final Map<String, dynamic> mergedData = Map<String, dynamic>.from(data);
+    final currentTotal =
+        (data[FirestoreUserCoinMiningFields.totalPoints] as num?)?.toDouble() ??
+        0.0;
+
     mergedData.addAll({
       FirestoreUserCoinMiningFields.ownerId: coinOwnerId,
       FirestoreUserCoinMiningFields.name: name,
@@ -697,10 +634,7 @@ class CoinService with WidgetsBindingObserver {
       FirestoreUserCoinMiningFields.lastMiningStart: Timestamp.fromDate(now),
       FirestoreUserCoinMiningFields.lastMiningEnd: end,
       FirestoreUserCoinMiningFields.lastSyncedAt: Timestamp.fromDate(now),
-      FirestoreUserCoinMiningFields.totalPoints:
-          (data[FirestoreUserCoinMiningFields.totalPoints] as num?)
-              ?.toDouble() ??
-          0.0,
+      FirestoreUserCoinMiningFields.totalPoints: currentTotal + addedPoints,
     });
 
     return mergedData;
@@ -714,14 +648,14 @@ class CoinService with WidgetsBindingObserver {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
-    if (useSqlBackend) {
+    /* if (useSqlBackend) {
       await SqlApiService.syncCoinEarnings(
         coinOwnerId: coinOwnerId,
         amount: amount,
         lastSyncedAt: lastSyncedAt,
       );
       return;
-    }
+    } */
 
     final ref = FirestoreHelper.instance
         .collection(FirestoreConstants.users)

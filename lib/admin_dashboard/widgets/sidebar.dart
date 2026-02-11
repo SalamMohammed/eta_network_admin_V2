@@ -52,14 +52,21 @@ class Sidebar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          for (int i = 0; i < items.length; i++)
-            _SidebarButton(
-              label: items[i].label,
-              icon: items[i].icon,
-              selected: i == selectedIndex,
-              onTap: () => onSelect(i),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  for (int i = 0; i < items.length; i++)
+                    _SidebarButton(
+                      label: items[i].label,
+                      icon: items[i].icon,
+                      selected: i == selectedIndex,
+                      onTap: () => onSelect(i),
+                    ),
+                ],
+              ),
             ),
-          const Spacer(),
+          ),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Container(

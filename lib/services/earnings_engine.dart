@@ -557,30 +557,50 @@ class EarningsEngine {
       // This is a placeholder for actual streak logic.
 
       // 4. Referral Bonus
-      // Need count of active referrals.
-      // This is expensive to count every time.
-      // We should rely on a counter in user doc or periodic aggregation.
-      // Assuming 'referralCount' is in user doc? No, standard is 'totalInvited'.
-      // But we need 'active' referrals.
-      // Optimization: For now, assume 0 or cached.
-      // Better: ConfigService.getReferralConfig()
       final refConfig = await ConfigService().getReferralConfig();
-      final double perRef =
+      double perRef =
           (refConfig[FirestoreReferralConfigFields.referrerPercentPerReferral]
                   as num?)
               ?.toDouble() ??
           0.25; // 25% of base
 
+      // Normalize: If value is > 1.0 (e.g. 25), treat as percentage (0.25)
+      // This handles Admin Dashboard inputs like "25" for 25%.
+      if (perRef > 1.0) {
+        perRef = perRef / 100.0;
+      }
+
+      // Strict Logic: Cap referral count
+      final int maxRefs =
+          (refConfig[FirestoreReferralConfigFields.referrerMaxCount] as num?)
+              ?.toInt() ??
+          0;
+
+      // Strict Logic: Max total bonus rate (from General Config)
+      final double maxBonusRate =
+          (appConfig[FirestoreAppConfigFields.maxReferralBonusRate] as num?)
+              ?.toDouble() ??
+          0.0;
+
       double rateReferral = 0.0;
       if (activeReferralCount != null) {
-        // Use cached active count if provided (Optimized)
-        rateReferral = activeReferralCount * perRef * baseRate;
+        int effectiveCount = activeReferralCount;
+        if (maxRefs > 0 && effectiveCount > maxRefs) {
+          effectiveCount = maxRefs;
+        }
+        // Calculate based on normalized perRef
+        rateReferral = effectiveCount * perRef * baseRate;
       } else {
         // Fallback: Use existing rate from realtime doc
         rateReferral =
             (realtimeData[FirestoreUserFields.rateReferral] as num?)
                 ?.toDouble() ??
             0.0;
+      }
+
+      // Apply Global Cap if set
+      if (maxBonusRate > 0.0 && rateReferral > maxBonusRate) {
+        rateReferral = maxBonusRate;
       }
 
       // 5. Manager Bonus
