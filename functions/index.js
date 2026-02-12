@@ -58,7 +58,7 @@ const HANDLED_EVENT_TYPES = new Set([
   'PRODUCT_CHANGE',
 ]);
 
-const ALLOWED_APP_IDS = new Set(['com.eta.network', 'net.etanetwork.app']);
+const ALLOWED_APP_IDS = new Set(['com.eta.network', 'net.etanetwork.app', 'net.etanetwork.app.test']);
 
 const managerIdCache = new Map();
 const MANAGER_ID_CACHE_TTL_MS = 10 * 60 * 1000;

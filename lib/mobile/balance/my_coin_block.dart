@@ -474,7 +474,7 @@ class _CoinCard extends StatelessWidget {
                         baseRate: rate,
                         symbol: symbol,
                         variant: CoinMiningControlsVariant.myCoinCard,
-                        miningData: data,
+                        // miningData: data, // Removed to force fetching from users/{uid}/coins/{id}
                       ),
                     ],
                   ),

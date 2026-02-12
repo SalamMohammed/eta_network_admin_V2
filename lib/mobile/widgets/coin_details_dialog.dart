@@ -961,17 +961,15 @@ class _LiveMinedDisplayState extends State<LiveMinedDisplay>
         stream = Stream.value(null);
       }
     } else {
-      if (widget.uid == widget.coinOwnerId) {
-        stream = CoinService.watchUserCoin(widget.uid);
-      } else {
-        stream = FirestoreHelper.instance
-            .collection(FirestoreConstants.users)
-            .doc(widget.uid)
-            .collection(FirestoreUserSubCollections.coins)
-            .doc(widget.coinOwnerId)
-            .snapshots()
-            .map((doc) => doc.data());
-      }
+      // Always watch the mining record in users/{uid}/coins/{coinOwnerId}
+      // This ensures we get the mining stats (points, active session) even for the owner.
+      stream = FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .doc(widget.uid)
+          .collection(FirestoreUserSubCollections.coins)
+          .doc(widget.coinOwnerId)
+          .snapshots()
+          .map((doc) => doc.data());
     }
 
     return StreamBuilder<Map<String, dynamic>?>(

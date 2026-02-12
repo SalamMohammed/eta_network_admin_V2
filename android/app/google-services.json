@@ -50,6 +50,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "899853959610-g95l5a8um2o1t3tsschem11l6n39q5nn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "net.etanetwork.app",
+            "certificate_hash": "16ee3d1ba0539a5537dcd72ce0a807d2188f5fc3"
+          }
+        },
+        {
           "client_id": "899853959610-ka0rhfld4t1r5f553ihbk5igihrpucoc.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
@@ -57,6 +65,50 @@
             "certificate_hash": "e227978c8abf822d7b0f98c41465ba9b3eeac570"
           }
         },
+        {
+          "client_id": "899853959610-sr33e4nqedob81pbv6ajd1cdg6kv9li2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "net.etanetwork.app",
+            "certificate_hash": "60146a66709243b6f655f68faa1f85dfc88c4880"
+          }
+        },
+        {
+          "client_id": "899853959610-th8ebstq66aeo174cq6r2gv0bcu5pq1b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "net.ApexSoft.EtaNetwork"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:899853959610:android:637258b6fecee554b31d83",
+        "android_client_info": {
+          "package_name": "net.etanetwork.app.test"
+        }
+      },
+      "oauth_client": [
         {
           "client_id": "899853959610-th8ebstq66aeo174cq6r2gv0bcu5pq1b.apps.googleusercontent.com",
           "client_type": 3

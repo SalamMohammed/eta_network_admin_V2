@@ -45,7 +45,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc',
-    appId: '1:899853959610:android:c96465f4edc69c11b31d83',
+    appId: '1:899853959610:android:637258b6fecee554b31d83',
     messagingSenderId: '899853959610',
     projectId: 'eta-network-31964',
     storageBucket: 'eta-network-31964.firebasestorage.app',
@@ -53,14 +53,12 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCRYhSiYRh9kRkPHV1NKSHcOYDp9WgRcvs',
-    appId: '1:899853959610:ios:0abf91e974ce1c92b31d83',
+    appId: '1:899853959610:ios:58e34b39316e5c6ab31d83',
     messagingSenderId: '899853959610',
     projectId: 'eta-network-31964',
     storageBucket: 'eta-network-31964.firebasestorage.app',
-    androidClientId:
-        '899853959610-euk59ct1o7u65derouq8muiu8fh7si2m.apps.googleusercontent.com',
-    iosClientId:
-        '899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com',
+    androidClientId: '899853959610-euk59ct1o7u65derouq8muiu8fh7si2m.apps.googleusercontent.com',
+    iosClientId: '899853959610-q1g4hl663hcd1j6taolmra3v9d5n4p98.apps.googleusercontent.com',
     iosBundleId: 'net.etanetwork.app',
   );
 
@@ -83,4 +81,5 @@ class DefaultFirebaseOptions {
     storageBucket: 'eta-network-31964.firebasestorage.app',
     measurementId: 'G-048TGLLK3F',
   );
+
 }

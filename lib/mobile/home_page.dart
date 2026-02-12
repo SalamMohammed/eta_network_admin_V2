@@ -8,7 +8,7 @@ import '../shared/firestore_constants.dart';
 import '../shared/device_id.dart';
 import 'balance/my_coin_block.dart';
 import '../services/coin_service.dart';
-import '../services/sql_api_service.dart';
+// import '../services/sql_api_service.dart';
 import '../services/mining_state_service.dart';
 import '../services/subscription_service.dart';
 import '../services/notification_service.dart';
@@ -1095,7 +1095,7 @@ class _MobileHomePageState extends State<MobileHomePage>
               coinOwnerId: ownerId,
               baseRate: rate,
               symbol: symbol,
-              miningData: data,
+              // miningData: data, // Removed to force fetching from users/{uid}/coins/{id}
             ),
           ],
         ),
@@ -1441,65 +1441,9 @@ class _MobileHomePageState extends State<MobileHomePage>
     return l;
   }
 
-  Map<String, dynamic> _normalizeCoinMap(Map<String, dynamic> c) {
-    if (!CoinService.useSqlBackend) return c;
-    final m = Map<String, dynamic>.from(c);
-
-    double toDouble(dynamic v) {
-      if (v is num) return v.toDouble();
-      if (v is String) return double.tryParse(v) ?? 0.0;
-      return 0.0;
-    }
-
-    // Fields for mined coins
-    if (m.containsKey(FirestoreUserCoinMiningFields.hourlyRate)) {
-      m[FirestoreUserCoinMiningFields.hourlyRate] = toDouble(
-        m[FirestoreUserCoinMiningFields.hourlyRate],
-      );
-    }
-    if (m.containsKey(FirestoreUserCoinMiningFields.totalPoints)) {
-      m[FirestoreUserCoinMiningFields.totalPoints] = toDouble(
-        m[FirestoreUserCoinMiningFields.totalPoints],
-      );
-    }
-
-    // Fields for live coins
-    if (m.containsKey(FirestoreUserCoinFields.baseRatePerHour)) {
-      m[FirestoreUserCoinFields.baseRatePerHour] = toDouble(
-        m[FirestoreUserCoinFields.baseRatePerHour],
-      );
-    }
-    if (m.containsKey(FirestoreUserCoinFields.minersCount)) {
-      final v = m[FirestoreUserCoinFields.minersCount];
-      if (v is String) {
-        m[FirestoreUserCoinFields.minersCount] = int.tryParse(v) ?? 0;
-      }
-    }
-
-    void toTs(String key) {
-      if (m[key] is String && (m[key] as String).isNotEmpty) {
-        try {
-          m[key] = Timestamp.fromDate(DateTime.parse(m[key]));
-        } catch (_) {
-          m[key] = null;
-        }
-      } else if (m[key] is! Timestamp) {
-        m[key] = null;
-      }
-    }
-
-    toTs(FirestoreUserCoinMiningFields.lastMiningStart);
-    toTs(FirestoreUserCoinMiningFields.lastMiningEnd);
-    toTs(FirestoreUserCoinMiningFields.lastSyncedAt);
-    toTs(FirestoreUserCoinFields.createdAt);
-    toTs(FirestoreUserCoinFields.updatedAt);
-
-    return m;
-  }
-
+  // Helper for normalization if needed in future
   List<Map<String, dynamic>> _normalizeCoins(List<Map<String, dynamic>> coins) {
-    if (!CoinService.useSqlBackend) return coins;
-    return coins.map(_normalizeCoinMap).toList();
+    return coins;
   }
 
   List<Map<String, dynamic>> _sortLiveList(List<Map<String, dynamic>> list) {
@@ -2881,17 +2825,12 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
     if (uid == null) return;
 
     List<Map<String, dynamic>> loaded = [];
-    // Use SQL if enabled, otherwise fall back to Firestore
-    if (CoinService.useSqlBackend) {
-      loaded = await SqlApiService.getMyCoins(uid) ?? [];
-    } else {
-      final qs = await FirestoreHelper.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .collection(FirestoreUserSubCollections.coins)
-          .get();
-      loaded = qs.docs.map((d) => d.data()).toList();
-    }
+    final qs = await FirestoreHelper.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid)
+        .collection(FirestoreUserSubCollections.coins)
+        .get();
+    loaded = qs.docs.map((d) => d.data()).toList();
 
     coins = loaded
         .where(

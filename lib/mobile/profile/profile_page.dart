@@ -15,7 +15,7 @@ import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
 import 'legal_content_page.dart';
-import 'package:eta_network_admin/mobile/profile/firestore_logs_page.dart';
+// import 'package:eta_network_admin/mobile/profile/firestore_logs_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -524,21 +524,61 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                         _settingsTile(
                           scale: s,
-                          icon: Icons.monitor_heart_outlined,
-                          title: 'Firestore Monitor',
+                          icon: Icons.qr_code_rounded,
+                          title: 'KYC Verification',
                           subtitle: null,
                           trailing: Icon(
                             Icons.chevron_right_rounded,
                             color: Colors.white54,
                             size: s(24),
                           ),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const FirestoreLogsPage(),
-                            ),
-                          ),
+                          onTap: () {
+                            showDialog(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                backgroundColor: const Color(0xFF1B2632),
+                                title: const Text(
+                                  'KYC Verification',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                                content: const Text(
+                                  'Will be activated in the coming stages.',
+                                  style: TextStyle(color: Colors.white70),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    child: const Text('OK'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
                         ),
+                        // Padding(
+                        //   padding: EdgeInsets.symmetric(horizontal: s(14)),
+                        //   child: Container(
+                        //     height: 1,
+                        //     color: Colors.white.withValues(alpha: 0.06),
+                        //   ),
+                        // ),
+                        // _settingsTile(
+                        //   scale: s,
+                        //   icon: Icons.monitor_heart_outlined,
+                        //   title: 'Firestore Monitor',
+                        //   subtitle: null,
+                        //   trailing: Icon(
+                        //     Icons.chevron_right_rounded,
+                        //     color: Colors.white54,
+                        //     size: s(24),
+                        //   ),
+                        //   onTap: () => Navigator.push(
+                        //     context,
+                        //     MaterialPageRoute(
+                        //       builder: (_) => const FirestoreLogsPage(),
+                        //     ),
+                        //   ),
+                        // ),
                       ],
                     ),
                   ),
