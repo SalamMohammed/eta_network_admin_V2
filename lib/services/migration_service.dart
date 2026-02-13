@@ -390,6 +390,177 @@ class MigrationService {
     }
   }
 
+  /// Phase 1: Consolidate App Configuration into a Master Document
+  static Future<void> consolidateMasterConfig() async {
+    debugPrint('[MigrationService] Starting Master Config consolidation...');
+    try {
+      final List<String> configDocs = [
+        FirestoreAppConfigDocs.general,
+        FirestoreAppConfigDocs.referrals,
+        FirestoreAppConfigDocs.streak,
+        FirestoreAppConfigDocs.ranks,
+        FirestoreAppConfigDocs.userCoin,
+        FirestoreAppConfigDocs.manager,
+        FirestoreAppConfigDocs.legal,
+        FirestoreAppConfigDocs.ads,
+      ];
+      final Map<String, dynamic> masterData = {};
+      for (final docId in configDocs) {
+        final doc = await FirestoreHelper.instance
+            .collection(FirestoreConstants.appConfig)
+            .doc(docId)
+            .get();
+        if (doc.exists) {
+          masterData[docId] = doc.data();
+          debugPrint('[MigrationService] Added $docId to Master Config');
+        }
+      }
+      if (masterData.isNotEmpty) {
+        await FirestoreHelper.instance
+            .collection(FirestoreConstants.appConfig)
+            .doc(FirestoreAppConfigDocs.master)
+            .set(masterData);
+        debugPrint('[MigrationService] Successfully deployed Master Config!');
+      } else {
+        debugPrint(
+          '[MigrationService] No config documents found to consolidate.',
+        );
+      }
+    } catch (e) {
+      debugPrint('[MigrationService] Error consolidating Master Config: $e');
+    }
+  }
+
+  static Future<void> consolidateUser(String uid) async {
+    debugPrint('[MigrationService] Consolidating user: $uid');
+    try {
+      final userDoc = await FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .get();
+
+      if (!userDoc.exists) {
+        debugPrint('[MigrationService] User $uid not found');
+        return;
+      }
+
+      final data = userDoc.data() ?? {};
+
+      // If already consolidated, skip (optional check, depends on if we want to force re-consolidate)
+      if (data.containsKey(FirestoreUserFields.meta)) {
+        debugPrint('[MigrationService] User $uid already consolidated');
+        // return; // Uncomment to skip already consolidated users
+      }
+
+      final Map<String, dynamic> consolidated = {};
+
+      // 1. Meta (Auth & Profile)
+      consolidated[FirestoreUserFields.meta] = {
+        FirestoreUserFields.uid: data[FirestoreUserFields.uid],
+        FirestoreUserFields.email: data[FirestoreUserFields.email],
+        FirestoreUserFields.username: data[FirestoreUserFields.username],
+        FirestoreUserFields.name: data[FirestoreUserFields.name],
+        FirestoreUserFields.thumbnailUrl:
+            data[FirestoreUserFields.thumbnailUrl],
+        FirestoreUserFields.fcmToken: data[FirestoreUserFields.fcmToken],
+        FirestoreUserFields.country: data[FirestoreUserFields.country],
+        FirestoreUserFields.address: data[FirestoreUserFields.address],
+        FirestoreUserFields.gender: data[FirestoreUserFields.gender],
+        FirestoreUserFields.age: data[FirestoreUserFields.age],
+        FirestoreUserFields.deviceId: data[FirestoreUserFields.deviceId],
+        FirestoreUserFields.createdAt: data[FirestoreUserFields.createdAt],
+        FirestoreUserFields.updatedAt: data[FirestoreUserFields.updatedAt],
+      };
+
+      // 2. Stats (Gamification)
+      consolidated[FirestoreUserFields.stats] = {
+        FirestoreUserFields.rank: data[FirestoreUserFields.rank],
+        FirestoreUserFields.role: data[FirestoreUserFields.role],
+        FirestoreUserFields.totalPoints: data[FirestoreUserFields.totalPoints],
+        FirestoreUserFields.totalSessions:
+            data[FirestoreUserFields.totalSessions],
+        FirestoreUserFields.streakDays: data[FirestoreUserFields.streakDays],
+        FirestoreUserFields.streakLastUpdatedDay:
+            data[FirestoreUserFields.streakLastUpdatedDay],
+        FirestoreUserFields.referralCode:
+            data[FirestoreUserFields.referralCode],
+        FirestoreUserFields.invitedBy: data[FirestoreUserFields.invitedBy],
+        FirestoreUserFields.referralLocked:
+            data[FirestoreUserFields.referralLocked],
+      };
+
+      // 3. Mining State
+      consolidated[FirestoreUserFields.mining] = {
+        FirestoreUserFields.lastMiningStart:
+            data[FirestoreUserFields.lastMiningStart],
+        FirestoreUserFields.lastMiningEnd:
+            data[FirestoreUserFields.lastMiningEnd],
+        FirestoreUserFields.lastSyncedAt:
+            data[FirestoreUserFields.lastSyncedAt],
+        FirestoreUserFields.hourlyRate: data[FirestoreUserFields.hourlyRate],
+        // Rates Breakdown
+        FirestoreUserFields.rateBase: data[FirestoreUserFields.rateBase],
+        FirestoreUserFields.rateStreak: data[FirestoreUserFields.rateStreak],
+        FirestoreUserFields.rateRank: data[FirestoreUserFields.rateRank],
+        FirestoreUserFields.rateReferral:
+            data[FirestoreUserFields.rateReferral],
+        FirestoreUserFields.rateManager: data[FirestoreUserFields.rateManager],
+        FirestoreUserFields.rateAds: data[FirestoreUserFields.rateAds],
+      };
+
+      // 4. Manager Configuration
+      consolidated[FirestoreUserFields.manager] = {
+        FirestoreUserFields.managerEnabled:
+            data[FirestoreUserFields.managerEnabled],
+        FirestoreUserFields.activeManagerId:
+            data[FirestoreUserFields.activeManagerId],
+        FirestoreUserFields.managedCoinSelections:
+            data[FirestoreUserFields.managedCoinSelections],
+        FirestoreUserFields.managerBonusPerHour:
+            data[FirestoreUserFields.managerBonusPerHour],
+      };
+
+      // 5. Wallet/Subscription
+      consolidated[FirestoreUserFields.wallet] = {
+        FirestoreUserFields.subscription:
+            data[FirestoreUserFields.subscription],
+      };
+
+      // Perform Update
+      await FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .update(consolidated);
+
+      debugPrint('[MigrationService] Successfully consolidated user $uid');
+    } catch (e) {
+      debugPrint('[MigrationService] Error consolidating user $uid: $e');
+    }
+  }
+
+  static Future<void> migrateAllUsers({int limit = 100}) async {
+    debugPrint(
+      '[MigrationService] Starting batch user consolidation (limit: $limit)...',
+    );
+    try {
+      final qs = await FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .limit(limit)
+          .get();
+
+      int count = 0;
+      for (final doc in qs.docs) {
+        await consolidateUser(doc.id);
+        count++;
+      }
+      debugPrint(
+        '[MigrationService] Batch consolidation complete. Processed $count users.',
+      );
+    } catch (e) {
+      debugPrint('[MigrationService] Error in batch user consolidation: $e');
+    }
+  }
+
   static Timestamp? _parseDate(dynamic value) {
     if (value == null ||
         value.toString().isEmpty ||

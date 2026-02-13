@@ -10,6 +10,8 @@ class ConfigService {
   factory ConfigService() => _instance;
   ConfigService._internal();
 
+  static const String _prefsKeyMaster = 'app_config_master_cache';
+  static const String _prefsKeyMasterTs = 'app_config_master_ts';
   static const String _prefsKeyGeneral = 'app_config_general_cache';
   static const String _prefsKeyGeneralTs = 'app_config_general_ts';
   static const String _prefsKeyStreak = 'app_config_streak_cache';
@@ -21,8 +23,15 @@ class ConfigService {
   static const Duration _cacheDuration = Duration(hours: 24);
 
   final Map<String, Map<String, dynamic>> _memoryCache = {};
+  Map<String, dynamic>? _masterCache;
 
-  Future<Map<String, dynamic>> getGeneralConfig({bool forceRefresh = false}) {
+  Future<Map<String, dynamic>> getGeneralConfig({
+    bool forceRefresh = false,
+  }) async {
+    final master = await _getMasterConfig(forceRefresh: forceRefresh);
+    if (master.containsKey(FirestoreAppConfigDocs.general)) {
+      return Map<String, dynamic>.from(master[FirestoreAppConfigDocs.general]);
+    }
     return _getConfig(
       FirestoreAppConfigDocs.general,
       _prefsKeyGeneral,
@@ -31,7 +40,13 @@ class ConfigService {
     );
   }
 
-  Future<Map<String, dynamic>> getStreakConfig({bool forceRefresh = false}) {
+  Future<Map<String, dynamic>> getStreakConfig({
+    bool forceRefresh = false,
+  }) async {
+    final master = await _getMasterConfig(forceRefresh: forceRefresh);
+    if (master.containsKey(FirestoreAppConfigDocs.streak)) {
+      return Map<String, dynamic>.from(master[FirestoreAppConfigDocs.streak]);
+    }
     return _getConfig(
       FirestoreAppConfigDocs.streak,
       _prefsKeyStreak,
@@ -40,7 +55,13 @@ class ConfigService {
     );
   }
 
-  Future<Map<String, dynamic>> getRanksConfig({bool forceRefresh = false}) {
+  Future<Map<String, dynamic>> getRanksConfig({
+    bool forceRefresh = false,
+  }) async {
+    final master = await _getMasterConfig(forceRefresh: forceRefresh);
+    if (master.containsKey(FirestoreAppConfigDocs.ranks)) {
+      return Map<String, dynamic>.from(master[FirestoreAppConfigDocs.ranks]);
+    }
     return _getConfig(
       FirestoreAppConfigDocs.ranks,
       _prefsKeyRanks,
@@ -49,13 +70,69 @@ class ConfigService {
     );
   }
 
-  Future<Map<String, dynamic>> getReferralConfig({bool forceRefresh = false}) {
+  Future<Map<String, dynamic>> getReferralConfig({
+    bool forceRefresh = false,
+  }) async {
+    final master = await _getMasterConfig(forceRefresh: forceRefresh);
+    if (master.containsKey(FirestoreAppConfigDocs.referrals)) {
+      return Map<String, dynamic>.from(
+        master[FirestoreAppConfigDocs.referrals],
+      );
+    }
     return _getConfig(
       FirestoreAppConfigDocs.referrals,
       _prefsKeyReferrals,
       _prefsKeyReferralsTs,
       forceRefresh: forceRefresh,
     );
+  }
+
+  Future<Map<String, dynamic>> _getMasterConfig({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh && _masterCache != null) {
+      return _masterCache!;
+    }
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!forceRefresh) {
+        final int? ts = prefs.getInt(_prefsKeyMasterTs);
+        if (ts != null) {
+          final cachedTime = DateTime.fromMillisecondsSinceEpoch(ts);
+          if (DateTime.now().difference(cachedTime) < _cacheDuration) {
+            final String? jsonStr = prefs.getString(_prefsKeyMaster);
+            if (jsonStr != null) {
+              _masterCache = jsonDecode(jsonStr);
+              return _masterCache!;
+            }
+          }
+        }
+      }
+
+      debugPrint('ConfigService: Fetching Master Config from Firestore');
+      final doc = await FirestoreHelper.instance
+          .collection(FirestoreConstants.appConfig)
+          .doc(FirestoreAppConfigDocs.master)
+          .get();
+
+      if (doc.exists) {
+        final data = doc.data() ?? {};
+        _masterCache = data;
+        await prefs.setString(
+          _prefsKeyMaster,
+          jsonEncode(_dataToJsonSafe(data)),
+        );
+        await prefs.setInt(
+          _prefsKeyMasterTs,
+          DateTime.now().millisecondsSinceEpoch,
+        );
+        return data;
+      }
+    } catch (e) {
+      debugPrint('ConfigService: Error fetching master config: $e');
+    }
+    return {};
   }
 
   Future<Map<String, dynamic>> _getConfig(

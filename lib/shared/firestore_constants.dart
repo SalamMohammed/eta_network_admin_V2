@@ -54,6 +54,13 @@ class FirestoreUserFields {
   static const String thumbnailUrl = 'thumbnailUrl';
   static const String fcmToken = 'fcmToken';
 
+  // Consolidation Map Keys
+  static const String meta = 'meta';
+  static const String stats = 'stats';
+  static const String mining = 'mining';
+  static const String manager = 'manager';
+  static const String wallet = 'wallet';
+
   // Rate Components
   static const String rateBase = 'rateBase';
   static const String rateStreak = 'rateStreak';
@@ -127,6 +134,7 @@ class FirestoreAppConfigFields {
 }
 
 class FirestoreAppConfigDocs {
+  static const String master = 'master';
   static const String general = 'general';
   static const String referrals = 'referrals';
   static const String streak = 'streak';

@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../shared/theme/colors.dart';
 import '../../shared/firestore_constants.dart';
 import '../../utils/firestore_helper.dart';
+import '../../services/migration_service.dart';
 
 class ManagerPage extends StatefulWidget {
   const ManagerPage({super.key});
@@ -32,6 +33,42 @@ class _ManagerPageState extends State<ManagerPage> {
         .get();
     legacyManagerCfg = legacySnap.data();
     setState(() {});
+  }
+
+  Future<void> _runConsolidation() async {
+    try {
+      await MigrationService.consolidateMasterConfig();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Master Config consolidated successfully!'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
+  Future<void> _runUserConsolidation() async {
+    try {
+      await MigrationService.migrateAllUsers(limit: 50);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Batch user consolidation complete!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
   }
 
   Future<void> _createManager() async {
@@ -105,6 +142,26 @@ class _ManagerPageState extends State<ManagerPage> {
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
               ),
               const Spacer(),
+              ElevatedButton.icon(
+                onPressed: _runConsolidation,
+                icon: const Icon(Icons.merge_type),
+                label: const Text('Consolidate Master Config'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primaryAccent,
+                  foregroundColor: AppColors.deepLayer,
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _runUserConsolidation,
+                icon: const Icon(Icons.people_outline),
+                label: const Text('Consolidate Users'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.vipAccent,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
               ElevatedButton(
                 onPressed: _createManager,
                 child: const Text('Create Manager'),

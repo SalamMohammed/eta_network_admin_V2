@@ -264,39 +264,53 @@ class _AppConfigPageState extends State<AppConfigPage> {
         (parsedSessionHours != null && parsedSessionHours > 0.0)
         ? parsedSessionHours
         : 24.0;
+    final data = {
+      FirestoreAppConfigFields.baseRate:
+          double.tryParse(baseRateCtrl.text) ?? 0.2,
+      FirestoreAppConfigFields.sessionDurationHours: sessionHours,
+      FirestoreAppConfigFields.deviceSingleUserEnforced: deviceSingleUser,
+      FirestoreAppConfigFields.revenueCatApiKey: revenueCatApiKeyCtrl.text
+          .trim(),
+      FirestoreAppConfigFields.revenueCatWebhookAuth:
+          revenueCatWebhookAuthCtrl.text.trim(),
+      FirestoreAppConfigFields.enableSubscriptions: enableSubscriptions,
+      FirestoreAppConfigFields.sandboxMode: sandboxMode,
+    };
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.general)
-        .set({
-          FirestoreAppConfigFields.baseRate:
-              double.tryParse(baseRateCtrl.text) ?? 0.2,
-          FirestoreAppConfigFields.sessionDurationHours: sessionHours,
-          FirestoreAppConfigFields.deviceSingleUserEnforced: deviceSingleUser,
-          FirestoreAppConfigFields.revenueCatApiKey: revenueCatApiKeyCtrl.text
-              .trim(),
-          FirestoreAppConfigFields.revenueCatWebhookAuth:
-              revenueCatWebhookAuthCtrl.text.trim(),
-          FirestoreAppConfigFields.enableSubscriptions: enableSubscriptions,
-          FirestoreAppConfigFields.sandboxMode: sandboxMode,
-        }, SetOptions(merge: true));
+        .set(data, SetOptions(merge: true));
+
+    // Update Master Config
+    await FirestoreHelper.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.master)
+        .update({'${FirestoreAppConfigDocs.general}': data});
   }
 
   Future<void> _saveUserCoinConfig() async {
+    final data = {
+      FirestoreAppConfigFields.minRatePerHour:
+          double.tryParse(minRateCtrl.text) ?? 0.01,
+      FirestoreAppConfigFields.maxRatePerHour:
+          double.tryParse(maxRateCtrl.text) ?? 10.0,
+      FirestoreAppConfigFields.maxSocialLinks:
+          int.tryParse(maxLinksCtrl.text) ?? 6,
+      FirestoreAppConfigFields.maxDescriptionLength:
+          int.tryParse(maxDescCtrl.text) ?? 500,
+      FirestoreAppConfigFields.allowImageUpload: allowImageUpload,
+      FirestoreAppConfigFields.allowUserRateEdit: allowUserRateEdit,
+    };
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.userCoin)
-        .set({
-          FirestoreAppConfigFields.minRatePerHour:
-              double.tryParse(minRateCtrl.text) ?? 0.01,
-          FirestoreAppConfigFields.maxRatePerHour:
-              double.tryParse(maxRateCtrl.text) ?? 10.0,
-          FirestoreAppConfigFields.maxSocialLinks:
-              int.tryParse(maxLinksCtrl.text) ?? 6,
-          FirestoreAppConfigFields.maxDescriptionLength:
-              int.tryParse(maxDescCtrl.text) ?? 500,
-          FirestoreAppConfigFields.allowImageUpload: allowImageUpload,
-          FirestoreAppConfigFields.allowUserRateEdit: allowUserRateEdit,
-        }, SetOptions(merge: true));
+        .set(data, SetOptions(merge: true));
+
+    // Update Master Config
+    await FirestoreHelper.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.master)
+        .update({'${FirestoreAppConfigDocs.userCoin}': data});
   }
 
   Future<void> _saveReferrals() async {
@@ -310,33 +324,48 @@ class _AppConfigPageState extends State<AppConfigPage> {
       tiers[key] = percent;
     }
 
+    final data = {
+      FirestoreReferralConfigFields.inviteeFixedBonusPoints:
+          double.tryParse(inviteeFixedCtrl.text) ?? 0.0,
+      FirestoreReferralConfigFields.referrerPercentPerReferral:
+          double.tryParse(percentPerRefCtrl.text) ?? 0.0,
+      FirestoreReferralConfigFields.referrerMaxCount:
+          int.tryParse(maxRefCountCtrl.text) ?? 100,
+      FirestoreReferralConfigFields.rewardedReferralMaxCount:
+          int.tryParse(rewardedReferralMaxCountCtrl.text) ?? 100,
+      if (tiers.isNotEmpty)
+        FirestoreReferralConfigFields.referralBonusTiers: tiers,
+    };
+
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.referrals)
-        .set({
-          FirestoreReferralConfigFields.inviteeFixedBonusPoints:
-              double.tryParse(inviteeFixedCtrl.text) ?? 0.0,
-          FirestoreReferralConfigFields.referrerPercentPerReferral:
-              double.tryParse(percentPerRefCtrl.text) ?? 0.0,
-          FirestoreReferralConfigFields.referrerMaxCount:
-              int.tryParse(maxRefCountCtrl.text) ?? 100,
-          FirestoreReferralConfigFields.rewardedReferralMaxCount:
-              int.tryParse(rewardedReferralMaxCountCtrl.text) ?? 100,
-          if (tiers.isNotEmpty)
-            FirestoreReferralConfigFields.referralBonusTiers: tiers,
-        }, SetOptions(merge: true));
+        .set(data, SetOptions(merge: true));
+
+    // Update Master Config
+    await FirestoreHelper.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.master)
+        .update({'${FirestoreAppConfigDocs.referrals}': data});
   }
 
   Future<void> _saveStreak() async {
+    final data = {
+      FirestoreStreakConfigFields.maxStreakDays:
+          int.tryParse(maxStreakDaysCtrl.text) ?? 15,
+      FirestoreStreakConfigFields.maxStreakMultiplier:
+          double.tryParse(maxStreakMultCtrl.text) ?? 2.0,
+    };
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.streak)
-        .set({
-          FirestoreStreakConfigFields.maxStreakDays:
-              int.tryParse(maxStreakDaysCtrl.text) ?? 15,
-          FirestoreStreakConfigFields.maxStreakMultiplier:
-              double.tryParse(maxStreakMultCtrl.text) ?? 2.0,
-        }, SetOptions(merge: true));
+        .set(data, SetOptions(merge: true));
+
+    // Update Master Config
+    await FirestoreHelper.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.master)
+        .update({'${FirestoreAppConfigDocs.streak}': data});
   }
 
   Future<void> _saveStreakTable() async {
@@ -347,12 +376,23 @@ class _AppConfigPageState extends State<AppConfigPage> {
       if (key.isEmpty) continue;
       table[key] = mult;
     }
+    final data = {
+      FirestoreAppConfigFields.streakBonusTable: table,
+    };
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.streak)
-        .set({
-          FirestoreAppConfigFields.streakBonusTable: table,
-        }, SetOptions(merge: true));
+        .set(data, SetOptions(merge: true));
+
+    // Update Master Config - Note: streak document might have other fields from _saveStreak
+    final streakDoc = await FirestoreHelper.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.streak)
+        .get();
+    await FirestoreHelper.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.master)
+        .update({'${FirestoreAppConfigDocs.streak}': streakDoc.data()});
   }
 
   Future<void> _saveRanks() async {
@@ -367,13 +407,20 @@ class _AppConfigPageState extends State<AppConfigPage> {
       rules[name] = {'minActiveReferrals': minRefs, 'minStreakDays': minStreak};
       mults[name] = mult;
     }
+    final data = {
+      FirestoreRankConfigFields.rankRules: rules,
+      FirestoreRankConfigFields.rankMultipliers: mults,
+    };
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.ranks)
-        .set({
-          FirestoreRankConfigFields.rankRules: rules,
-          FirestoreRankConfigFields.rankMultipliers: mults,
-        }, SetOptions(merge: true));
+        .set(data, SetOptions(merge: true));
+
+    // Update Master Config
+    await FirestoreHelper.instance
+        .collection(FirestoreConstants.appConfig)
+        .doc(FirestoreAppConfigDocs.master)
+        .update({'${FirestoreAppConfigDocs.ranks}': data});
   }
 
   void _addStreakRow() {

@@ -137,4 +137,36 @@ class UserService {
     _cachedRealtimeSnapshot = snap;
     _lastRealtimeFetchTime = DateTime.now();
   }
+
+  /// Extracts a field value from a potentially consolidated user document,
+  /// with fallback to the root document for backward compatibility.
+  static dynamic getField(DocumentSnapshot<Map<String, dynamic>> snap, String field) {
+    final data = snap.data();
+    if (data == null) return null;
+
+    // Check consolidated maps first
+    if (data.containsKey(FirestoreUserFields.meta)) {
+      final meta = data[FirestoreUserFields.meta] as Map<String, dynamic>?;
+      if (meta != null && meta.containsKey(field)) return meta[field];
+    }
+    if (data.containsKey(FirestoreUserFields.stats)) {
+      final stats = data[FirestoreUserFields.stats] as Map<String, dynamic>?;
+      if (stats != null && stats.containsKey(field)) return stats[field];
+    }
+    if (data.containsKey(FirestoreUserFields.mining)) {
+      final mining = data[FirestoreUserFields.mining] as Map<String, dynamic>?;
+      if (mining != null && mining.containsKey(field)) return mining[field];
+    }
+    if (data.containsKey(FirestoreUserFields.manager)) {
+      final manager = data[FirestoreUserFields.manager] as Map<String, dynamic>?;
+      if (manager != null && manager.containsKey(field)) return manager[field];
+    }
+    if (data.containsKey(FirestoreUserFields.wallet)) {
+      final wallet = data[FirestoreUserFields.wallet] as Map<String, dynamic>?;
+      if (wallet != null && wallet.containsKey(field)) return wallet[field];
+    }
+
+    // Fallback to root document
+    return data[field];
+  }
 }

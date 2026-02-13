@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../shared/theme/colors.dart';
+import '../../shared/firestore_constants.dart';
+import '../../utils/firestore_helper.dart';
 
 class UsersPage extends StatefulWidget {
   final void Function(Map<String, dynamic> user) onOpenDetail;
@@ -17,49 +20,94 @@ class _UsersPageState extends State<UsersPage> {
   RangeValues pointsRange = const RangeValues(0, 100000);
   DateTimeRange? dateRange;
 
-  late List<Map<String, dynamic>> allUsers;
+  late List<Map<String, dynamic>> allUsers = [];
   List<Map<String, dynamic>> filteredUsers = [];
+  bool isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _initData();
-    _filterUsers();
+    _loadUsers();
     searchCtrl.addListener(_onSearchChanged);
   }
 
-  @override
-  void dispose() {
-    searchCtrl.removeListener(_onSearchChanged);
-    searchCtrl.dispose();
-    super.dispose();
+  Future<void> _loadUsers() async {
+    setState(() => isLoading = true);
+    try {
+      final qs = await FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .limit(100)
+          .get();
+
+      allUsers = qs.docs.map((doc) {
+        final data = doc.data();
+
+        // Helper to extract data from consolidated or legacy structure
+        dynamic getValue(String field) {
+          if (data.containsKey(FirestoreUserFields.meta)) {
+            final meta =
+                data[FirestoreUserFields.meta] as Map<String, dynamic>?;
+            if (meta != null && meta.containsKey(field)) return meta[field];
+          }
+          if (data.containsKey(FirestoreUserFields.stats)) {
+            final stats =
+                data[FirestoreUserFields.stats] as Map<String, dynamic>?;
+            if (stats != null && stats.containsKey(field)) return stats[field];
+          }
+          if (data.containsKey(FirestoreUserFields.mining)) {
+            final mining =
+                data[FirestoreUserFields.mining] as Map<String, dynamic>?;
+            if (mining != null && mining.containsKey(field))
+              return mining[field];
+          }
+          if (data.containsKey(FirestoreUserFields.manager)) {
+            final manager =
+                data[FirestoreUserFields.manager] as Map<String, dynamic>?;
+            if (manager != null && manager.containsKey(field))
+              return manager[field];
+          }
+          if (data.containsKey(FirestoreUserFields.wallet)) {
+            final wallet =
+                data[FirestoreUserFields.wallet] as Map<String, dynamic>?;
+            if (wallet != null && wallet.containsKey(field))
+              return wallet[field];
+          }
+          return data[field];
+        }
+
+        return {
+          'username': getValue(FirestoreUserFields.username) ?? '—',
+          'uid': getValue(FirestoreUserFields.uid) ?? doc.id,
+          'email': getValue(FirestoreUserFields.email) ?? '—',
+          'country': getValue(FirestoreUserFields.country) ?? '—',
+          'rank': getValue(FirestoreUserFields.rank) ?? 'Explorer',
+          'totalPoints': getValue(FirestoreUserFields.totalPoints) ?? 0,
+          'hourlyRate': getValue(FirestoreUserFields.hourlyRate) ?? 0.0,
+          'streakDays': getValue(FirestoreUserFields.streakDays) ?? 0,
+          'invitedCount': 0, // Would need separate query or aggregation
+          'createdAt': getValue(FirestoreUserFields.createdAt) is Timestamp
+              ? (getValue(FirestoreUserFields.createdAt) as Timestamp)
+                    .toDate()
+                    .toIso8601String()
+              : getValue(FirestoreUserFields.createdAt)?.toString() ??
+                    DateTime.now().toIso8601String(),
+          'status': 'ACTIVE',
+          // Keep raw data for detail page
+          '_raw': data,
+        };
+      }).toList();
+
+      _filterUsers();
+    } catch (e) {
+      debugPrint('Error loading users: $e');
+    } finally {
+      setState(() => isLoading = false);
+    }
   }
 
   void _onSearchChanged() {
     setState(() {
       _filterUsers();
-    });
-  }
-
-  void _initData() {
-    allUsers = List.generate(20, (i) {
-      return {
-        'username': 'user_$i',
-        'uid': 'UID$i'.padRight(12, 'X'),
-        'email': i.isEven ? 'user_$i@example.com' : '',
-        'country': ['US', 'UK', 'NG', 'EG'][i % 4],
-        'rank': ['Explorer', 'Builder', 'Guardian'][i % 3],
-        'totalPoints': 5000 * (i + 1),
-        'hourlyRate': 0.15 + (i % 5) * 0.01,
-        'streakDays': (i * 2) % 12,
-        'invitedCount': i % 7,
-        'createdAt': DateTime(
-          2025,
-          11,
-          1,
-        ).add(Duration(days: i)).toIso8601String(),
-        'status': ['ACTIVE', 'BANNED', 'TEST'][i % 3],
-      };
     });
   }
 
@@ -114,6 +162,9 @@ class _UsersPageState extends State<UsersPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -324,7 +375,7 @@ class _UsersPageState extends State<UsersPage> {
                         ),
                       ),
                     ],
-                    onSelectChanged: (_) => widget.onOpenDetail(u),
+                    onSelectChanged: (_) => widget.onOpenDetail(u['_raw'] ?? u),
                   );
                 }).toList(),
               ),
