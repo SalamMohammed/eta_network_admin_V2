@@ -105,8 +105,11 @@ class SubscriptionService {
   /// Purchase a package
   Future<bool> purchasePackage(Package package) async {
     if (!_initialized) return false;
+    /*
+    // EMAIL VERIFICATION - TEMPORARILY DISABLED
     final verified = FirebaseAuth.instance.currentUser?.emailVerified ?? false;
     if (!verified) return false;
+    */
     try {
       await Purchases.purchase(PurchaseParams.package(package));
       await refreshCustomerInfo();
@@ -132,8 +135,11 @@ class SubscriptionService {
   /// Restore purchases
   Future<bool> restorePurchases() async {
     if (!_initialized) return false;
+    /*
+    // EMAIL VERIFICATION - TEMPORARILY DISABLED
     final verified = FirebaseAuth.instance.currentUser?.emailVerified ?? false;
     if (!verified) return false;
+    */
     try {
       await Purchases.restorePurchases();
       await refreshCustomerInfo();

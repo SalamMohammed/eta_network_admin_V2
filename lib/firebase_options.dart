@@ -44,42 +44,43 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc',
-    appId: '1:899853959610:android:637258b6fecee554b31d83',
-    messagingSenderId: '899853959610',
-    projectId: 'eta-network-31964',
-    storageBucket: 'eta-network-31964.firebasestorage.app',
+    apiKey: 'AIzaSyDFK5sqxxo34Tgbm04D7AXw8y6atxg6gRo',
+    appId: '1:919151871318:android:e0ecb8bbdb9517437c82f7',
+    messagingSenderId: '919151871318',
+    projectId: 'eta-network-test',
+    storageBucket: 'eta-network-test.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCRYhSiYRh9kRkPHV1NKSHcOYDp9WgRcvs',
-    appId: '1:899853959610:ios:58e34b39316e5c6ab31d83',
-    messagingSenderId: '899853959610',
-    projectId: 'eta-network-31964',
-    storageBucket: 'eta-network-31964.firebasestorage.app',
-    androidClientId: '899853959610-euk59ct1o7u65derouq8muiu8fh7si2m.apps.googleusercontent.com',
-    iosClientId: '899853959610-q1g4hl663hcd1j6taolmra3v9d5n4p98.apps.googleusercontent.com',
-    iosBundleId: 'net.etanetwork.app',
+    apiKey: 'AIzaSyD-IoktoywZ8JCTpdbEDeaomHKVuZOeoas',
+    appId: '1:919151871318:ios:94b8973fb9a3d9077c82f7',
+    messagingSenderId: '919151871318',
+    projectId: 'eta-network-test',
+    storageBucket: 'eta-network-test.firebasestorage.app',
+    androidClientId:
+        '919151871318-66bhmtrhrt1h9eevpmbhsot7l6eilarg.apps.googleusercontent.com',
+    iosClientId:
+        '919151871318-72bdhl0mlghv4irsvcte1ddfsp7e271g.apps.googleusercontent.com',
+    iosBundleId: 'net.etanetwork.app.test',
   );
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyBdVZ48BWKKXG7Xc1e97mKyKcssHIF2fz0',
-    appId: '1:899853959610:web:344ca8ceca463376b31d83',
-    messagingSenderId: '899853959610',
-    projectId: 'eta-network-31964',
-    authDomain: 'eta-network-31964.firebaseapp.com',
-    storageBucket: 'eta-network-31964.firebasestorage.app',
-    measurementId: 'G-6TCV239WMP',
+    apiKey: 'AIzaSyDfOwxoY6j3-hBCE5nzneUz7tRJEgkbSQs',
+    appId: '1:919151871318:web:a372591ad6ab82a07c82f7',
+    messagingSenderId: '919151871318',
+    projectId: 'eta-network-test',
+    authDomain: 'eta-network-test.firebaseapp.com',
+    storageBucket: 'eta-network-test.firebasestorage.app',
+    measurementId: 'G-LV280C16BT',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyBdVZ48BWKKXG7Xc1e97mKyKcssHIF2fz0',
-    appId: '1:899853959610:web:99cae1604971329cb31d83',
-    messagingSenderId: '899853959610',
-    projectId: 'eta-network-31964',
-    authDomain: 'eta-network-31964.firebaseapp.com',
-    storageBucket: 'eta-network-31964.firebasestorage.app',
-    measurementId: 'G-048TGLLK3F',
+    apiKey: 'AIzaSyDfOwxoY6j3-hBCE5nzneUz7tRJEgkbSQs',
+    appId: '1:919151871318:web:a372591ad6ab82a07c82f7',
+    messagingSenderId: '919151871318',
+    projectId: 'eta-network-test',
+    authDomain: 'eta-network-test.firebaseapp.com',
+    storageBucket: 'eta-network-test.firebasestorage.app',
+    measurementId: 'G-LV280C16BT',
   );
-
 }

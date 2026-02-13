@@ -40,18 +40,26 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
       stream: FirebaseAuth.instance.userChanges(),
       builder: (context, snapshot) {
         final u = snapshot.data;
+
+        /*
+        EMAIL VERIFICATION DIALOG - TEMPORARILY DISABLED
+        Reason: Requested to disable email verification enforcement.
+        Reactivate when: Email verification is required again.
         
         // Check if the user exists but hasn't verified their email yet.
         final unverified = u != null && !(u.emailVerified);
+        */
+        // END EMAIL VERIFICATION DIALOG
 
         // The main layout with the content body and bottom navigation bar.
         final scaffold = Scaffold(
           // IndexedStack keeps all pages alive in memory, so switching tabs doesn't reset them.
           body: IndexedStack(index: index, children: pages),
-          
+
           bottomNavigationBar: NavigationBar(
             backgroundColor: navBg,
-            indicatorColor: Colors.transparent, // No highlight bubble behind the icon.
+            indicatorColor:
+                Colors.transparent, // No highlight bubble behind the icon.
             selectedIndex: index,
             onDestinationSelected: (i) => setState(() => index = i),
             destinations: const [
@@ -75,6 +83,11 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
           ),
           floatingActionButton: null,
         );
+
+        /*
+        EMAIL VERIFICATION DIALOG - TEMPORARILY DISABLED
+        Reason: Requested to disable email verification enforcement.
+        Reactivate when: Email verification is required again.
 
         // If the user is verified, just show the main app scaffold.
         if (!unverified) return scaffold;
@@ -268,6 +281,10 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
             ),
           ],
         );
+        */
+        // END EMAIL VERIFICATION DIALOG
+
+        return scaffold;
       },
     );
   }

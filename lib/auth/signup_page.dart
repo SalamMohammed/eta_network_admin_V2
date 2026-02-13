@@ -125,7 +125,10 @@ class _SignupPageState extends State<SignupPage> {
         inviteeUsername: username,
       );
 
+      /*
+      // EMAIL VERIFICATION - TEMPORARILY DISABLED
       await AuthVerificationService.sendVerificationEmail();
+      */
 
       await FirestoreHelper.instance
           .collection(FirestoreConstants.pointLogs)
