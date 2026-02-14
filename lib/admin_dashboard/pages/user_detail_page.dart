@@ -254,45 +254,85 @@ class _UserDetailPageState extends State<UserDetailPage>
   }
 
   Widget _buildReferrals() {
+    final Map<String, dynamic> rawData = widget.user ?? {};
+    
+    // Get inviter
+    String inviterId = '—';
+    if (rawData.containsKey(FirestoreUserFields.stats)) {
+      inviterId = (rawData[FirestoreUserFields.stats] as Map<String, dynamic>?)?[FirestoreUserFields.invitedBy] ?? '—';
+    } else {
+      inviterId = rawData[FirestoreUserFields.invitedBy] ?? '—';
+    }
+
+    // Get consolidated referrals
+    List<dynamic> recent = [];
+    int total = 0;
+    int active = 0;
+
+    if (rawData.containsKey(FirestoreUserFields.referrals)) {
+      final refMap = rawData[FirestoreUserFields.referrals] as Map<String, dynamic>?;
+      if (refMap != null) {
+        recent = refMap[FirestoreUserFields.recentReferrals] ?? [];
+        total = refMap[FirestoreUserFields.totalReferrals] ?? 0;
+        active = refMap[FirestoreUserFields.activeReferrals] ?? 0;
+      }
+    }
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Invited By: user_99'),
-          const SizedBox(height: 12),
-          Expanded(
-            child: SingleChildScrollView(
-              child: DataTable(
-                columns: const [
-                  DataColumn(label: Text('Username')),
-                  DataColumn(label: Text('Created At')),
-                  DataColumn(label: Text('Status')),
-                ],
-                rows: List.generate(10, (i) {
-                  return DataRow(
-                    cells: [
-                      DataCell(Text('invited_$i')),
-                      const DataCell(Text('2025-11-20')),
-                      DataCell(
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
+          Text('Invited By: $inviterId', style: const TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Text('Total Referrals: $total • Active: $active'),
+          const SizedBox(height: 16),
+          const Text('Recent Referrals (Consolidated)', style: TextStyle(fontSize: 14, color: Colors.grey)),
+          const SizedBox(height: 8),
+          if (recent.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 20),
+              child: Text('No consolidated referral data found.'),
+            )
+          else
+            Expanded(
+              child: SingleChildScrollView(
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('Username')),
+                    DataColumn(label: Text('Joined At')),
+                    DataColumn(label: Text('Status')),
+                  ],
+                  rows: recent.map((r) {
+                    final data = r as Map<String, dynamic>;
+                    final bool isActive = data['isActive'] ?? false;
+                    return DataRow(
+                      cells: [
+                        DataCell(Text(data['username'] ?? '—')),
+                        DataCell(Text(data['timestamp']?.toString().split('T').first ?? '—')),
+                        DataCell(
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isActive ? AppColors.primaryAccent : Colors.grey,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              isActive ? 'Active' : 'Inactive',
+                              style: TextStyle(
+                                color: isActive ? AppColors.deepLayer : Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
                           ),
-                          decoration: BoxDecoration(
-                            color: AppColors.primaryAccent,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text('Active'),
                         ),
-                      ),
-                    ],
-                  );
-                }),
+                      ],
+                    );
+                  }).toList(),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

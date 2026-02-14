@@ -4,6 +4,7 @@ class FirestoreConstants {
   static const String referrals = 'referrals';
   static const String referralStats = 'referral_stats';
   static const String appConfig = 'app_config';
+  static const String appStats = 'app_stats';
   static const String roles = 'roles';
   static const String profiles = 'profiles';
   static const String settings = 'settings';
@@ -60,6 +61,13 @@ class FirestoreUserFields {
   static const String mining = 'mining';
   static const String manager = 'manager';
   static const String wallet = 'wallet';
+  static const String referrals = 'referrals';
+
+  // Consolidation Map Keys (Sub-keys for referrals map)
+  static const String totalReferrals = 'totalReferrals';
+  static const String activeReferrals = 'activeReferrals';
+  static const String totalBonusEarned = 'totalBonusEarned';
+  static const String recentReferrals = 'recentReferrals';
 
   // Rate Components
   static const String rateBase = 'rateBase';
@@ -135,14 +143,18 @@ class FirestoreAppConfigFields {
 
 class FirestoreAppConfigDocs {
   static const String master = 'master';
-  static const String general = 'general';
   static const String referrals = 'referrals';
+  static const String general = 'general';
   static const String streak = 'streak';
   static const String ranks = 'ranks';
-  static const String userCoin = 'user_coin';
   static const String manager = 'manager';
   static const String legal = 'legal';
   static const String ads = 'ads';
+  static const String userCoin = 'user_coin';
+}
+
+class FirestoreAppStatsDocs {
+  static const String global = 'global';
 }
 
 class FirestoreAdsConfigFields {

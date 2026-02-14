@@ -446,84 +446,233 @@ class MigrationService {
 
       final data = userDoc.data() ?? {};
 
-      // If already consolidated, skip (optional check, depends on if we want to force re-consolidate)
-      if (data.containsKey(FirestoreUserFields.meta)) {
-        debugPrint('[MigrationService] User $uid already consolidated');
-        // return; // Uncomment to skip already consolidated users
+      // Helper to extract value from legacy root or already consolidated nested maps
+      dynamic getValue(String field, String category) {
+        // 1. Check root (Legacy)
+        if (data.containsKey(field) && data[field] != null) {
+          return data[field];
+        }
+        // 2. Check category map (Already consolidated)
+        if (data.containsKey(category) && data[category] is Map) {
+          final catMap = data[category] as Map<String, dynamic>;
+          if (catMap.containsKey(field)) {
+            return catMap[field];
+          }
+        }
+        return null;
       }
 
       final Map<String, dynamic> consolidated = {};
 
       // 1. Meta (Auth & Profile)
       consolidated[FirestoreUserFields.meta] = {
-        FirestoreUserFields.uid: data[FirestoreUserFields.uid],
-        FirestoreUserFields.email: data[FirestoreUserFields.email],
-        FirestoreUserFields.username: data[FirestoreUserFields.username],
-        FirestoreUserFields.name: data[FirestoreUserFields.name],
-        FirestoreUserFields.thumbnailUrl:
-            data[FirestoreUserFields.thumbnailUrl],
-        FirestoreUserFields.fcmToken: data[FirestoreUserFields.fcmToken],
-        FirestoreUserFields.country: data[FirestoreUserFields.country],
-        FirestoreUserFields.address: data[FirestoreUserFields.address],
-        FirestoreUserFields.gender: data[FirestoreUserFields.gender],
-        FirestoreUserFields.age: data[FirestoreUserFields.age],
-        FirestoreUserFields.deviceId: data[FirestoreUserFields.deviceId],
-        FirestoreUserFields.createdAt: data[FirestoreUserFields.createdAt],
-        FirestoreUserFields.updatedAt: data[FirestoreUserFields.updatedAt],
+        FirestoreUserFields.uid: getValue(
+          FirestoreUserFields.uid,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.email: getValue(
+          FirestoreUserFields.email,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.username: getValue(
+          FirestoreUserFields.username,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.name: getValue(
+          FirestoreUserFields.name,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.thumbnailUrl: getValue(
+          FirestoreUserFields.thumbnailUrl,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.fcmToken: getValue(
+          FirestoreUserFields.fcmToken,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.country: getValue(
+          FirestoreUserFields.country,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.address: getValue(
+          FirestoreUserFields.address,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.gender: getValue(
+          FirestoreUserFields.gender,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.age: getValue(
+          FirestoreUserFields.age,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.deviceId: getValue(
+          FirestoreUserFields.deviceId,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.createdAt: getValue(
+          FirestoreUserFields.createdAt,
+          FirestoreUserFields.meta,
+        ),
+        FirestoreUserFields.updatedAt: getValue(
+          FirestoreUserFields.updatedAt,
+          FirestoreUserFields.meta,
+        ),
       };
 
       // 2. Stats (Gamification)
       consolidated[FirestoreUserFields.stats] = {
-        FirestoreUserFields.rank: data[FirestoreUserFields.rank],
-        FirestoreUserFields.role: data[FirestoreUserFields.role],
-        FirestoreUserFields.totalPoints: data[FirestoreUserFields.totalPoints],
-        FirestoreUserFields.totalSessions:
-            data[FirestoreUserFields.totalSessions],
-        FirestoreUserFields.streakDays: data[FirestoreUserFields.streakDays],
-        FirestoreUserFields.streakLastUpdatedDay:
-            data[FirestoreUserFields.streakLastUpdatedDay],
-        FirestoreUserFields.referralCode:
-            data[FirestoreUserFields.referralCode],
-        FirestoreUserFields.invitedBy: data[FirestoreUserFields.invitedBy],
-        FirestoreUserFields.referralLocked:
-            data[FirestoreUserFields.referralLocked],
+        FirestoreUserFields.rank: getValue(
+          FirestoreUserFields.rank,
+          FirestoreUserFields.stats,
+        ),
+        FirestoreUserFields.role: getValue(
+          FirestoreUserFields.role,
+          FirestoreUserFields.stats,
+        ),
+        FirestoreUserFields.totalPoints: getValue(
+          FirestoreUserFields.totalPoints,
+          FirestoreUserFields.stats,
+        ),
+        FirestoreUserFields.totalSessions: getValue(
+          FirestoreUserFields.totalSessions,
+          FirestoreUserFields.stats,
+        ),
+        FirestoreUserFields.streakDays: getValue(
+          FirestoreUserFields.streakDays,
+          FirestoreUserFields.stats,
+        ),
+        FirestoreUserFields.streakLastUpdatedDay: getValue(
+          FirestoreUserFields.streakLastUpdatedDay,
+          FirestoreUserFields.stats,
+        ),
+        FirestoreUserFields.referralCode: getValue(
+          FirestoreUserFields.referralCode,
+          FirestoreUserFields.stats,
+        ),
+        FirestoreUserFields.invitedBy: getValue(
+          FirestoreUserFields.invitedBy,
+          FirestoreUserFields.stats,
+        ),
+        FirestoreUserFields.referralLocked: getValue(
+          FirestoreUserFields.referralLocked,
+          FirestoreUserFields.stats,
+        ),
       };
 
       // 3. Mining State
       consolidated[FirestoreUserFields.mining] = {
-        FirestoreUserFields.lastMiningStart:
-            data[FirestoreUserFields.lastMiningStart],
-        FirestoreUserFields.lastMiningEnd:
-            data[FirestoreUserFields.lastMiningEnd],
-        FirestoreUserFields.lastSyncedAt:
-            data[FirestoreUserFields.lastSyncedAt],
-        FirestoreUserFields.hourlyRate: data[FirestoreUserFields.hourlyRate],
+        FirestoreUserFields.lastMiningStart: getValue(
+          FirestoreUserFields.lastMiningStart,
+          FirestoreUserFields.mining,
+        ),
+        FirestoreUserFields.lastMiningEnd: getValue(
+          FirestoreUserFields.lastMiningEnd,
+          FirestoreUserFields.mining,
+        ),
+        FirestoreUserFields.lastSyncedAt: getValue(
+          FirestoreUserFields.lastSyncedAt,
+          FirestoreUserFields.mining,
+        ),
+        FirestoreUserFields.hourlyRate: getValue(
+          FirestoreUserFields.hourlyRate,
+          FirestoreUserFields.mining,
+        ),
         // Rates Breakdown
-        FirestoreUserFields.rateBase: data[FirestoreUserFields.rateBase],
-        FirestoreUserFields.rateStreak: data[FirestoreUserFields.rateStreak],
-        FirestoreUserFields.rateRank: data[FirestoreUserFields.rateRank],
-        FirestoreUserFields.rateReferral:
-            data[FirestoreUserFields.rateReferral],
-        FirestoreUserFields.rateManager: data[FirestoreUserFields.rateManager],
-        FirestoreUserFields.rateAds: data[FirestoreUserFields.rateAds],
+        FirestoreUserFields.rateBase: getValue(
+          FirestoreUserFields.rateBase,
+          FirestoreUserFields.mining,
+        ),
+        FirestoreUserFields.rateStreak: getValue(
+          FirestoreUserFields.rateStreak,
+          FirestoreUserFields.mining,
+        ),
+        FirestoreUserFields.rateRank: getValue(
+          FirestoreUserFields.rateRank,
+          FirestoreUserFields.mining,
+        ),
+        FirestoreUserFields.rateReferral: getValue(
+          FirestoreUserFields.rateReferral,
+          FirestoreUserFields.mining,
+        ),
+        FirestoreUserFields.rateManager: getValue(
+          FirestoreUserFields.rateManager,
+          FirestoreUserFields.mining,
+        ),
+        FirestoreUserFields.rateAds: getValue(
+          FirestoreUserFields.rateAds,
+          FirestoreUserFields.mining,
+        ),
       };
 
       // 4. Manager Configuration
       consolidated[FirestoreUserFields.manager] = {
-        FirestoreUserFields.managerEnabled:
-            data[FirestoreUserFields.managerEnabled],
-        FirestoreUserFields.activeManagerId:
-            data[FirestoreUserFields.activeManagerId],
-        FirestoreUserFields.managedCoinSelections:
-            data[FirestoreUserFields.managedCoinSelections],
-        FirestoreUserFields.managerBonusPerHour:
-            data[FirestoreUserFields.managerBonusPerHour],
+        FirestoreUserFields.managerEnabled: getValue(
+          FirestoreUserFields.managerEnabled,
+          FirestoreUserFields.manager,
+        ),
+        FirestoreUserFields.activeManagerId: getValue(
+          FirestoreUserFields.activeManagerId,
+          FirestoreUserFields.manager,
+        ),
+        FirestoreUserFields.managedCoinSelections: getValue(
+          FirestoreUserFields.managedCoinSelections,
+          FirestoreUserFields.manager,
+        ),
+        FirestoreUserFields.managerBonusPerHour: getValue(
+          FirestoreUserFields.managerBonusPerHour,
+          FirestoreUserFields.manager,
+        ),
       };
 
       // 5. Wallet/Subscription
       consolidated[FirestoreUserFields.wallet] = {
-        FirestoreUserFields.subscription:
-            data[FirestoreUserFields.subscription],
+        FirestoreUserFields.subscription: getValue(
+          FirestoreUserFields.subscription,
+          FirestoreUserFields.wallet,
+        ),
+      };
+
+      // 6. Referrals (Phase 3)
+      final referralsQs = await FirestoreHelper.instance
+          .collection(FirestoreConstants.referrals)
+          .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
+          .orderBy(FirestoreReferralFields.timestamp, descending: true)
+          .limit(10)
+          .get();
+
+      final List<Map<String, dynamic>> recentReferrals = [];
+      for (final doc in referralsQs.docs) {
+        final rData = doc.data();
+        recentReferrals.add({
+          'uid': rData[FirestoreReferralFields.inviteeId],
+          'username':
+              rData[FirestoreReferralFields.inviteeUsername] ?? 'Anonymous',
+          'timestamp': _parseDate(
+            rData[FirestoreReferralFields.timestamp],
+          )?.toDate().toIso8601String(),
+          'isActive': _parseBool(rData[FirestoreReferralFields.isActive]),
+        });
+      }
+
+      // Accurate counts using count() queries
+      final totalReferralsQs = await FirestoreHelper.instance
+          .collection(FirestoreConstants.referrals)
+          .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
+          .count()
+          .get();
+
+      final activeReferralsQs = await FirestoreHelper.instance
+          .collection(FirestoreConstants.referrals)
+          .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
+          .where(FirestoreReferralFields.isActive, isEqualTo: true)
+          .count()
+          .get();
+
+      consolidated[FirestoreUserFields.referrals] = {
+        FirestoreUserFields.totalReferrals: totalReferralsQs.count,
+        FirestoreUserFields.activeReferrals: activeReferralsQs.count,
+        FirestoreUserFields.recentReferrals: recentReferrals,
       };
 
       // Perform Update
@@ -561,12 +710,87 @@ class MigrationService {
     }
   }
 
+  static Future<void> consolidateGlobalStats() async {
+    debugPrint('[MigrationService] Consolidating global stats using optimized aggregate queries...');
+    try {
+      // 1. Total Users (Phase 3 Standard: Aggregate Query)
+      final usersCountQs = await FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .count()
+          .get();
+      final int totalUsers = usersCountQs.count ?? 0;
+
+      // 2. Total Points (Phase 3 Standard: Aggregate Sum)
+      // We sum both legacy root points and consolidated stats points
+      final pointsAggregate = await FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .aggregate(
+            sum(FirestoreUserFields.totalPoints),
+            sum('${FirestoreUserFields.stats}.${FirestoreUserFields.totalPoints}'),
+          )
+          .get();
+
+      final double totalPoints =
+          (pointsAggregate.getSum(FirestoreUserFields.totalPoints) ?? 0)
+                  .toDouble() +
+              (pointsAggregate.getSum(
+                        '${FirestoreUserFields.stats}.${FirestoreUserFields.totalPoints}',
+                      ) ??
+                      0)
+                  .toDouble();
+
+      // 3. Active Miners (Phase 3 Standard: Aggregate Count with Filters)
+      final now = DateTime.now();
+      
+      // Count legacy active miners
+      final legacyActiveQs = await FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .where(FirestoreUserFields.lastMiningEnd, isGreaterThan: now)
+          .count()
+          .get();
+
+      // Count consolidated active miners
+      final consolidatedActiveQs = await FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .where(
+            '${FirestoreUserFields.mining}.${FirestoreUserFields.lastMiningEnd}',
+            isGreaterThan: now,
+          )
+          .count()
+          .get();
+
+      final int activeMiners =
+          (legacyActiveQs.count ?? 0) + (consolidatedActiveQs.count ?? 0);
+
+      // 4. Update Global Stats Doc
+      await FirestoreHelper.instance
+          .collection(FirestoreConstants.appStats)
+          .doc(FirestoreAppStatsDocs.global)
+          .set({
+        'totalUsers': totalUsers,
+        'totalPoints': totalPoints,
+        'activeMiners': activeMiners,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      debugPrint(
+        '[MigrationService] Global stats updated: $totalUsers users, $totalPoints points, $activeMiners active miners',
+      );
+    } catch (e) {
+      debugPrint('[MigrationService] Error consolidating global stats: $e');
+    }
+  }
+
   static Timestamp? _parseDate(dynamic value) {
     if (value == null ||
         value.toString().isEmpty ||
         value.toString() == 'null') {
       return null;
     }
+
+    if (value is Timestamp) return value;
+    if (value is DateTime) return Timestamp.fromDate(value);
+
     try {
       // Format: "2026-02-10 17:30:12" -> ISO "2026-02-10T17:30:12"
       final String str = value.toString().replaceAll(' ', 'T');

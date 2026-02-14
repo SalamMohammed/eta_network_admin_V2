@@ -71,6 +71,23 @@ class _ManagerPageState extends State<ManagerPage> {
     }
   }
 
+  Future<void> _runGlobalStatsConsolidation() async {
+    try {
+      await MigrationService.consolidateGlobalStats();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Global Stats consolidated!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
   Future<void> _createManager() async {
     await showDialog(
       context: context,
@@ -158,6 +175,16 @@ class _ManagerPageState extends State<ManagerPage> {
                 label: const Text('Consolidate Users'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.vipAccent,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _runGlobalStatsConsolidation,
+                icon: const Icon(Icons.analytics_outlined),
+                label: const Text('Consolidate Global Stats'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueGrey,
                   foregroundColor: Colors.white,
                 ),
               ),

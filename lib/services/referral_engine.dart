@@ -18,6 +18,7 @@ class ReferralEngine {
     if (qs.docs.isEmpty) return;
     final inviterUid = qs.docs.first.id;
     if (inviterUid == uid) return;
+    final inviterRef = users.doc(inviterUid);
 
     final inviteeRef = users.doc(uid);
     final inviteeSnap = await inviteeRef.get();
@@ -48,9 +49,32 @@ class ReferralEngine {
     final referralDoc = referralsCol.doc();
 
     batch.update(inviteeRef, {
+      '${FirestoreUserFields.stats}.${FirestoreUserFields.invitedBy}':
+          inviterUid,
+      '${FirestoreUserFields.stats}.${FirestoreUserFields.referralLocked}':
+          true,
+      // Fallback for legacy (optional, but good for Phase 2 compatibility)
       FirestoreUserFields.invitedBy: inviterUid,
       FirestoreUserFields.referralLocked: true,
     });
+
+    // Update Inviter's consolidated referral stats
+    final referralSummary = {
+      'uid': uid,
+      'username': inviteeUsername ?? 'Anonymous',
+      'timestamp': DateTime.now().toIso8601String(),
+      'isActive': true,
+    };
+
+    batch.update(inviterRef, {
+      '${FirestoreUserFields.referrals}.${FirestoreUserFields.totalReferrals}':
+          FieldValue.increment(1),
+      '${FirestoreUserFields.referrals}.${FirestoreUserFields.activeReferrals}':
+          FieldValue.increment(1),
+      '${FirestoreUserFields.referrals}.${FirestoreUserFields.recentReferrals}':
+          FieldValue.arrayUnion([referralSummary]),
+    });
+
     batch.set(referralDoc, {
       FirestoreReferralFields.inviterId: inviterUid,
       FirestoreReferralFields.inviteeId: uid,
