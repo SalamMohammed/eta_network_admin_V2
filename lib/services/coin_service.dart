@@ -137,13 +137,22 @@ class CoinService with WidgetsBindingObserver {
   static String? _lastLiveSort;
 
   static Stream<List<Map<String, dynamic>>> watchMyCoins(String uid) {
-    // Directly watch Firestore subcollection
+    // Watch unified user doc and map wallet.coins to a list
     return FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
-        .collection(FirestoreUserSubCollections.coins)
         .snapshots()
-        .map((snap) => snap.docs.map((d) => d.data()).toList());
+        .map((snap) {
+          final data = snap.data() ?? {};
+          final wallet =
+              (data[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
+          final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+          return coins.entries.map((e) {
+            final m = Map<String, dynamic>.from(e.value as Map);
+            m[FirestoreUserCoinMiningFields.ownerId] = e.key;
+            return m;
+          }).toList();
+        });
   }
 
   /// Manually update the coins cache (e.g. from MiningStateService)
@@ -154,13 +163,19 @@ class CoinService with WidgetsBindingObserver {
 
   /// Get the list of coins, preferring cache/SQL
   static Future<List<Map<String, dynamic>>> getMyCoins(String uid) async {
-    // Directly fetch from Firestore
-    final qs = await FirestoreHelper.instance
+    final snap = await FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
-        .collection(FirestoreUserSubCollections.coins)
         .get();
-    return qs.docs.map((d) => d.data()).toList();
+    final data = snap.data() ?? {};
+    final wallet =
+        (data[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
+    final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+    return coins.entries.map((e) {
+      final m = Map<String, dynamic>.from(e.value as Map);
+      m[FirestoreUserCoinMiningFields.ownerId] = e.key;
+      return m;
+    }).toList();
   }
 
   static Stream<List<Map<String, dynamic>>> watchLiveCoins({
@@ -180,55 +195,60 @@ class CoinService with WidgetsBindingObserver {
         .where(FirestoreUserCoinFields.isActive, whereIn: [true, '1', 1])
         .snapshots()
         .map((snap) {
-      final docs = snap.docs.map((d) => d.data()).toList();
+          final docs = snap.docs.map((d) => d.data()).toList();
 
-      // Helper to parse minersCount safely
-      int getMinersCount(Map<String, dynamic> d) {
-        final v = d[FirestoreUserCoinFields.minersCount];
-        if (v is int) return v;
-        if (v is String) return int.tryParse(v) ?? 0;
-        return 0;
-      }
+          // Helper to parse minersCount safely
+          int getMinersCount(Map<String, dynamic> d) {
+            final v = d[FirestoreUserCoinFields.minersCount];
+            if (v is int) return v;
+            if (v is String) return int.tryParse(v) ?? 0;
+            return 0;
+          }
 
-      // Helper to parse createdAt safely
-      DateTime getCreatedAt(Map<String, dynamic> d) {
-        final v = d[FirestoreUserCoinFields.createdAt];
-        if (v is Timestamp) return v.toDate();
-        if (v is String) return DateTime.tryParse(v) ?? DateTime(1970);
-        return DateTime(1970);
-      }
+          // Helper to parse createdAt safely
+          DateTime getCreatedAt(Map<String, dynamic> d) {
+            final v = d[FirestoreUserCoinFields.createdAt];
+            if (v is Timestamp) return v.toDate();
+            if (v is String) return DateTime.tryParse(v) ?? DateTime(1970);
+            return DateTime(1970);
+          }
 
-      // Helper to get name
-      String getName(Map<String, dynamic> d) {
-        return (d[FirestoreUserCoinFields.name] as String?)?.toLowerCase() ??
-            '';
-      }
+          // Helper to get name
+          String getName(Map<String, dynamic> d) {
+            return (d[FirestoreUserCoinFields.name] as String?)
+                    ?.toLowerCase() ??
+                '';
+          }
 
-      // Sort in memory
-      switch (sort) {
-        case 'popular':
-          docs.sort((a, b) => getMinersCount(b).compareTo(getMinersCount(a)));
-          break;
-        case 'name_az':
-          docs.sort((a, b) => getName(a).compareTo(getName(b)));
-          break;
-        case 'name_za':
-          docs.sort((a, b) => getName(b).compareTo(getName(a)));
-          break;
-        case 'old_new':
-          docs.sort((a, b) => getCreatedAt(a).compareTo(getCreatedAt(b)));
-          break;
-        case 'new_old':
-        case 'newest':
-          docs.sort((a, b) => getCreatedAt(b).compareTo(getCreatedAt(a)));
-          break;
-        default:
-          docs.sort((a, b) => getMinersCount(b).compareTo(getMinersCount(a)));
-      }
+          // Sort in memory
+          switch (sort) {
+            case 'popular':
+              docs.sort(
+                (a, b) => getMinersCount(b).compareTo(getMinersCount(a)),
+              );
+              break;
+            case 'name_az':
+              docs.sort((a, b) => getName(a).compareTo(getName(b)));
+              break;
+            case 'name_za':
+              docs.sort((a, b) => getName(b).compareTo(getName(a)));
+              break;
+            case 'old_new':
+              docs.sort((a, b) => getCreatedAt(a).compareTo(getCreatedAt(b)));
+              break;
+            case 'new_old':
+            case 'newest':
+              docs.sort((a, b) => getCreatedAt(b).compareTo(getCreatedAt(a)));
+              break;
+            default:
+              docs.sort(
+                (a, b) => getMinersCount(b).compareTo(getMinersCount(a)),
+              );
+          }
 
-      // Return top 50 to match typical page size
-      return docs.take(50).toList();
-    });
+          // Return top 50 to match typical page size
+          return docs.take(50).toList();
+        });
   }
 
   static Future<Map<String, dynamic>> getUserCoinConfig() async {
@@ -373,27 +393,32 @@ class CoinService with WidgetsBindingObserver {
     final links =
         (coin[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ?? [];
 
-    final ref = FirestoreHelper.instance
+    final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
-        .doc(uid)
-        .collection(FirestoreUserSubCollections.coins)
-        .doc(coinOwnerId);
-    final existing = await ref.get();
-    final data = existing.data() ?? {};
-    await ref.set({
-      FirestoreUserCoinMiningFields.ownerId: coinOwnerId,
-      FirestoreUserCoinMiningFields.name: name,
-      FirestoreUserCoinMiningFields.symbol: symbol,
-      FirestoreUserCoinMiningFields.imageUrl: imageUrl,
-      FirestoreUserCoinMiningFields.description: description,
-      FirestoreUserCoinMiningFields.socialLinks: links,
-      FirestoreUserCoinMiningFields.hourlyRate: rate,
-      FirestoreUserCoinMiningFields.totalPoints:
-          (data[FirestoreUserCoinMiningFields.totalPoints] as num?)
-              ?.toDouble() ??
-          0.0,
+        .doc(uid);
+    final userSnap = await userRef.get();
+    final userData = userSnap.data() ?? {};
+    final wallet =
+        (userData[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
+    final coinsMap = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+    final existingCoin = (coinsMap[coinOwnerId] as Map<String, dynamic>?) ?? {};
+    await userRef.set({
+      '${FirestoreUserFields.wallet}.coins.$coinOwnerId': {
+        FirestoreUserCoinMiningFields.ownerId: coinOwnerId,
+        FirestoreUserCoinMiningFields.name: name,
+        FirestoreUserCoinMiningFields.symbol: symbol,
+        FirestoreUserCoinMiningFields.imageUrl: imageUrl,
+        FirestoreUserCoinMiningFields.description: description,
+        FirestoreUserCoinMiningFields.socialLinks: links,
+        FirestoreUserCoinMiningFields.hourlyRate: rate,
+        FirestoreUserCoinMiningFields.totalPoints:
+            (existingCoin[FirestoreUserCoinMiningFields.totalPoints] as num?)
+                ?.toDouble() ??
+            0.0,
+      },
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
-    if (!existing.exists) {
+    if (existingCoin.isEmpty) {
       // Safely increment minersCount, handling potential String types from migration
       final coinRef = FirestoreHelper.instance
           .collection(FirestoreConstants.userCoins)
@@ -552,18 +577,21 @@ class CoinService with WidgetsBindingObserver {
         (coin[FirestoreUserCoinMiningFields.socialLinks] as List<dynamic>?) ??
         [];
 
-    final ref = FirestoreHelper.instance
+    final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
-        .doc(uid)
-        .collection(FirestoreUserSubCollections.coins)
-        .doc(coinOwnerId);
-
+        .doc(uid);
+    final userSnap = await userRef.get();
     Map<String, dynamic> data;
     if (cachedCoinData != null) {
       data = cachedCoinData;
     } else {
-      final existing = await ref.get();
-      data = existing.data() ?? {};
+      final uData = userSnap.data() ?? {};
+      final wallet =
+          (uData[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
+      final coinsMap = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+      data = Map<String, dynamic>.from(
+        (coinsMap[coinOwnerId] as Map<String, dynamic>?) ?? {},
+      );
     }
 
     final lastEnd =
@@ -594,8 +622,7 @@ class CoinService with WidgetsBindingObserver {
       }
     }
 
-    final batch = FirestoreHelper.instance.batch();
-    batch.set(ref, {
+    final Map<String, dynamic> newState = {
       FirestoreUserCoinMiningFields.ownerId: coinOwnerId,
       FirestoreUserCoinMiningFields.name: name,
       FirestoreUserCoinMiningFields.symbol: symbol,
@@ -606,33 +633,19 @@ class CoinService with WidgetsBindingObserver {
       FirestoreUserCoinMiningFields.lastMiningStart: Timestamp.fromDate(now),
       FirestoreUserCoinMiningFields.lastMiningEnd: end,
       FirestoreUserCoinMiningFields.lastSyncedAt: Timestamp.fromDate(now),
-      FirestoreUserCoinMiningFields.totalPoints: FieldValue.increment(
-        addedPoints,
-      ),
+      FirestoreUserCoinMiningFields.totalPoints:
+          ((data[FirestoreUserCoinMiningFields.totalPoints] as num?)
+                  ?.toDouble() ??
+              0.0) +
+          addedPoints,
+    };
+    await userRef.set({
+      '${FirestoreUserFields.wallet}.coins.$coinOwnerId': newState,
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
-    await batch.commit();
 
     // OPTIMIZATION: Merge local data instead of re-fetching
-    final Map<String, dynamic> mergedData = Map<String, dynamic>.from(data);
-    final currentTotal =
-        (data[FirestoreUserCoinMiningFields.totalPoints] as num?)?.toDouble() ??
-        0.0;
-
-    mergedData.addAll({
-      FirestoreUserCoinMiningFields.ownerId: coinOwnerId,
-      FirestoreUserCoinMiningFields.name: name,
-      FirestoreUserCoinMiningFields.symbol: symbol,
-      FirestoreUserCoinMiningFields.imageUrl: imageUrl,
-      FirestoreUserCoinMiningFields.description: description,
-      FirestoreUserCoinMiningFields.socialLinks: links,
-      FirestoreUserCoinMiningFields.hourlyRate: rate,
-      FirestoreUserCoinMiningFields.lastMiningStart: Timestamp.fromDate(now),
-      FirestoreUserCoinMiningFields.lastMiningEnd: end,
-      FirestoreUserCoinMiningFields.lastSyncedAt: Timestamp.fromDate(now),
-      FirestoreUserCoinMiningFields.totalPoints: currentTotal + addedPoints,
-    });
-
-    return mergedData;
+    return newState;
   }
 
   static Future<void> syncCoinEarnings({
@@ -652,18 +665,15 @@ class CoinService with WidgetsBindingObserver {
       return;
     } */
 
-    final ref = FirestoreHelper.instance
+    final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
-        .doc(uid)
-        .collection(FirestoreUserSubCollections.coins)
-        .doc(coinOwnerId);
-
-    // App-driven sync for Firestore too
-    await ref.update({
-      FirestoreUserCoinMiningFields.totalPoints: FieldValue.increment(amount),
-      FirestoreUserCoinMiningFields.lastSyncedAt: Timestamp.fromDate(
-        lastSyncedAt,
-      ),
-    });
+        .doc(uid);
+    await userRef.set({
+      '${FirestoreUserFields.wallet}.coins.$coinOwnerId.${FirestoreUserCoinMiningFields.totalPoints}':
+          FieldValue.increment(amount),
+      '${FirestoreUserFields.wallet}.coins.$coinOwnerId.${FirestoreUserCoinMiningFields.lastSyncedAt}':
+          Timestamp.fromDate(lastSyncedAt),
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 }

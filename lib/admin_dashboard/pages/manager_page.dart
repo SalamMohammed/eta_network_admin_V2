@@ -152,13 +152,15 @@ class _ManagerPageState extends State<ManagerPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
+          const Text(
+            'Managers',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
             children: [
-              const Text(
-                'Managers',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-              ),
-              const Spacer(),
               ElevatedButton.icon(
                 onPressed: _runConsolidation,
                 icon: const Icon(Icons.merge_type),
@@ -166,9 +168,12 @@ class _ManagerPageState extends State<ManagerPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.primaryAccent,
                   foregroundColor: AppColors.deepLayer,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
               ElevatedButton.icon(
                 onPressed: _runUserConsolidation,
                 icon: const Icon(Icons.people_outline),
@@ -176,9 +181,12 @@ class _ManagerPageState extends State<ManagerPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.vipAccent,
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
               ElevatedButton.icon(
                 onPressed: _runGlobalStatsConsolidation,
                 icon: const Icon(Icons.analytics_outlined),
@@ -186,12 +194,21 @@ class _ManagerPageState extends State<ManagerPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.blueGrey,
                   foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
                 ),
               ),
-              const SizedBox(width: 12),
               ElevatedButton(
                 onPressed: _createManager,
                 child: const Text('Create Manager'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
               ),
             ],
           ),
@@ -215,13 +232,14 @@ class _ManagerPageState extends State<ManagerPage> {
                     'ETA: ${(((legacyManagerCfg?[FirestoreManagerConfigFields.enableEtaAuto] as bool?) ?? true) ? 'on' : 'off')} • Coin: ${(((legacyManagerCfg?[FirestoreManagerConfigFields.enableUserCoinAuto] as bool?) ?? true) ? 'on' : 'off')} • Max community: ${((legacyManagerCfg?[FirestoreManagerConfigFields.maxCommunityCoinsManaged] as num?)?.toInt() ?? 0)}',
                   ),
                   const SizedBox(height: 8),
-                  Row(
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       ElevatedButton(
                         onPressed: _migrateLegacyManager,
                         child: const Text('Migrate to managers'),
                       ),
-                      const SizedBox(width: 8),
                       TextButton(
                         onPressed: _deleteLegacyManager,
                         child: const Text('Delete legacy'),

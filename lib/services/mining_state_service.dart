@@ -11,7 +11,6 @@ import 'notification_service.dart';
 import 'config_service.dart';
 import 'user_service.dart';
 import 'coin_service.dart';
-import 'sql_api_service.dart';
 import 'background_service.dart';
 
 class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
@@ -76,6 +75,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? _lastUiNotify;
   double _lastNotifiedDisplay = -1;
   static const Duration _minUiNotifyInterval = Duration(seconds: 1);
+  Timer? _rateSyncTimer;
+  double? _lastSyncedUserRate;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userDocSub;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _realtimeDocSub;
   Timer? _subExpiryTimer;
@@ -137,26 +138,27 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     final now = DateTime.now();
-    final coinsRef = FirestoreHelper.instance
+    final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
-        .doc(uid)
-        .collection(FirestoreUserSubCollections.coins);
-    final snap = await coinsRef.get();
-    final batch = FirestoreHelper.instance.batch();
-    int updates = 0;
-    for (final d in snap.docs) {
-      final data = d.data();
+        .doc(uid);
+    final userSnap = await userRef.get();
+    final data = userSnap.data() ?? {};
+    final wallet =
+        (data[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
+    final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+    Map<String, dynamic> updates = {};
+    coins.forEach((ownerId, coinData) {
+      final map = coinData as Map<String, dynamic>;
       final end =
-          data[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
-      if (end == null) continue;
-      if (!now.isBefore(end.toDate())) continue;
-      batch.set(d.reference, {
-        FirestoreUserCoinMiningFields.lastMiningEnd: Timestamp.fromDate(now),
-      }, SetOptions(merge: true));
-      updates++;
-    }
-    if (updates > 0) {
-      await batch.commit();
+          map[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
+      if (end != null && now.isBefore(end.toDate())) {
+        updates['${FirestoreUserFields.wallet}.coins.$ownerId.${FirestoreUserCoinMiningFields.lastMiningEnd}'] =
+            Timestamp.fromDate(now);
+      }
+    });
+    if (updates.isNotEmpty) {
+      updates[FirestoreUserFields.updatedAt] = FieldValue.serverTimestamp();
+      await userRef.set(updates, SetOptions(merge: true));
     }
   }
 
@@ -170,8 +172,11 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       // Initialize dependencies
       await SubscriptionService().init();
 
+      await EarningsEngine.migrateRealtimeToUnifiedIfNeeded();
+
       // Initial refresh
       await _refresh();
+      _startRateSyncIfMiningActive();
 
       // Start listeners
       UserService().setLiveMode(true);
@@ -248,20 +253,16 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         ?.toDouble();
 
     if (totalPoints == null) {
-      // Fallback: Manually fetch if syncRes failed (unlikely)
+      // Fallback: Manually fetch unified user doc if syncRes missing
       final userRef = FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(uid);
-      final realtimeSnap = await userRef
-          .collection(FirestoreUserSubCollections.earnings)
-          .doc(FirestoreEarningsDocs.realtime)
-          .get();
-      final realtimeData = realtimeSnap.data() ?? {};
-      final realtimePoints =
-          (realtimeData[FirestoreUserFields.totalPoints] as num?)?.toDouble();
-      final userDocPoints =
-          (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
-      totalPoints = realtimePoints ?? userDocPoints;
+      final userSnap = await userRef.get();
+      final userData = userSnap.data() ?? {};
+      totalPoints =
+          (userData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+          (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+          0.0;
     }
 
     _totalPoints = totalPoints;
@@ -270,6 +271,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         (syncRes[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
         (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
         0.0;
+    _lastSyncedUserRate =
+        (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? _hourlyRate;
 
     // Read Components
     _rateBase =
@@ -291,6 +294,35 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
 
     final now = DateTime.now();
     _miningActive = _lastEnd != null && now.isBefore(_lastEnd!.toDate());
+    if (!_miningActive) {
+      final general = await ConfigService().getGeneralConfig();
+      final base =
+          (general[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
+          0.2;
+      final decision = EarningsEngine.decideInitialRate(
+        userRate: (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble(),
+        miningActive: false,
+        baseRate: base,
+      );
+      final chosen = (decision['rate'] as num).toDouble();
+      final shouldWrite = decision['write'] == true;
+      if (shouldWrite) {
+        try {
+          await FirestoreHelper.instance
+              .collection(FirestoreConstants.users)
+              .doc(uid)
+              .set({
+                FirestoreUserFields.hourlyRate: chosen,
+                FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+          debugPrint('[RateSync] initialized uid.hourlyRate=$chosen');
+        } catch (e) {
+          debugPrint('[RateSync] init write failed: $e');
+        }
+      }
+      _hourlyRate = chosen;
+    }
+    _startRateSyncIfMiningActive();
 
     // Migration Check: If mining is active but components are missing (e.g. rateBase is 0),
     // trigger recalculation to populate components and infer ads.
@@ -535,8 +567,6 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     _realtimeDocSub = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
-        .collection(FirestoreUserSubCollections.earnings)
-        .doc(FirestoreEarningsDocs.realtime)
         .snapshots()
         .listen((snap) {
           if (snap.exists) {
@@ -560,6 +590,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
               ?.toDouble();
           if (newHourly != null && (newHourly - _hourlyRate).abs() > 0.001) {
             _hourlyRate = newHourly;
+            _lastSyncedUserRate = newHourly;
             changed = true;
           }
 
@@ -777,6 +808,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       _realtimeDocSub = null;
       _subExpiryTimer?.cancel();
       _subExpiryTimer = null;
+      _rateSyncTimer?.cancel();
+      _rateSyncTimer = null;
     } else if (state == AppLifecycleState.resumed) {
       _ensureTimerRunning();
       UserService().setLiveMode(true);
@@ -792,6 +825,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       if (_lastEnd != null && _managerEnabled) {
         BackgroundService.scheduleManagerWakeup(_lastEnd!.toDate());
       }
+      _startRateSyncIfMiningActive();
     }
   }
 
@@ -865,6 +899,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         _simTimer?.cancel();
         _simTimer = null;
         _miningActive = false;
+        _rateSyncTimer?.cancel();
+        _rateSyncTimer = null;
         // _displayTotal = _simBase; // Revert to base or fetch new?
         _maybeNotify(force: true);
 
@@ -898,6 +934,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       _simAnchor = DateTime.now();
     }
     _maybeNotify(force: true);
+    _rateSyncTimer?.cancel();
+    _rateSyncTimer = null;
   }
 
   void _maybeNotify({required bool force}) {
@@ -1150,6 +1188,37 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       debugPrint('[MiningStateService] Scheduling next wakeup at $earliestEnd');
       await BackgroundService.scheduleManagerWakeup(earliestEnd);
     }
+  }
+
+  void _startRateSyncIfMiningActive() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    if (!_miningActive) {
+      _rateSyncTimer?.cancel();
+      _rateSyncTimer = null;
+      return;
+    }
+    if (_rateSyncTimer != null) return;
+    _rateSyncTimer = Timer.periodic(const Duration(seconds: 2), (
+      Timer t,
+    ) async {
+      if (!_miningActive) {
+        _rateSyncTimer?.cancel();
+        _rateSyncTimer = null;
+        return;
+      }
+      final rate = _hourlyRate;
+      if (rate.isNaN) return;
+      final last = _lastSyncedUserRate ?? -1.0;
+      if ((rate - last).abs() < 0.000001) return;
+      try {
+        await EarningsEngine.setUserHourlyRate(uid: uid, rate: rate);
+        _lastSyncedUserRate = rate;
+        debugPrint('[RateSync] sync mining→uid rate=$rate');
+      } catch (e) {
+        debugPrint('[RateSync] sync error: $e');
+      }
+    });
   }
 
   @override

@@ -96,17 +96,21 @@ class _SignupPageState extends State<SignupPage> {
             },
           }, SetOptions(merge: true));
 
-      // Initialize earnings/realtime subcollection
+      // Initialize unified earnings fields on user doc
       await FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
-          .collection(FirestoreUserSubCollections.earnings)
-          .doc(FirestoreEarningsDocs.realtime)
           .set({
             FirestoreUserFields.hourlyRate: 0,
             FirestoreUserFields.managedCoinSelections: [],
+            FirestoreUserFields.rateBase: 0.0,
+            FirestoreUserFields.rateStreak: 0.0,
+            FirestoreUserFields.rateRank: 0.0,
+            FirestoreUserFields.rateReferral: 0.0,
+            FirestoreUserFields.rateManager: 0.0,
+            FirestoreUserFields.rateAds: 0.0,
             FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-          });
+          }, SetOptions(merge: true));
 
       final b = Uint8List(0);
       final r = FirebaseStorage.instance.ref().child('users/$uid/thumbnail');

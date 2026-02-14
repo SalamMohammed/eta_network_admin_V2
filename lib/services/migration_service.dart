@@ -438,6 +438,13 @@ class MigrationService {
           .collection(FirestoreConstants.users)
           .doc(uid)
           .get();
+      final realtimeSnap = await FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .collection(FirestoreUserSubCollections.earnings)
+          .doc(FirestoreEarningsDocs.realtime)
+          .get();
+      final realtimeData = realtimeSnap.data() ?? {};
 
       if (!userDoc.exists) {
         debugPrint('[MigrationService] User $uid not found');
@@ -607,22 +614,31 @@ class MigrationService {
 
       // 4. Manager Configuration
       consolidated[FirestoreUserFields.manager] = {
-        FirestoreUserFields.managerEnabled: getValue(
-          FirestoreUserFields.managerEnabled,
-          FirestoreUserFields.manager,
-        ),
-        FirestoreUserFields.activeManagerId: getValue(
-          FirestoreUserFields.activeManagerId,
-          FirestoreUserFields.manager,
-        ),
-        FirestoreUserFields.managedCoinSelections: getValue(
-          FirestoreUserFields.managedCoinSelections,
-          FirestoreUserFields.manager,
-        ),
-        FirestoreUserFields.managerBonusPerHour: getValue(
-          FirestoreUserFields.managerBonusPerHour,
-          FirestoreUserFields.manager,
-        ),
+        FirestoreUserFields.managerEnabled:
+            getValue(
+              FirestoreUserFields.managerEnabled,
+              FirestoreUserFields.manager,
+            ) ??
+            realtimeData[FirestoreUserFields.managerEnabled],
+        FirestoreUserFields.activeManagerId:
+            getValue(
+              FirestoreUserFields.activeManagerId,
+              FirestoreUserFields.manager,
+            ) ??
+            realtimeData[FirestoreUserFields.activeManagerId],
+        FirestoreUserFields.managedCoinSelections:
+            (getValue(
+              FirestoreUserFields.managedCoinSelections,
+              FirestoreUserFields.manager,
+            ) ??
+            realtimeData[FirestoreUserFields.managedCoinSelections]),
+        FirestoreUserFields.managerBonusPerHour:
+            (getValue(
+              FirestoreUserFields.managerBonusPerHour,
+              FirestoreUserFields.manager,
+            ) ??
+            (realtimeData[FirestoreUserFields.managerBonusPerHour] as num?)
+                ?.toDouble()),
       };
 
       // 5. Wallet/Subscription
@@ -632,6 +648,33 @@ class MigrationService {
           FirestoreUserFields.wallet,
         ),
       };
+
+      // 5b. Move user coin mining subcollection into wallet.coins map
+      try {
+        final coinSub = await FirestoreHelper.instance
+            .collection(FirestoreConstants.users)
+            .doc(uid)
+            .collection(FirestoreUserSubCollections.coins)
+            .get();
+        if (coinSub.docs.isNotEmpty) {
+          final Map<String, dynamic> coinsMap = {};
+          for (final c in coinSub.docs) {
+            final cd = c.data();
+            // Ensure ownerId key is present for reference
+            cd[FirestoreUserCoinMiningFields.ownerId] =
+                cd[FirestoreUserCoinMiningFields.ownerId] ?? c.id;
+            coinsMap[c.id] = cd;
+          }
+          final walletMap =
+              (consolidated[FirestoreUserFields.wallet]
+                  as Map<String, dynamic>);
+          walletMap['coins'] = coinsMap;
+        }
+      } catch (e) {
+        debugPrint(
+          '[MigrationService] Failed to consolidate coins for $uid: $e',
+        );
+      }
 
       // 6. Referrals (Phase 3)
       final referralsQs = await FirestoreHelper.instance
@@ -711,7 +754,9 @@ class MigrationService {
   }
 
   static Future<void> consolidateGlobalStats() async {
-    debugPrint('[MigrationService] Consolidating global stats using optimized aggregate queries...');
+    debugPrint(
+      '[MigrationService] Consolidating global stats using optimized aggregate queries...',
+    );
     try {
       // 1. Total Users (Phase 3 Standard: Aggregate Query)
       final usersCountQs = await FirestoreHelper.instance
@@ -726,22 +771,24 @@ class MigrationService {
           .collection(FirestoreConstants.users)
           .aggregate(
             sum(FirestoreUserFields.totalPoints),
-            sum('${FirestoreUserFields.stats}.${FirestoreUserFields.totalPoints}'),
+            sum(
+              '${FirestoreUserFields.stats}.${FirestoreUserFields.totalPoints}',
+            ),
           )
           .get();
 
       final double totalPoints =
           (pointsAggregate.getSum(FirestoreUserFields.totalPoints) ?? 0)
-                  .toDouble() +
-              (pointsAggregate.getSum(
-                        '${FirestoreUserFields.stats}.${FirestoreUserFields.totalPoints}',
-                      ) ??
-                      0)
-                  .toDouble();
+              .toDouble() +
+          (pointsAggregate.getSum(
+                    '${FirestoreUserFields.stats}.${FirestoreUserFields.totalPoints}',
+                  ) ??
+                  0)
+              .toDouble();
 
       // 3. Active Miners (Phase 3 Standard: Aggregate Count with Filters)
       final now = DateTime.now();
-      
+
       // Count legacy active miners
       final legacyActiveQs = await FirestoreHelper.instance
           .collection(FirestoreConstants.users)
@@ -767,17 +814,87 @@ class MigrationService {
           .collection(FirestoreConstants.appStats)
           .doc(FirestoreAppStatsDocs.global)
           .set({
-        'totalUsers': totalUsers,
-        'totalPoints': totalPoints,
-        'activeMiners': activeMiners,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+            'totalUsers': totalUsers,
+            'totalPoints': totalPoints,
+            'activeMiners': activeMiners,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
 
       debugPrint(
         '[MigrationService] Global stats updated: $totalUsers users, $totalPoints points, $activeMiners active miners',
       );
     } catch (e) {
       debugPrint('[MigrationService] Error consolidating global stats: $e');
+    }
+  }
+
+  static Future<void> buildReferralStatsPhase4({int pageSize = 1000}) async {
+    debugPrint('[MigrationService] Building referral stats (Phase 4)...');
+    try {
+      QuerySnapshot<Map<String, dynamic>>? lastSnap;
+      bool hasMore = true;
+      final Map<String, int> counts = {};
+      while (hasMore) {
+        var query = FirestoreHelper.instance
+            .collection(FirestoreConstants.referrals)
+            .orderBy(FirestoreReferralFields.timestamp)
+            .limit(pageSize);
+        if (lastSnap != null && lastSnap.docs.isNotEmpty) {
+          query = query.startAfterDocument(lastSnap.docs.last);
+        }
+        final qs = await query.get();
+        if (qs.docs.isEmpty) {
+          hasMore = false;
+          break;
+        }
+        for (final d in qs.docs) {
+          final data = d.data();
+          final inviter = data[FirestoreReferralFields.inviterId] as String?;
+          if (inviter == null || inviter.isEmpty) continue;
+          counts[inviter] = (counts[inviter] ?? 0) + 1;
+        }
+        lastSnap = qs;
+      }
+
+      final entries = counts.entries.toList();
+      await _batchWrite(entries, (WriteBatch batch, dynamic item) {
+        final e = item as MapEntry<String, int>;
+        final ref = FirestoreHelper.instance
+            .collection(FirestoreConstants.referralStats)
+            .doc(e.key);
+        batch.set(ref, {
+          'totalInvited': e.value,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      });
+      debugPrint(
+        '[MigrationService] Referral stats backfill complete for ${entries.length} users.',
+      );
+    } catch (e) {
+      debugPrint('[MigrationService] Error building referral stats: $e');
+    }
+  }
+
+  static Future<void> updateReferralStatsForUserPhase4(String uid) async {
+    try {
+      final agg = await FirestoreHelper.instance
+          .collection(FirestoreConstants.referrals)
+          .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
+          .count()
+          .get();
+      final total = agg.count ?? 0;
+      await FirestoreHelper.instance
+          .collection(FirestoreConstants.referralStats)
+          .doc(uid)
+          .set({
+            'totalInvited': total,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      debugPrint('[MigrationService] Referral stats updated for $uid: $total');
+    } catch (e) {
+      debugPrint(
+        '[MigrationService] Error updating referral stats for $uid: $e',
+      );
     }
   }
 

@@ -1135,8 +1135,6 @@ class _MobileHomePageState extends State<MobileHomePage>
                 await FirestoreHelper.instance
                     .collection(FirestoreConstants.users)
                     .doc(uid)
-                    .collection(FirestoreUserSubCollections.earnings)
-                    .doc(FirestoreEarningsDocs.realtime)
                     .set({
                       FirestoreUserFields.managedCoinSelections: trimmed,
                     }, SetOptions(merge: true));
@@ -1162,8 +1160,6 @@ class _MobileHomePageState extends State<MobileHomePage>
             await FirestoreHelper.instance
                 .collection(FirestoreConstants.users)
                 .doc(uid)
-                .collection(FirestoreUserSubCollections.earnings)
-                .doc(FirestoreEarningsDocs.realtime)
                 .set({
                   FirestoreUserFields.managedCoinSelections: ids,
                 }, SetOptions(merge: true));

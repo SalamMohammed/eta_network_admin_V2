@@ -27,6 +27,7 @@ class FirestoreUserFields {
   static const String email = 'email';
   static const String username = 'username';
   static const String name = 'name';
+  static const String migrationUnifiedEarnings = 'migrationUnifiedEarnings';
   static const String age = 'age';
   static const String referralCode = 'referralCode';
   static const String invitedBy = 'invitedBy';

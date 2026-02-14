@@ -6,6 +6,7 @@ import '../shared/firestore_constants.dart';
 import 'rank_engine.dart';
 import 'config_service.dart';
 import 'user_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class EarningsEngine {
   static final Map<String, DateTime> _lastLocalWrites = {};
@@ -18,6 +19,301 @@ class EarningsEngine {
     );
   }
 
+  static Future<bool> migrateRealtimeToUnifiedIfNeeded() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final localKey = 'unified_migration_done_$uid';
+      final bool localDone = prefs.getBool(localKey) == true;
+      final userRef = FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid);
+      final realtimeRef = userRef
+          .collection(FirestoreUserSubCollections.earnings)
+          .doc(FirestoreEarningsDocs.realtime);
+      final userSnap = await userRef.get();
+      final userData = userSnap.data() ?? {};
+      final bool hasFlag =
+          (userData[FirestoreUserFields.migrationUnifiedEarnings] as bool?) ==
+          true;
+      // Pre-check realtime content to detect incomplete migrations
+      final preRealtimeSnap = await realtimeRef.get();
+      final preRealtime = preRealtimeSnap.data() ?? {};
+      final bool userLooksEmpty =
+          (userData[FirestoreUserFields.totalPoints] == null &&
+          userData[FirestoreUserFields.hourlyRate] == null &&
+          userData[FirestoreUserFields.lastSyncedAt] == null);
+      final bool realtimeHasData =
+          preRealtime.isNotEmpty &&
+          (preRealtime[FirestoreUserFields.totalPoints] != null ||
+              preRealtime[FirestoreUserFields.hourlyRate] != null ||
+              preRealtime[FirestoreUserFields.lastSyncedAt] != null);
+      if (hasFlag && !realtimeHasData && !userLooksEmpty) {
+        // Appears fully migrated already
+        if (!localDone) {
+          await prefs.setBool(localKey, true);
+        }
+        debugPrint(
+          '[EarningsEngine] migrateRealtimeToUnifiedIfNeeded: already migrated for $uid (verified user has data)',
+        );
+        return false;
+      }
+      // If flag is true but user doc lacks data while realtime has it, force migration
+      final bool needsMigration =
+          (!hasFlag && (realtimeHasData || userLooksEmpty)) ||
+          (hasFlag && userLooksEmpty && realtimeHasData);
+      if (!needsMigration) {
+        if (!localDone) {
+          await prefs.setBool(localKey, true);
+        }
+        debugPrint(
+          '[EarningsEngine] migrateRealtimeToUnifiedIfNeeded: no migration needed for $uid (flag=$hasFlag, userEmpty=$userLooksEmpty, realtimeHas=$realtimeHasData)',
+        );
+        return false;
+      }
+      debugPrint(
+        '[EarningsEngine] migrateRealtimeToUnifiedIfNeeded: starting transaction for $uid',
+      );
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final userTx = await tx.get(userRef);
+        final live = userTx.data() ?? {};
+        final realtimeTx = await tx.get(realtimeRef);
+        final realtimeData = realtimeTx.data() ?? {};
+        if (realtimeData.isEmpty) {
+          // If no realtime data, only mark migrated if user already holds the necessary fields
+          final bool userHasCore =
+              live.containsKey(FirestoreUserFields.totalPoints) ||
+              live.containsKey(FirestoreUserFields.hourlyRate) ||
+              live.containsKey(FirestoreUserFields.lastSyncedAt);
+          if (userHasCore) {
+            tx.set(userRef, {
+              FirestoreUserFields.migrationUnifiedEarnings: true,
+              FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+            // Delete empty legacy doc to tidy up
+            tx.delete(realtimeRef);
+          } else {
+            // Leave flag false so future runs can retry when data appears
+            debugPrint(
+              '[EarningsEngine] Migration skipped inside tx: realtime empty and user lacks core fields for $uid',
+            );
+          }
+          return;
+        }
+        final r = _buildMigrationPayloadAndMissing(
+          realtimeData: realtimeData,
+          liveData: live,
+        );
+        final Map<String, dynamic> payload =
+            r['payload'] as Map<String, dynamic>;
+        final List<String> missing = (r['missing'] as List).cast<String>();
+        if (missing.isNotEmpty) {
+          debugPrint(
+            '[EarningsEngine] Migration: some fields missing in realtime/live; applying defaults for $uid: ${missing.join(', ')}',
+          );
+        }
+        payload[FirestoreUserFields.migrationUnifiedEarnings] = true;
+        payload[FirestoreUserFields.updatedAt] = FieldValue.serverTimestamp();
+        tx.set(userRef, payload, SetOptions(merge: true));
+        // Clean up legacy realtime document after successful write
+        tx.delete(realtimeRef);
+      });
+      await prefs.setBool(localKey, true);
+      debugPrint(
+        '[EarningsEngine] migrateRealtimeToUnifiedIfNeeded: migration success for $uid',
+      );
+      // Post-commit verification: ensure fields present
+      try {
+        final verifySnap = await userRef.get();
+        final v = verifySnap.data() ?? {};
+        final keys = [
+          FirestoreUserFields.lastSyncedAt,
+          FirestoreUserFields.hourlyRate,
+          FirestoreUserFields.rateBase,
+          FirestoreUserFields.rateStreak,
+          FirestoreUserFields.rateRank,
+          FirestoreUserFields.rateReferral,
+          FirestoreUserFields.rateManager,
+          FirestoreUserFields.rateAds,
+          FirestoreUserFields.managerBonusPerHour,
+          FirestoreUserFields.updatedAt,
+          FirestoreUserFields.totalPoints,
+          FirestoreUserFields.managedCoinSelections,
+        ];
+        final missing = <String>[];
+        for (final k in keys) {
+          if (!v.containsKey(k) || v[k] == null) {
+            missing.add(k);
+          }
+        }
+        if (missing.isNotEmpty) {
+          debugPrint(
+            '[EarningsEngine] Migration verification failed for $uid. Missing after commit: ${missing.join(', ')}',
+          );
+          // Leave migrationUnifiedEarnings as true to avoid blocking, but log the failure
+          // and rely on subsequent syncs to fill remaining fields from unified path.
+        }
+      } catch (e) {
+        debugPrint('[EarningsEngine] Post-commit verification failed: $e');
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[EarningsEngine] Migration failed: $e');
+      return false;
+    }
+  }
+
+  static Map<String, dynamic> _buildMigrationPayloadAndMissing({
+    required Map<String, dynamic> realtimeData,
+    required Map<String, dynamic> liveData,
+  }) {
+    num? hr = realtimeData[FirestoreUserFields.hourlyRate] as num?;
+    hr ??= realtimeData['hourlyRate1'] as num?;
+    hr ??= liveData[FirestoreUserFields.hourlyRate] as num?;
+    final double hourlyRate = (hr)?.toDouble() ?? 0.0;
+
+    final double totalPoints =
+        ((realtimeData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+            (liveData[FirestoreUserFields.totalPoints] as num?)?.toDouble()) ??
+        0.0;
+
+    Timestamp? lastSyncedAt =
+        (realtimeData[FirestoreUserFields.lastSyncedAt] as Timestamp?) ??
+        (liveData[FirestoreUserFields.lastSyncedAt] as Timestamp?);
+
+    final double rateBase =
+        (realtimeData[FirestoreUserFields.rateBase] as num?)?.toDouble() ??
+        (liveData[FirestoreUserFields.rateBase] as num?)?.toDouble() ??
+        0.0;
+    final double rateStreak =
+        (realtimeData[FirestoreUserFields.rateStreak] as num?)?.toDouble() ??
+        (liveData[FirestoreUserFields.rateStreak] as num?)?.toDouble() ??
+        0.0;
+    final double rateRank =
+        (realtimeData[FirestoreUserFields.rateRank] as num?)?.toDouble() ??
+        (liveData[FirestoreUserFields.rateRank] as num?)?.toDouble() ??
+        0.0;
+    final double rateReferral =
+        (realtimeData[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
+        (liveData[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
+        0.0;
+    final double rateManager =
+        (realtimeData[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
+        (liveData[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
+        0.0;
+    final double rateAds =
+        (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
+        (liveData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
+        0.0;
+    final double managerBonusPerHour =
+        (realtimeData[FirestoreUserFields.managerBonusPerHour] as num?)
+            ?.toDouble() ??
+        (liveData[FirestoreUserFields.managerBonusPerHour] as num?)
+            ?.toDouble() ??
+        0.0;
+    final List<String> managedCoinSelections =
+        (realtimeData[FirestoreUserFields.managedCoinSelections] as List?)
+            ?.cast<String>() ??
+        (liveData[FirestoreUserFields.managedCoinSelections] as List?)
+            ?.cast<String>() ??
+        const [];
+
+    // Preserve updatedAt from realtime if present; otherwise keep live updatedAt if present
+    Timestamp? updatedAt =
+        (realtimeData[FirestoreUserFields.updatedAt] as Timestamp?) ??
+        (liveData[FirestoreUserFields.updatedAt] as Timestamp?);
+
+    final missing = <String>[];
+    if (lastSyncedAt == null) {
+      lastSyncedAt = updatedAt ?? Timestamp.now();
+      missing.add(FirestoreUserFields.lastSyncedAt);
+    }
+    if (hourlyRate.isNaN) {
+      missing.add(FirestoreUserFields.hourlyRate);
+    }
+    if (rateBase.isNaN) missing.add(FirestoreUserFields.rateBase);
+    if (rateStreak.isNaN) missing.add(FirestoreUserFields.rateStreak);
+    if (rateRank.isNaN) missing.add(FirestoreUserFields.rateRank);
+    if (rateReferral.isNaN) missing.add(FirestoreUserFields.rateReferral);
+    if (rateManager.isNaN) missing.add(FirestoreUserFields.rateManager);
+    if (rateAds.isNaN) missing.add(FirestoreUserFields.rateAds);
+    if (totalPoints.isNaN) {
+      missing.add(FirestoreUserFields.totalPoints);
+    }
+
+    final payload = <String, dynamic>{
+      FirestoreUserFields.totalPoints: totalPoints,
+      FirestoreUserFields.lastSyncedAt: lastSyncedAt,
+      FirestoreUserFields.hourlyRate: hourlyRate,
+      FirestoreUserFields.rateBase: rateBase,
+      FirestoreUserFields.rateStreak: rateStreak,
+      FirestoreUserFields.rateRank: rateRank,
+      FirestoreUserFields.rateReferral: rateReferral,
+      FirestoreUserFields.rateManager: rateManager,
+      FirestoreUserFields.rateAds: rateAds,
+      FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
+      FirestoreUserFields.managedCoinSelections: managedCoinSelections,
+      if (updatedAt != null) FirestoreUserFields.updatedAt: updatedAt,
+    };
+    return {'payload': payload, 'missing': missing};
+  }
+
+  static Map<String, dynamic> debugBuildMigrationPayload(
+    Map<String, dynamic> realtimeData,
+    Map<String, dynamic> liveData,
+  ) {
+    final r = _buildMigrationPayloadAndMissing(
+      realtimeData: realtimeData,
+      liveData: liveData,
+    );
+    return r['payload'] as Map<String, dynamic>;
+  }
+
+  static List<String> debugValidateMigration(
+    Map<String, dynamic> realtimeData,
+    Map<String, dynamic> liveData,
+  ) {
+    final r = _buildMigrationPayloadAndMissing(
+      realtimeData: realtimeData,
+      liveData: liveData,
+    );
+    return (r['missing'] as List).cast<String>();
+  }
+
+  static Future<void> setUserHourlyRate({
+    required String uid,
+    required double rate,
+  }) async {
+    final userRef = FirestoreHelper.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid);
+    try {
+      await userRef.set({
+        FirestoreUserFields.hourlyRate: rate,
+        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      debugPrint('[RateSync] setUserHourlyRate uid=$uid rate=$rate');
+    } catch (e) {
+      debugPrint('[RateSync] setUserHourlyRate error: $e');
+      rethrow;
+    }
+  }
+
+  static Map<String, dynamic> decideInitialRate({
+    required double? userRate,
+    required bool miningActive,
+    required double baseRate,
+  }) {
+    if (miningActive) {
+      return {'rate': userRate ?? baseRate, 'write': userRate == null};
+    }
+    if (userRate == null) {
+      return {'rate': baseRate, 'write': true};
+    }
+    return {'rate': userRate, 'write': false};
+  }
+
   static Future<Map<String, dynamic>> syncEarnings({
     Map<String, dynamic>? cachedManagerData,
     String? cachedManagerId,
@@ -25,12 +321,12 @@ class EarningsEngine {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
 
+    // Ensure migration runs even if MiningStateService.init hasn't yet
+    await migrateRealtimeToUnifiedIfNeeded();
+
     final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
-    final realtimeRef = userRef
-        .collection(FirestoreUserSubCollections.earnings)
-        .doc(FirestoreEarningsDocs.realtime);
     final pointLogsRef = FirestoreHelper.instance.collection(
       FirestoreConstants.pointLogs,
     );
@@ -55,61 +351,52 @@ class EarningsEngine {
 
     if (recentlyWrittenLocally && !isSessionComplete) {
       // Throttle: Perform READ-ONLY operation (no transaction)
-      // Note: We still need to fetch realtime doc to get the components and latest sync time
+      // Note: We still need to fetch unified user doc to get the components and latest sync time
       // But we can do a simple GET instead of a transaction.
       // Or better yet, just return what we have if we assume it hasn't changed much?
       // No, we need to calculate 'earned' points based on elapsed time since last sync.
 
       try {
-        // OPTIMIZATION: Use UserService cache for realtime doc to avoid redundant reads
-        final realtimeSnap = await UserService().getRealtimeDoc(uid);
-        final realtimeData = realtimeSnap?.data() ?? {};
+        // OPTIMIZATION: Use UserService cache for unified user doc to avoid redundant reads
+        final liveSnap = await UserService().getRealtimeDoc(uid);
+        final liveData = liveSnap?.data() ?? {};
 
         final Timestamp? startTs =
             data[FirestoreUserFields.lastMiningStart] as Timestamp?;
         final Timestamp? syncedTs =
-            (realtimeData[FirestoreUserFields.lastSyncedAt] as Timestamp?) ??
+            (liveData[FirestoreUserFields.lastSyncedAt] as Timestamp?) ??
             (data[FirestoreUserFields.lastSyncedAt] as Timestamp?);
 
         final double hourlyRate =
-            (realtimeData[FirestoreUserFields.hourlyRate] as num?)
-                ?.toDouble() ??
+            (liveData[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
             (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
             0.0;
 
         final double totalPoints =
-            (realtimeData[FirestoreUserFields.totalPoints] as num?)
-                ?.toDouble() ??
+            (liveData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
             (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
             0.0;
 
         final double rateBase =
-            (realtimeData[FirestoreUserFields.rateBase] as num?)?.toDouble() ??
-            0.0;
+            (liveData[FirestoreUserFields.rateBase] as num?)?.toDouble() ?? 0.0;
         final double rateStreak =
-            (realtimeData[FirestoreUserFields.rateStreak] as num?)
-                ?.toDouble() ??
+            (liveData[FirestoreUserFields.rateStreak] as num?)?.toDouble() ??
             0.0;
         final double rateRank =
-            (realtimeData[FirestoreUserFields.rateRank] as num?)?.toDouble() ??
-            0.0;
+            (liveData[FirestoreUserFields.rateRank] as num?)?.toDouble() ?? 0.0;
         final double rateReferral =
-            (realtimeData[FirestoreUserFields.rateReferral] as num?)
-                ?.toDouble() ??
+            (liveData[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
             0.0;
         final double rateManager =
-            (realtimeData[FirestoreUserFields.rateManager] as num?)
-                ?.toDouble() ??
+            (liveData[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
             0.0;
         final double rateAds =
-            (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
-            0.0;
+            (liveData[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
         final bool managerEnabled =
             (data[FirestoreUserFields.managerEnabled] as bool?) ?? false;
 
         final List<String> managedCoinSelections = managerEnabled
-            ? ((realtimeData[FirestoreUserFields.managedCoinSelections]
-                          as List?)
+            ? ((liveData[FirestoreUserFields.managedCoinSelections] as List?)
                       ?.cast<String>() ??
                   (data[FirestoreUserFields.managedCoinSelections] as List?)
                       ?.cast<String>() ??
@@ -117,7 +404,7 @@ class EarningsEngine {
             : [];
 
         final double managerBonusPerHour =
-            (realtimeData[FirestoreUserFields.managerBonusPerHour] as num?)
+            (liveData[FirestoreUserFields.managerBonusPerHour] as num?)
                 ?.toDouble() ??
             (data[FirestoreUserFields.managerBonusPerHour] as num?)
                 ?.toDouble() ??
@@ -204,77 +491,69 @@ class EarningsEngine {
       // NOTE: We do NOT read userRef inside transaction to save a read.
       // We rely on UserService cache (5s freshness).
       // This means we might calculate based on slightly stale hourlyRate,
-      // but writes go to realtimeRef which is read inside transaction.
-
-      final realtimeSnap = await transaction.get(realtimeRef);
-      final realtimeData = realtimeSnap.data() ?? {};
+      // and we read the latest user doc inside the transaction.
+      final userSnapTx = await transaction.get(userRef);
+      final liveData = userSnapTx.data() ?? {};
 
       final Timestamp? startTs =
           data[FirestoreUserFields.lastMiningStart] as Timestamp?;
       final Timestamp? endTs =
           data[FirestoreUserFields.lastMiningEnd] as Timestamp?;
 
-      // Prefer realtime doc for syncedAt, fallback to user doc
+      // Prefer latest transaction read for syncedAt, fallback to pre-read user doc
       final Timestamp? syncedTs =
-          (realtimeData[FirestoreUserFields.lastSyncedAt] as Timestamp?) ??
+          (liveData[FirestoreUserFields.lastSyncedAt] as Timestamp?) ??
           (data[FirestoreUserFields.lastSyncedAt] as Timestamp?);
 
-      // Prefer realtime doc for hourlyRate, fallback to user doc
+      // Prefer latest transaction read for hourlyRate, fallback to user doc
       final double hourlyRate =
-          (realtimeData[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+          (liveData[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
           (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
           0.0;
 
-      // Prefer realtime doc for managedCoinSelections, fallback to user doc
+      // Prefer latest transaction read for managedCoinSelections, fallback to user doc
       final List<String> managedCoinSelections =
-          (realtimeData[FirestoreUserFields.managedCoinSelections] as List?)
+          (liveData[FirestoreUserFields.managedCoinSelections] as List?)
               ?.cast<String>() ??
           (data[FirestoreUserFields.managedCoinSelections] as List?)
               ?.cast<String>() ??
           [];
 
-      // Prefer realtime doc for managerBonusPerHour, fallback to user doc
+      // Prefer latest transaction read for managerBonusPerHour, fallback to user doc
       final double managerBonusPerHour =
-          (realtimeData[FirestoreUserFields.managerBonusPerHour] as num?)
+          (liveData[FirestoreUserFields.managerBonusPerHour] as num?)
               ?.toDouble() ??
           (data[FirestoreUserFields.managerBonusPerHour] as num?)?.toDouble() ??
           0.0;
 
-      // Read Rate Components (Realtime Only - New Logic)
+      // Read Rate Components from latest transaction doc
       final double rateBase =
-          (realtimeData[FirestoreUserFields.rateBase] as num?)?.toDouble() ??
-          0.0;
+          (liveData[FirestoreUserFields.rateBase] as num?)?.toDouble() ?? 0.0;
       final double rateStreak =
-          (realtimeData[FirestoreUserFields.rateStreak] as num?)?.toDouble() ??
-          0.0;
+          (liveData[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0;
       final double rateRank =
-          (realtimeData[FirestoreUserFields.rateRank] as num?)?.toDouble() ??
-          0.0;
+          (liveData[FirestoreUserFields.rateRank] as num?)?.toDouble() ?? 0.0;
       final double rateReferral =
-          (realtimeData[FirestoreUserFields.rateReferral] as num?)
-              ?.toDouble() ??
+          (liveData[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
           0.0;
       final double rateManager =
-          (realtimeData[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
+          (liveData[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
           0.0;
       final double rateAds =
-          (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
-          0.0;
+          (liveData[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
 
       // Check if migration is needed
       final bool needsMigration =
-          (!realtimeData.containsKey(FirestoreUserFields.hourlyRate) &&
+          (!liveData.containsKey(FirestoreUserFields.hourlyRate) &&
               data.containsKey(FirestoreUserFields.hourlyRate)) ||
-          (!realtimeData.containsKey(
-                FirestoreUserFields.managedCoinSelections,
-              ) &&
+          (!liveData.containsKey(FirestoreUserFields.managedCoinSelections) &&
               data.containsKey(FirestoreUserFields.managedCoinSelections)) ||
-          (!realtimeData.containsKey(FirestoreUserFields.managerBonusPerHour) &&
+          (!liveData.containsKey(FirestoreUserFields.managerBonusPerHour) &&
               data.containsKey(FirestoreUserFields.managerBonusPerHour));
 
-      // Prefer realtime doc for totalPoints, fallback to user doc
+      // Prefer latest transaction read for totalPoints, fallback to pre-read user doc
       double totalPoints =
-          (realtimeData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+          (liveData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
           (data[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
           0.0;
 
@@ -360,7 +639,7 @@ class EarningsEngine {
         };
       }
 
-      // Write to realtime subcollection INSTEAD of main user doc
+      // Write directly to unified user document
       final Map<String, dynamic> writeData = {
         // Use explicit set instead of increment to ensure base is correct if migrating
         FirestoreUserFields.totalPoints: totalPoints + earned,
@@ -376,7 +655,7 @@ class EarningsEngine {
         FirestoreUserFields.rateAds: rateAds,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       };
-      transaction.set(realtimeRef, writeData, SetOptions(merge: true));
+      transaction.set(userRef, writeData, SetOptions(merge: true));
 
       if (earned > 0) {
         final newLogDoc = pointLogsRef.doc();
@@ -425,19 +704,13 @@ class EarningsEngine {
     final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
-    final realtimeRef = userRef
-        .collection(FirestoreUserSubCollections.earnings)
-        .doc(FirestoreEarningsDocs.realtime);
     final logRef = FirestoreHelper.instance
         .collection(FirestoreConstants.pointLogs)
         .doc();
 
     return FirestoreHelper.instance.runTransaction((transaction) async {
-      final realtimeSnap = await transaction.get(realtimeRef);
-      // If doc doesn't exist, we can't boost a rate that doesn't exist.
-      // However, startMining should have created it.
-      // If it doesn't exist, we assume 0 defaults.
-      final data = realtimeSnap.exists ? (realtimeSnap.data() ?? {}) : {};
+      final userSnap = await transaction.get(userRef);
+      final data = userSnap.exists ? (userSnap.data() ?? {}) : {};
 
       final double currentAds =
           (data[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
@@ -451,7 +724,7 @@ class EarningsEngine {
       // This is a safe assumption for a quick boost action.
       final double newHourlyRate = currentHourlyRate + boostAmount;
 
-      transaction.set(realtimeRef, {
+      transaction.set(userRef, {
         FirestoreUserFields.rateAds: newAds,
         FirestoreUserFields.hourlyRate: newHourlyRate,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
@@ -499,9 +772,6 @@ class EarningsEngine {
     final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
-    final realtimeRef = userRef
-        .collection(FirestoreUserSubCollections.earnings)
-        .doc(FirestoreEarningsDocs.realtime);
 
     // Get App Config for Base Rate
     final appConfig = await ConfigService().getGeneralConfig();
@@ -514,10 +784,6 @@ class EarningsEngine {
       final userSnap = await transaction.get(userRef);
       if (!userSnap.exists) return {};
       final userData = userSnap.data()!;
-
-      // Fetch Realtime data (for existing rateAds)
-      final realtimeSnap = await transaction.get(realtimeRef);
-      final realtimeData = realtimeSnap.data() ?? {};
 
       // 1. Base Rate
       // baseRate is already fetched
@@ -591,10 +857,9 @@ class EarningsEngine {
         // Calculate based on normalized perRef
         rateReferral = effectiveCount * perRef * baseRate;
       } else {
-        // Fallback: Use existing rate from realtime doc
+        // Fallback: Use existing rate from unified user document
         rateReferral =
-            (realtimeData[FirestoreUserFields.rateReferral] as num?)
-                ?.toDouble() ??
+            (userData[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
             0.0;
       }
 
@@ -651,8 +916,7 @@ class EarningsEngine {
 
       // 6. Ad Bonus (Preserve existing)
       final double rateAds =
-          (realtimeData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
-          0.0;
+          (userData[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
 
       // Total
       final double newHourlyRate =
@@ -663,7 +927,7 @@ class EarningsEngine {
           rateManager +
           rateAds;
 
-      transaction.set(realtimeRef, {
+      transaction.set(userRef, {
         FirestoreUserFields.rateBase: baseRate,
         FirestoreUserFields.rateRank: rateRank,
         FirestoreUserFields.rateStreak: rateStreak,
@@ -736,9 +1000,6 @@ class EarningsEngine {
     final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
-    final realtimeRef = userRef
-        .collection(FirestoreUserSubCollections.earnings)
-        .doc(FirestoreEarningsDocs.realtime);
 
     final batch = FirestoreHelper.instance.batch();
 
@@ -753,11 +1014,6 @@ class EarningsEngine {
     }
 
     batch.set(userRef, userUpdate, SetOptions(merge: true));
-
-    batch.set(realtimeRef, {
-      FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(now),
-      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
 
     await batch.commit();
 

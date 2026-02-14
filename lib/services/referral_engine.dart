@@ -96,12 +96,8 @@ class ReferralEngine {
       FirestorePointLogFields.description: 'Referral fixed bonus applied',
     });
 
-    // Update points in realtime subcollection to avoid triggering user doc listeners
-    final realtimeRef = inviteeRef
-        .collection(FirestoreUserSubCollections.earnings)
-        .doc(FirestoreEarningsDocs.realtime);
-
-    batch.set(realtimeRef, {
+    // Update points directly on unified user document
+    batch.set(inviteeRef, {
       FirestoreUserFields.totalPoints: FieldValue.increment(inviteeFixedBonus),
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));

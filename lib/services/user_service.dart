@@ -90,6 +90,8 @@ class UserService {
     bool forceRefresh = false,
     Duration freshness = const Duration(seconds: 5),
   }) async {
+    // Before using cache, determine the correct source based on migration status
+    // If user is not migrated, fetch users/{uid}/earnings/realtime; otherwise users/{uid}
     if (forceRefresh) {
       _cachedRealtimeSnapshot = null;
       _pendingRealtimeRequest = null;
@@ -111,13 +113,47 @@ class UserService {
       return _pendingRealtimeRequest;
     }
 
-    debugPrint('UserService: Fetching realtime document from Firestore');
-    _pendingRealtimeRequest = FirestoreHelper.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid)
-        .collection(FirestoreUserSubCollections.earnings)
-        .doc(FirestoreEarningsDocs.realtime)
-        .get();
+    // Determine migration status cheaply; prefer cached user if present
+    bool migrated = false;
+    if (_cachedUserSnapshot != null) {
+      final d = _cachedUserSnapshot!.data() ?? {};
+      migrated =
+          (d[FirestoreUserFields.migrationUnifiedEarnings] as bool?) == true;
+    } else {
+      try {
+        final userSnap = await FirestoreHelper.instance
+            .collection(FirestoreConstants.users)
+            .doc(uid)
+            .get();
+        _cachedUserSnapshot = userSnap;
+        _lastFetchTime = DateTime.now();
+        final d = userSnap.data() ?? {};
+        migrated =
+            (d[FirestoreUserFields.migrationUnifiedEarnings] as bool?) == true;
+      } catch (e) {
+        debugPrint('UserService: Error checking migration flag: $e');
+      }
+    }
+
+    if (migrated) {
+      debugPrint(
+        'UserService: Fetching unified user document for realtime data (migrated)',
+      );
+      _pendingRealtimeRequest = FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .get();
+    } else {
+      debugPrint(
+        'UserService: Fetching legacy realtime document (pre-migration)',
+      );
+      _pendingRealtimeRequest = FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .collection(FirestoreUserSubCollections.earnings)
+          .doc(FirestoreEarningsDocs.realtime)
+          .get();
+    }
 
     try {
       final snap = await _pendingRealtimeRequest;
@@ -140,7 +176,10 @@ class UserService {
 
   /// Extracts a field value from a potentially consolidated user document,
   /// with fallback to the root document for backward compatibility.
-  static dynamic getField(DocumentSnapshot<Map<String, dynamic>> snap, String field) {
+  static dynamic getField(
+    DocumentSnapshot<Map<String, dynamic>> snap,
+    String field,
+  ) {
     final data = snap.data();
     if (data == null) return null;
 
@@ -158,7 +197,8 @@ class UserService {
       if (mining != null && mining.containsKey(field)) return mining[field];
     }
     if (data.containsKey(FirestoreUserFields.manager)) {
-      final manager = data[FirestoreUserFields.manager] as Map<String, dynamic>?;
+      final manager =
+          data[FirestoreUserFields.manager] as Map<String, dynamic>?;
       if (manager != null && manager.containsKey(field)) return manager[field];
     }
     if (data.containsKey(FirestoreUserFields.wallet)) {
