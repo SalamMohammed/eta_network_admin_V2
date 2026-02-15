@@ -1,7 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:eta_network_admin/utils/firestore_helper.dart';
 import '../shared/firestore_constants.dart';
 import 'rank_engine.dart';
 import 'config_service.dart';
@@ -10,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class EarningsEngine {
   static final Map<String, DateTime> _lastLocalWrites = {};
+  static FirebaseFirestore get _db => FirebaseFirestore.instance;
 
   static void _pruneLocalWrites() {
     final now = DateTime.now();
@@ -19,27 +19,237 @@ class EarningsEngine {
     );
   }
 
+  static void _log(
+    String level,
+    String op,
+    String msg, {
+    Object? error,
+    StackTrace? stack,
+    Map<String, Object?> extra = const {},
+  }) {
+    final ts = DateTime.now().toIso8601String();
+    final safeMsg = msg.replaceAll(
+      RegExp('password|token|key|secret', caseSensitive: false),
+      '***',
+    );
+    final extras = extra.isEmpty ? '' : ' | extra=${extra.toString()}';
+    final err = error == null ? '' : ' | error=$error';
+    final st = stack == null ? '' : ' | stack=${stack.toString()}';
+    debugPrint('[$level][$ts][$op] $safeMsg$extras$err$st');
+  }
+
   static Future<bool> migrateRealtimeToUnifiedIfNeeded() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return false;
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final localKey = 'unified_migration_done_$uid';
-      final bool localDone = prefs.getBool(localKey) == true;
-      final userRef = FirestoreHelper.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid);
+      _log(
+        'INFO',
+        'migration',
+        'begin migrateRealtimeToUnifiedIfNeeded',
+        extra: {'uid': uid},
+      );
+      // IMPORTANT: Use the same core Firestore instance for all refs used in transactions
+      final coreDb = _db;
+      final userRef = coreDb.collection(FirestoreConstants.users).doc(uid);
       final realtimeRef = userRef
           .collection(FirestoreUserSubCollections.earnings)
           .doc(FirestoreEarningsDocs.realtime);
+      _log(
+        'DEBUG',
+        'migration',
+        'resolved refs',
+        extra: {
+          'userPath': userRef.path,
+          'realtimePath':
+              '${userRef.path}/earnings/${FirestoreEarningsDocs.realtime}',
+          'coreDbHash': coreDb.hashCode,
+          'userRefDbHash': userRef.firestore.hashCode,
+          'realtimeRefDbHash': realtimeRef.firestore.hashCode,
+          'coreApp': coreDb.app.name,
+          'coreProjectId': coreDb.app.options.projectId,
+          'userRefApp': userRef.firestore.app.name,
+          'userRefProjectId': userRef.firestore.app.options.projectId,
+          'realtimeRefApp': realtimeRef.firestore.app.name,
+          'realtimeRefProjectId': realtimeRef.firestore.app.options.projectId,
+        },
+      );
+      // Guard against cross-project or cross-app mismatches which would cause tx assertion failures
+      final String? corePid = coreDb.app.options.projectId;
+      final String? userPid = userRef.firestore.app.options.projectId;
+      final String? rtPid = realtimeRef.firestore.app.options.projectId;
+      if (corePid != userPid || corePid != rtPid) {
+        _log(
+          'ERROR',
+          'migration',
+          'project/app mismatch detected; aborting migration',
+          extra: {
+            'coreApp': coreDb.app.name,
+            'coreProjectId': corePid,
+            'userRefApp': userRef.firestore.app.name,
+            'userRefProjectId': userPid,
+            'realtimeRefApp': realtimeRef.firestore.app.name,
+            'realtimeRefProjectId': rtPid,
+          },
+        );
+        return false;
+      }
       final userSnap = await userRef.get();
       final userData = userSnap.data() ?? {};
-      final bool hasFlag =
-          (userData[FirestoreUserFields.migrationUnifiedEarnings] as bool?) ==
+      final dynamic existingFlag =
+          userData[FirestoreUserFields.uidMigrationCheckFinished];
+      if (existingFlag != null && existingFlag is! bool) {
+        _log(
+          'WARN',
+          'migration',
+          'uidMigrationCheckFinished has non-bool type; will coerce to false',
+          extra: {'type': existingFlag.runtimeType.toString(), 'uid': uid},
+        );
+      }
+      if (existingFlag == null) {
+        try {
+          _log(
+            'INFO',
+            'migration',
+            'creating uidMigrationCheckFinished=false',
+            extra: {'uid': uid},
+          );
+          await userRef.set({
+            FirestoreUserFields.uidMigrationCheckFinished: false,
+            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          _log(
+            'INFO',
+            'migration',
+            'uidMigrationCheckFinished=false created',
+            extra: {'uid': uid},
+          );
+        } on FirebaseException catch (fe, st) {
+          _log(
+            'ERROR',
+            'migration',
+            'failed to create uidMigrationCheckFinished',
+            error:
+                'code=${fe.code}, plugin=${fe.plugin}, message=${fe.message}',
+            stack: st,
+            extra: {'uid': uid},
+          );
+          rethrow;
+        } catch (e, st) {
+          _log(
+            'ERROR',
+            'migration',
+            'unexpected error creating uidMigrationCheckFinished',
+            error: e,
+            stack: st,
+            extra: {'uid': uid},
+          );
+          rethrow;
+        }
+      }
+      final bool finishedFlag =
+          (userData[FirestoreUserFields.uidMigrationCheckFinished] as bool?) ==
           true;
-      // Pre-check realtime content to detect incomplete migrations
       final preRealtimeSnap = await realtimeRef.get();
-      final preRealtime = preRealtimeSnap.data() ?? {};
+      final preRealtime = _normalizeRealtime(preRealtimeSnap.data() ?? {});
+      _log(
+        'DEBUG',
+        'migration',
+        'loaded realtime doc keys',
+        extra: {
+          'realtimePath': realtimeRef.path,
+          'keys': preRealtime.keys.join(','),
+        },
+      );
+      // Add-once move for totalPoints: add realtime totalPoints into UID then delete from realtime.
+      try {
+        final dynamic rtTpVal = preRealtime[FirestoreUserFields.totalPoints];
+        if (rtTpVal != null) {
+          _log(
+            'DEBUG',
+            'migration',
+            'attempt additive totalPoints move',
+            extra: {'uid': uid, 'rtTotalPoints': '$rtTpVal'},
+          );
+          await coreDb.runTransaction((tx) async {
+            final u = await tx.get(userRef);
+            final r = await tx.get(realtimeRef);
+            final liveData = u.data() ?? {};
+            final rtData = _normalizeRealtime(r.data() ?? {});
+            final double liveTP =
+                (liveData[FirestoreUserFields.totalPoints] as num?)
+                    ?.toDouble() ??
+                0.0;
+            final double rtTP =
+                (rtData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+                0.0;
+            if (rtTP != 0.0) {
+              final double newTP = liveTP + rtTP;
+              _log(
+                'INFO',
+                'migration',
+                'additive totalPoints move start',
+                extra: {
+                  'uid': uid,
+                  'liveTP': liveTP,
+                  'rtTP': rtTP,
+                  'newTP': newTP,
+                },
+              );
+              final Map<String, dynamic> addPayload = {
+                FirestoreUserFields.totalPoints: newTP,
+                FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+              };
+              tx.set(userRef, addPayload, SetOptions(merge: true));
+              _log(
+                'DEBUG',
+                'migration',
+                'tx.set user doc for additive move',
+                extra: {'doc': userRef.path, 'keys': addPayload.keys.join(',')},
+              );
+            }
+            tx.update(realtimeRef, {
+              FirestoreUserFields.totalPoints: FieldValue.delete(),
+              FirestoreLegacyAliases.totalpints: FieldValue.delete(),
+              FirestoreLegacyAliases.totalPoints1: FieldValue.delete(),
+              FirestoreLegacyAliases.total_points: FieldValue.delete(),
+            });
+            _log(
+              'DEBUG',
+              'migration',
+              'tx.update realtime deletes for additive move',
+              extra: {
+                'doc': realtimeRef.path,
+                'deleteFields':
+                    '${FirestoreUserFields.totalPoints},${FirestoreLegacyAliases.totalpints},${FirestoreLegacyAliases.totalPoints1},${FirestoreLegacyAliases.total_points}',
+              },
+            );
+          });
+          _log(
+            'INFO',
+            'migration',
+            'additive totalPoints move committed',
+            extra: {'uid': uid},
+          );
+        }
+      } on FirebaseException catch (fe, st) {
+        _log(
+          'ERROR',
+          'migration',
+          'additive totalPoints move failed',
+          error: 'code=${fe.code}, plugin=${fe.plugin}, message=${fe.message}',
+          stack: st,
+          extra: {'uid': uid},
+        );
+      } catch (e, st) {
+        _log(
+          'ERROR',
+          'migration',
+          'additive totalPoints move unexpected error',
+          error: e,
+          stack: st,
+          extra: {'uid': uid},
+        );
+      }
       final bool userLooksEmpty =
           (userData[FirestoreUserFields.totalPoints] == null &&
           userData[FirestoreUserFields.hourlyRate] == null &&
@@ -49,37 +259,110 @@ class EarningsEngine {
           (preRealtime[FirestoreUserFields.totalPoints] != null ||
               preRealtime[FirestoreUserFields.hourlyRate] != null ||
               preRealtime[FirestoreUserFields.lastSyncedAt] != null);
-      if (hasFlag && !realtimeHasData && !userLooksEmpty) {
-        // Appears fully migrated already
-        if (!localDone) {
-          await prefs.setBool(localKey, true);
-        }
-        debugPrint(
-          '[EarningsEngine] migrateRealtimeToUnifiedIfNeeded: already migrated for $uid (verified user has data)',
+      if (finishedFlag && !realtimeHasData && !userLooksEmpty) {
+        _log(
+          'INFO',
+          'migration',
+          'finished flag set and no realtime data; exiting',
+          extra: {'uid': uid},
         );
         return false;
       }
-      // If flag is true but user doc lacks data while realtime has it, force migration
+      // Determine if realtime and user doc differ (even if user has some fields like zeros)
+      bool realtimeMatchesUser = false;
+      if (realtimeHasData) {
+        final Map<String, dynamic> expected = Map.of(preRealtime);
+        expected.remove(FirestoreUserFields.updatedAt);
+        bool ok = true;
+        for (final entry in expected.entries) {
+          final k = entry.key;
+          final ev = entry.value;
+          if (!userData.containsKey(k)) {
+            ok = false;
+            break;
+          }
+          final uv = userData[k];
+          if (!_deepEquals(ev, uv)) {
+            ok = false;
+            break;
+          }
+        }
+        realtimeMatchesUser = ok;
+      }
+      // Decide migration strictly by finished flag and presence/mismatch
       final bool needsMigration =
-          (!hasFlag && (realtimeHasData || userLooksEmpty)) ||
-          (hasFlag && userLooksEmpty && realtimeHasData);
+          (!finishedFlag && (realtimeHasData || userLooksEmpty)) ||
+          (finishedFlag && realtimeHasData && !realtimeMatchesUser) ||
+          (finishedFlag && userLooksEmpty && realtimeHasData);
       if (!needsMigration) {
-        if (!localDone) {
-          await prefs.setBool(localKey, true);
+        // If no migration needed but we verified matching and the finished flag isn't set, set it now
+        if (realtimeMatchesUser && !finishedFlag) {
+          try {
+            await userRef.set({
+              FirestoreUserFields.uidMigrationCheckFinished: true,
+              FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+            _log(
+              'INFO',
+              'migration',
+              'set finished flag true (no migration path)',
+              extra: {'uid': uid},
+            );
+            try {
+              await userRef.update({
+                '${FirestoreUserFields.stats}.${FirestoreUserFields.totalPoints}':
+                    FieldValue.delete(),
+                '${FirestoreUserFields.stats}.${FirestoreUserFields.hourlyRate}':
+                    FieldValue.delete(),
+                FirestoreLegacyAliases.totalpints: FieldValue.delete(),
+                FirestoreLegacyAliases.totalPoints1: FieldValue.delete(),
+                FirestoreLegacyAliases.total_points: FieldValue.delete(),
+                FirestoreLegacyAliases.hourly_rate: FieldValue.delete(),
+                FirestoreLegacyAliases.hourlyRate1: FieldValue.delete(),
+                FirestoreLegacyAliases.lastSynced: FieldValue.delete(),
+              });
+            } catch (e, st) {
+              _log(
+                'WARN',
+                'migration',
+                'legacy fields cleanup failed (non-fatal)',
+                error: e,
+                stack: st,
+                extra: {'uid': uid},
+              );
+            }
+          } on FirebaseException catch (fe, st) {
+            _log(
+              'ERROR',
+              'migration',
+              'failed to set finished flag true',
+              error:
+                  'code=${fe.code}, plugin=${fe.plugin}, message=${fe.message}',
+              stack: st,
+              extra: {'uid': uid},
+            );
+          }
         }
-        debugPrint(
-          '[EarningsEngine] migrateRealtimeToUnifiedIfNeeded: no migration needed for $uid (flag=$hasFlag, userEmpty=$userLooksEmpty, realtimeHas=$realtimeHasData)',
+        _log(
+          'INFO',
+          'migration',
+          'no migration needed',
+          extra: {
+            'uid': uid,
+            'finished': finishedFlag,
+            'userEmpty': userLooksEmpty,
+            'realtimeHas': realtimeHasData,
+            'matches': realtimeMatchesUser,
+          },
         );
-        return false;
+        return !finishedFlag && realtimeMatchesUser;
       }
-      debugPrint(
-        '[EarningsEngine] migrateRealtimeToUnifiedIfNeeded: starting transaction for $uid',
-      );
-      await FirebaseFirestore.instance.runTransaction((tx) async {
+      _log('INFO', 'migration', 'starting transaction', extra: {'uid': uid});
+      await coreDb.runTransaction((tx) async {
         final userTx = await tx.get(userRef);
         final live = userTx.data() ?? {};
         final realtimeTx = await tx.get(realtimeRef);
-        final realtimeData = realtimeTx.data() ?? {};
+        final realtimeData = _normalizeRealtime(realtimeTx.data() ?? {});
         if (realtimeData.isEmpty) {
           // If no realtime data, only mark migrated if user already holds the necessary fields
           final bool userHasCore =
@@ -89,10 +372,33 @@ class EarningsEngine {
           if (userHasCore) {
             tx.set(userRef, {
               FirestoreUserFields.migrationUnifiedEarnings: true,
+              FirestoreUserFields.uidMigrationCheckFinished: true,
               FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
             }, SetOptions(merge: true));
             // Delete empty legacy doc to tidy up
             tx.delete(realtimeRef);
+            tx.update(userRef, {
+              '${FirestoreUserFields.stats}.${FirestoreUserFields.totalPoints}':
+                  FieldValue.delete(),
+              '${FirestoreUserFields.stats}.${FirestoreUserFields.hourlyRate}':
+                  FieldValue.delete(),
+              FirestoreLegacyAliases.totalpints: FieldValue.delete(),
+              FirestoreLegacyAliases.totalPoints1: FieldValue.delete(),
+              FirestoreLegacyAliases.total_points: FieldValue.delete(),
+              FirestoreLegacyAliases.hourly_rate: FieldValue.delete(),
+              FirestoreLegacyAliases.hourlyRate1: FieldValue.delete(),
+              FirestoreLegacyAliases.lastSynced: FieldValue.delete(),
+              FirestoreLegacyAliases.rate_base: FieldValue.delete(),
+              FirestoreLegacyAliases.rate_streak: FieldValue.delete(),
+              FirestoreLegacyAliases.rate_rank: FieldValue.delete(),
+              FirestoreLegacyAliases.rate_referral: FieldValue.delete(),
+              FirestoreLegacyAliases.rate_manager: FieldValue.delete(),
+              FirestoreLegacyAliases.rate_ads: FieldValue.delete(),
+              FirestoreLegacyAliases.manager_bonus_per_hour:
+                  FieldValue.delete(),
+              FirestoreLegacyAliases.managed_coin_selections:
+                  FieldValue.delete(),
+            });
           } else {
             // Leave flag false so future runs can retry when data appears
             debugPrint(
@@ -113,55 +419,232 @@ class EarningsEngine {
             '[EarningsEngine] Migration: some fields missing in realtime/live; applying defaults for $uid: ${missing.join(', ')}',
           );
         }
-        payload[FirestoreUserFields.migrationUnifiedEarnings] = true;
+        payload.addAll(realtimeData);
+        final double liveTP =
+            (live[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
+        final double rtTP =
+            (realtimeData[FirestoreUserFields.totalPoints] as num?)
+                ?.toDouble() ??
+            0.0;
+        payload[FirestoreUserFields.totalPoints] = liveTP + rtTP;
         payload[FirestoreUserFields.updatedAt] = FieldValue.serverTimestamp();
         tx.set(userRef, payload, SetOptions(merge: true));
-        // Clean up legacy realtime document after successful write
-        tx.delete(realtimeRef);
+        _log(
+          'DEBUG',
+          'migration',
+          'tx.set user doc with payload',
+          extra: {'doc': userRef.path, 'keys': payload.keys.join(',')},
+        );
+        // Clean up legacy totalPoints in realtime (move-once semantics)
+        tx.update(realtimeRef, {
+          FirestoreUserFields.totalPoints: FieldValue.delete(),
+          FirestoreLegacyAliases.totalpints: FieldValue.delete(),
+          FirestoreLegacyAliases.totalPoints1: FieldValue.delete(),
+          FirestoreLegacyAliases.total_points: FieldValue.delete(),
+        });
+        tx.update(userRef, {
+          '${FirestoreUserFields.stats}.${FirestoreUserFields.totalPoints}':
+              FieldValue.delete(),
+          '${FirestoreUserFields.stats}.${FirestoreUserFields.hourlyRate}':
+              FieldValue.delete(),
+          FirestoreLegacyAliases.totalpints: FieldValue.delete(),
+          FirestoreLegacyAliases.totalPoints1: FieldValue.delete(),
+          FirestoreLegacyAliases.total_points: FieldValue.delete(),
+          FirestoreLegacyAliases.hourly_rate: FieldValue.delete(),
+          FirestoreLegacyAliases.hourlyRate1: FieldValue.delete(),
+          FirestoreLegacyAliases.lastSynced: FieldValue.delete(),
+          FirestoreLegacyAliases.rate_base: FieldValue.delete(),
+          FirestoreLegacyAliases.rate_streak: FieldValue.delete(),
+          FirestoreLegacyAliases.rate_rank: FieldValue.delete(),
+          FirestoreLegacyAliases.rate_referral: FieldValue.delete(),
+          FirestoreLegacyAliases.rate_manager: FieldValue.delete(),
+          FirestoreLegacyAliases.rate_ads: FieldValue.delete(),
+          FirestoreLegacyAliases.manager_bonus_per_hour: FieldValue.delete(),
+          FirestoreLegacyAliases.managed_coin_selections: FieldValue.delete(),
+        });
+        _log(
+          'DEBUG',
+          'migration',
+          'tx.update deletes in main tx',
+          extra: {
+            'userDoc': userRef.path,
+            'realtimeDoc': realtimeRef.path,
+            'userDeleteFields':
+                '${FirestoreUserFields.stats}.${FirestoreUserFields.totalPoints},${FirestoreLegacyAliases.totalpints},${FirestoreLegacyAliases.totalPoints1},${FirestoreLegacyAliases.total_points},${FirestoreLegacyAliases.hourly_rate},${FirestoreLegacyAliases.lastSynced}',
+            'realtimeDeleteFields':
+                '${FirestoreUserFields.totalPoints},${FirestoreLegacyAliases.totalpints},${FirestoreLegacyAliases.totalPoints1},${FirestoreLegacyAliases.total_points}',
+          },
+        );
       });
-      await prefs.setBool(localKey, true);
-      debugPrint(
-        '[EarningsEngine] migrateRealtimeToUnifiedIfNeeded: migration success for $uid',
-      );
-      // Post-commit verification: ensure fields present
+      _log('INFO', 'migration', 'transaction committed', extra: {'uid': uid});
+      // Post-commit verification: ensure fields present and matching
       try {
         final verifySnap = await userRef.get();
         final v = verifySnap.data() ?? {};
-        final keys = [
-          FirestoreUserFields.lastSyncedAt,
-          FirestoreUserFields.hourlyRate,
-          FirestoreUserFields.rateBase,
-          FirestoreUserFields.rateStreak,
-          FirestoreUserFields.rateRank,
-          FirestoreUserFields.rateReferral,
-          FirestoreUserFields.rateManager,
-          FirestoreUserFields.rateAds,
-          FirestoreUserFields.managerBonusPerHour,
-          FirestoreUserFields.updatedAt,
-          FirestoreUserFields.totalPoints,
-          FirestoreUserFields.managedCoinSelections,
-        ];
-        final missing = <String>[];
-        for (final k in keys) {
-          if (!v.containsKey(k) || v[k] == null) {
-            missing.add(k);
+        final Map<String, dynamic> expected = Map.of(preRealtime);
+        // totalPoints was added to existing; skip strict equality on it
+        expected.remove(FirestoreUserFields.totalPoints);
+        expected.remove(FirestoreUserFields.updatedAt);
+        bool ok = true;
+        for (final entry in expected.entries) {
+          final k = entry.key;
+          final ev = entry.value;
+          if (!v.containsKey(k)) {
+            ok = false;
+            break;
+          }
+          final uv = v[k];
+          if (!_deepEquals(ev, uv)) {
+            ok = false;
+            break;
           }
         }
-        if (missing.isNotEmpty) {
-          debugPrint(
-            '[EarningsEngine] Migration verification failed for $uid. Missing after commit: ${missing.join(', ')}',
+        if (ok) {
+          await userRef.set({
+            FirestoreUserFields.uidMigrationCheckFinished: true,
+            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          _log(
+            'INFO',
+            'migration',
+            'post-verify success; finished flag set true',
+            extra: {'uid': uid},
           );
-          // Leave migrationUnifiedEarnings as true to avoid blocking, but log the failure
-          // and rely on subsequent syncs to fill remaining fields from unified path.
+        } else {
+          _log(
+            'WARN',
+            'migration',
+            'post-verify mismatch',
+            extra: {'uid': uid},
+          );
         }
-      } catch (e) {
-        debugPrint('[EarningsEngine] Post-commit verification failed: $e');
+      } on FirebaseException catch (fe, st) {
+        _log(
+          'ERROR',
+          'migration',
+          'post-commit verification failed',
+          error: 'code=${fe.code}, plugin=${fe.plugin}, message=${fe.message}',
+          stack: st,
+          extra: {'uid': uid},
+        );
+      } catch (e, st) {
+        _log(
+          'ERROR',
+          'migration',
+          'post-commit verification unexpected error',
+          error: e,
+          stack: st,
+          extra: {'uid': uid},
+        );
       }
       return true;
-    } catch (e) {
-      debugPrint('[EarningsEngine] Migration failed: $e');
+    } on FirebaseException catch (fe, st) {
+      _log(
+        'ERROR',
+        'migration',
+        'migration failed',
+        error: 'code=${fe.code}, plugin=${fe.plugin}, message=${fe.message}',
+        stack: st,
+        extra: {'uid': FirebaseAuth.instance.currentUser?.uid},
+      );
+      return false;
+    } catch (e, st) {
+      _log(
+        'ERROR',
+        'migration',
+        'migration unexpected error',
+        error: e,
+        stack: st,
+        extra: {'uid': FirebaseAuth.instance.currentUser?.uid},
+      );
       return false;
     }
+  }
+
+  static bool _numEquals(dynamic a, dynamic b) {
+    if (a is num && b is num) {
+      return a.toDouble() == b.toDouble();
+    }
+    return a == b;
+  }
+
+  static bool _listEquals(List a, List b) {
+    if (a.length != b.length) return false;
+    for (int i = 0; i < a.length; i++) {
+      if (!_deepEquals(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  static const String _kThrottleGraceUntilMs = 'earningsThrottleGraceUntilMs';
+  static bool _graceInitDone = false;
+
+  static Future<void> _initThrottleGraceIfNeeded() async {
+    if (_graceInitDone) return;
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final int? untilMs = prefs.getInt(_kThrottleGraceUntilMs);
+    if (untilMs == null || now.millisecondsSinceEpoch > untilMs) {
+      final until = now.add(const Duration(minutes: 1)).millisecondsSinceEpoch;
+      await prefs.setInt(_kThrottleGraceUntilMs, until);
+    }
+    _graceInitDone = true;
+  }
+
+  static Future<bool> _isInThrottleGrace() async {
+    final prefs = await SharedPreferences.getInstance();
+    final int? untilMs = prefs.getInt(_kThrottleGraceUntilMs);
+    if (untilMs == null) return false;
+    return DateTime.now().millisecondsSinceEpoch < untilMs;
+  }
+
+  static bool _mapEquals(Map a, Map b) {
+    if (a.length != b.length) return false;
+    for (final k in a.keys) {
+      if (!b.containsKey(k)) return false;
+      if (!_deepEquals(a[k], b[k])) return false;
+    }
+    return true;
+  }
+
+  static bool _deepEquals(dynamic a, dynamic b) {
+    if (a is num && b is num) return _numEquals(a, b);
+    if (a is Timestamp && b is Timestamp) {
+      return a.millisecondsSinceEpoch == b.millisecondsSinceEpoch;
+    }
+    if (a is List && b is List) return _listEquals(a, b);
+    if (a is Map && b is Map) return _mapEquals(a, b);
+    return a == b;
+  }
+
+  static Map<String, dynamic> _normalizeRealtime(Map<String, dynamic> raw) {
+    final out = Map<String, dynamic>.from(raw);
+    final aliases = <String, String>{
+      FirestoreLegacyAliases.totalpints: FirestoreUserFields.totalPoints,
+      FirestoreLegacyAliases.total_points: FirestoreUserFields.totalPoints,
+      FirestoreLegacyAliases.totalPoints1: FirestoreUserFields.totalPoints,
+      FirestoreLegacyAliases.hourly_rate: FirestoreUserFields.hourlyRate,
+      FirestoreLegacyAliases.hourlyRate1: FirestoreUserFields.hourlyRate,
+      FirestoreLegacyAliases.lastSynced: FirestoreUserFields.lastSyncedAt,
+      FirestoreLegacyAliases.rate_base: FirestoreUserFields.rateBase,
+      FirestoreLegacyAliases.rate_streak: FirestoreUserFields.rateStreak,
+      FirestoreLegacyAliases.rate_rank: FirestoreUserFields.rateRank,
+      FirestoreLegacyAliases.rate_referral: FirestoreUserFields.rateReferral,
+      FirestoreLegacyAliases.rate_manager: FirestoreUserFields.rateManager,
+      FirestoreLegacyAliases.rate_ads: FirestoreUserFields.rateAds,
+      FirestoreLegacyAliases.manager_bonus_per_hour:
+          FirestoreUserFields.managerBonusPerHour,
+      FirestoreLegacyAliases.managed_coin_selections:
+          FirestoreUserFields.managedCoinSelections,
+    };
+    for (final e in aliases.entries) {
+      final alias = e.key;
+      final canonical = e.value;
+      if (out.containsKey(alias) && !out.containsKey(canonical)) {
+        out[canonical] = out[alias];
+      }
+    }
+    return out;
   }
 
   static Map<String, dynamic> _buildMigrationPayloadAndMissing({
@@ -259,16 +742,7 @@ class EarningsEngine {
     return {'payload': payload, 'missing': missing};
   }
 
-  static Map<String, dynamic> debugBuildMigrationPayload(
-    Map<String, dynamic> realtimeData,
-    Map<String, dynamic> liveData,
-  ) {
-    final r = _buildMigrationPayloadAndMissing(
-      realtimeData: realtimeData,
-      liveData: liveData,
-    );
-    return r['payload'] as Map<String, dynamic>;
-  }
+  // duplicate removed
 
   static List<String> debugValidateMigration(
     Map<String, dynamic> realtimeData,
@@ -285,9 +759,7 @@ class EarningsEngine {
     required String uid,
     required double rate,
   }) async {
-    final userRef = FirestoreHelper.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid);
+    final userRef = _db.collection(FirestoreConstants.users).doc(uid);
     try {
       await userRef.set({
         FirestoreUserFields.hourlyRate: rate,
@@ -314,6 +786,44 @@ class EarningsEngine {
     return {'rate': userRate, 'write': false};
   }
 
+  static Map<String, dynamic> debugBuildMigrationPayload(
+    Map<String, dynamic> realtime,
+    Map<String, dynamic> live,
+  ) {
+    final rtNorm = _normalizeRealtime(realtime);
+    final r = _buildMigrationPayloadAndMissing(
+      realtimeData: rtNorm,
+      liveData: live,
+    );
+    final Map<String, dynamic> payload = r['payload'] as Map<String, dynamic>;
+    payload.addAll(rtNorm);
+    final double liveTP =
+        (live[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
+    final double rtTP =
+        (rtNorm[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0;
+    payload[FirestoreUserFields.totalPoints] = liveTP + rtTP;
+    payload[FirestoreUserFields.hourlyRate] =
+        (payload[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+    payload[FirestoreUserFields.lastSyncedAt] =
+        payload[FirestoreUserFields.lastSyncedAt] ?? Timestamp.now();
+    payload[FirestoreUserFields.rateBase] =
+        (payload[FirestoreUserFields.rateBase] as num?)?.toDouble() ?? 0.0;
+    payload[FirestoreUserFields.rateStreak] =
+        (payload[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0;
+    payload[FirestoreUserFields.rateRank] =
+        (payload[FirestoreUserFields.rateRank] as num?)?.toDouble() ?? 0.0;
+    payload[FirestoreUserFields.rateReferral] =
+        (payload[FirestoreUserFields.rateReferral] as num?)?.toDouble() ?? 0.0;
+    payload[FirestoreUserFields.rateManager] =
+        (payload[FirestoreUserFields.rateManager] as num?)?.toDouble() ?? 0.0;
+    payload[FirestoreUserFields.rateAds] =
+        (payload[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
+    payload[FirestoreUserFields.managedCoinSelections] =
+        (payload[FirestoreUserFields.managedCoinSelections] as List?)?.cast() ??
+        <String>[];
+    return payload;
+  }
+
   static Future<Map<String, dynamic>> syncEarnings({
     Map<String, dynamic>? cachedManagerData,
     String? cachedManagerId,
@@ -321,15 +831,14 @@ class EarningsEngine {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
 
+    await _initThrottleGraceIfNeeded();
+    final bool inGrace = await _isInThrottleGrace();
+
     // Ensure migration runs even if MiningStateService.init hasn't yet
     await migrateRealtimeToUnifiedIfNeeded();
 
-    final userRef = FirestoreHelper.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid);
-    final pointLogsRef = FirestoreHelper.instance.collection(
-      FirestoreConstants.pointLogs,
-    );
+    final userRef = _db.collection(FirestoreConstants.users).doc(uid);
+    final pointLogsRef = _db.collection(FirestoreConstants.pointLogs);
 
     // Fetch user data via UserService to use cache (deduplication)
     final userSnap = await UserService().getUser(uid);
@@ -349,7 +858,7 @@ class EarningsEngine {
     final bool isSessionComplete =
         end != null && !now.isBefore(end); // now >= end
 
-    if (recentlyWrittenLocally && !isSessionComplete) {
+    if (recentlyWrittenLocally && !isSessionComplete && !inGrace) {
       // Throttle: Perform READ-ONLY operation (no transaction)
       // Note: We still need to fetch unified user doc to get the components and latest sync time
       // But we can do a simple GET instead of a transaction.
@@ -485,9 +994,7 @@ class EarningsEngine {
       }
     }
 
-    final result = await FirestoreHelper.instance.runTransaction((
-      transaction,
-    ) async {
+    final result = await _db.runTransaction((transaction) async {
       // NOTE: We do NOT read userRef inside transaction to save a read.
       // We rely on UserService cache (5s freshness).
       // This means we might calculate based on slightly stale hourlyRate,
@@ -616,7 +1123,8 @@ class EarningsEngine {
 
       if (!needsMigration &&
           !isSessionComplete &&
-          (diffMinutes < 10 || recentlyWrittenLocally)) {
+          (diffMinutes < 10 || recentlyWrittenLocally) &&
+          !inGrace) {
         return {
           FirestoreUserFields.totalPoints:
               totalPoints + earned, // Return calculated total for UI
@@ -701,14 +1209,10 @@ class EarningsEngine {
     required String uid,
     required double boostAmount,
   }) async {
-    final userRef = FirestoreHelper.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid);
-    final logRef = FirestoreHelper.instance
-        .collection(FirestoreConstants.pointLogs)
-        .doc();
+    final userRef = _db.collection(FirestoreConstants.users).doc(uid);
+    final logRef = _db.collection(FirestoreConstants.pointLogs).doc();
 
-    return FirestoreHelper.instance.runTransaction((transaction) async {
+    return _db.runTransaction((transaction) async {
       final userSnap = await transaction.get(userRef);
       final data = userSnap.exists ? (userSnap.data() ?? {}) : {};
 
@@ -769,9 +1273,7 @@ class EarningsEngine {
     String? cachedManagerId,
     int? activeReferralCount,
   }) async {
-    final userRef = FirestoreHelper.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid);
+    final userRef = _db.collection(FirestoreConstants.users).doc(uid);
 
     // Get App Config for Base Rate
     final appConfig = await ConfigService().getGeneralConfig();
@@ -779,7 +1281,7 @@ class EarningsEngine {
         (appConfig[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
         0.2;
 
-    return FirestoreHelper.instance.runTransaction((transaction) async {
+    return _db.runTransaction((transaction) async {
       // Fetch user data inside transaction to ensure consistency
       final userSnap = await transaction.get(userRef);
       if (!userSnap.exists) return {};
@@ -882,7 +1384,7 @@ class EarningsEngine {
         if (cachedManagerId == activeManagerId && cachedManagerData != null) {
           managerData = cachedManagerData;
         } else {
-          final mgrSnap = await FirestoreHelper.instance
+          final mgrSnap = await _db
               .collection(FirestoreConstants.managers)
               .doc(activeManagerId)
               .get();
@@ -997,11 +1499,9 @@ class EarningsEngine {
       end = maxEnd;
     }
 
-    final userRef = FirestoreHelper.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid);
+    final userRef = _db.collection(FirestoreConstants.users).doc(uid);
 
-    final batch = FirestoreHelper.instance.batch();
+    final batch = _db.batch();
 
     final userUpdate = {
       FirestoreUserFields.lastMiningStart: Timestamp.fromDate(now),

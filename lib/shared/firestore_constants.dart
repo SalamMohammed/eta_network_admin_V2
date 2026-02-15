@@ -28,6 +28,7 @@ class FirestoreUserFields {
   static const String username = 'username';
   static const String name = 'name';
   static const String migrationUnifiedEarnings = 'migrationUnifiedEarnings';
+  static const String uidMigrationCheckFinished = 'uidMigrationCheckFinished';
   static const String age = 'age';
   static const String referralCode = 'referralCode';
   static const String invitedBy = 'invitedBy';
@@ -250,4 +251,21 @@ class FirestoreUserCoinMiningFields {
   static const String lastMiningEnd = 'lastMiningEnd';
   static const String lastSyncedAt = 'lastSyncedAt';
   static const String socialLinks = 'socialLinks';
+}
+
+class FirestoreLegacyAliases {
+  static const String totalpints = 'totalpints';
+  static const String totalPoints1 = 'totalPoints1';
+  static const String total_points = 'total_points';
+  static const String hourly_rate = 'hourly_rate';
+  static const String hourlyRate1 = 'hourlyRate1';
+  static const String lastSynced = 'lastSynced';
+  static const String rate_base = 'rate_base';
+  static const String rate_streak = 'rate_streak';
+  static const String rate_rank = 'rate_rank';
+  static const String rate_referral = 'rate_referral';
+  static const String rate_manager = 'rate_manager';
+  static const String rate_ads = 'rate_ads';
+  static const String manager_bonus_per_hour = 'manager_bonus_per_hour';
+  static const String managed_coin_selections = 'managed_coin_selections';
 }

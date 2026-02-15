@@ -36,7 +36,6 @@ const SUB_AUTO_RENEW = 'autoRenew';
 const USER_MANAGER_ENABLED = 'managerEnabled';
 const USER_ACTIVE_MANAGER_ID = 'activeManagerId';
 const USER_FCM_TOKEN = 'fcmToken';
-const USER_LAST_MINING_END = 'lastMiningEnd';
 const USER_INVITED_BY = 'invitedBy';
 
 const USER_MINING_END_NOTIFIED_END_MS = 'miningEndNotifiedEndMs';
@@ -44,6 +43,36 @@ const USER_MINING_END_NOTIFIED_AT = 'miningEndNotifiedAt';
 const USER_MINING_END_TASK_SCHEDULED_END_MS = 'miningEndTaskScheduledEndMs';
 const USER_MINING_END_TASK_SCHEDULED_AT = 'miningEndTaskScheduledAt';
 const USER_MINING_END_TASK_NAME = 'miningEndTaskName';
+
+// Earnings / Migration Fields (must match client Firestore constants)
+const USER_TOTAL_POINTS = 'totalPoints';
+const USER_HOURLY_RATE = 'hourlyRate';
+const USER_LAST_MINING_START = 'lastMiningStart';
+const USER_LAST_MINING_END = 'lastMiningEnd';
+const USER_LAST_SYNCED_AT = 'lastSyncedAt';
+const USER_MIGRATION_FLAG = 'migrationUnifiedEarnings';
+
+const USER_MINING_MAP = 'mining';
+const USER_WALLET_MAP = 'wallet';
+
+const EARNINGS_SUBCOLLECTION = 'earnings';
+const EARNINGS_REALTIME_DOC = 'realtime';
+
+const USER_COINS_SUBCOLLECTION = 'coins';
+const USER_COINS_GLOBAL_COLLECTION = 'user_coins';
+
+// User coin mining fields
+const COIN_OWNER_ID = 'ownerId';
+const COIN_NAME = 'name';
+const COIN_SYMBOL = 'symbol';
+const COIN_IMAGE_URL = 'imageUrl';
+const COIN_DESCRIPTION = 'description';
+const COIN_HOURLY_RATE = 'hourlyRate';
+const COIN_TOTAL_POINTS = 'totalPoints';
+const COIN_LAST_MINING_START = 'lastMiningStart';
+const COIN_LAST_MINING_END = 'lastMiningEnd';
+const COIN_LAST_SYNCED_AT = 'lastSyncedAt';
+const COIN_SOCIAL_LINKS = 'socialLinks';
 
 let cachedWebhookAuth = null;
 let cachedWebhookAuthFetchedAtMs = 0;
@@ -62,6 +91,108 @@ const ALLOWED_APP_IDS = new Set(['com.eta.network', 'net.etanetwork.app', 'net.e
 
 const managerIdCache = new Map();
 const MANAGER_ID_CACHE_TTL_MS = 10 * 60 * 1000;
+
+function toNumber(value, defaultValue = 0) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return defaultValue;
+}
+
+function buildUserEarningsMigrationPlan({ uid, userData, realtimeData, subCoinsDocs, globalCoinsDocs }) {
+  const now = admin.firestore.Timestamp.now();
+
+  const miningMap = (userData && userData[USER_MINING_MAP]) || {};
+  const walletMap = (userData && userData[USER_WALLET_MAP]) || {};
+
+  const rootTotal = toNumber(userData && userData[USER_TOTAL_POINTS]);
+  const miningTotal = toNumber(miningMap && miningMap[USER_TOTAL_POINTS]);
+  const realtimeTotal = toNumber(realtimeData && realtimeData[USER_TOTAL_POINTS]);
+
+  const baseTotal = miningTotal > 0 ? miningTotal : rootTotal;
+  const finalTotalPoints = baseTotal + realtimeTotal;
+
+  const coinsMap = {};
+
+  const collectCoins = (docs) => {
+    if (!docs || !Array.isArray(docs)) return;
+    for (const doc of docs) {
+      const id = doc.id;
+      const data = doc.data || {};
+      const coin = {
+        [COIN_OWNER_ID]: data[COIN_OWNER_ID] || uid,
+        [COIN_NAME]: data[COIN_NAME] || null,
+        [COIN_SYMBOL]: data[COIN_SYMBOL] || null,
+        [COIN_IMAGE_URL]: data[COIN_IMAGE_URL] || null,
+        [COIN_DESCRIPTION]: data[COIN_DESCRIPTION] || null,
+        [COIN_HOURLY_RATE]: toNumber(data[COIN_HOURLY_RATE]),
+        [COIN_TOTAL_POINTS]: toNumber(data[COIN_TOTAL_POINTS]),
+        [COIN_LAST_MINING_START]: data[COIN_LAST_MINING_START] || null,
+        [COIN_LAST_MINING_END]: data[COIN_LAST_MINING_END] || null,
+        [COIN_LAST_SYNCED_AT]: data[COIN_LAST_SYNCED_AT] || null,
+        [COIN_SOCIAL_LINKS]: Array.isArray(data[COIN_SOCIAL_LINKS]) ? data[COIN_SOCIAL_LINKS] : [],
+      };
+      if (!coinsMap[id]) {
+        coinsMap[id] = coin;
+      } else {
+        const existing = coinsMap[id];
+        existing[COIN_TOTAL_POINTS] = toNumber(existing[COIN_TOTAL_POINTS]) + toNumber(coin[COIN_TOTAL_POINTS]);
+        existing[COIN_HOURLY_RATE] = Math.max(
+          toNumber(existing[COIN_HOURLY_RATE]),
+          toNumber(coin[COIN_HOURLY_RATE]),
+        );
+      }
+    }
+  };
+
+  collectCoins(subCoinsDocs);
+  collectCoins(globalCoinsDocs);
+
+  const newMiningMap = {
+    ...miningMap,
+    [USER_TOTAL_POINTS]: finalTotalPoints,
+    [USER_LAST_MINING_START]: now,
+    [USER_LAST_MINING_END]: null,
+    [USER_LAST_SYNCED_AT]: now,
+    [USER_HOURLY_RATE]: toNumber(
+      miningMap[USER_HOURLY_RATE] ||
+        realtimeData && realtimeData[USER_HOURLY_RATE] ||
+        userData && userData[USER_HOURLY_RATE],
+    ),
+  };
+
+  const newWalletMap = {
+    ...walletMap,
+    coins: coinsMap,
+  };
+
+  const newUserDoc = {
+    [USER_TOTAL_POINTS]: finalTotalPoints,
+    [USER_MIGRATION_FLAG]: true,
+    [USER_MINING_MAP]: newMiningMap,
+    [USER_WALLET_MAP]: newWalletMap,
+  };
+
+  const newRealtimeDoc = {
+    ...realtimeData,
+    [USER_TOTAL_POINTS]: finalTotalPoints,
+    [USER_LAST_MINING_START]: now,
+    [USER_LAST_MINING_END]: null,
+    [USER_LAST_SYNCED_AT]: now,
+    [USER_HOURLY_RATE]: newMiningMap[USER_HOURLY_RATE],
+    coins: coinsMap,
+  };
+
+  return {
+    newUserDoc,
+    newRealtimeDoc,
+    finalTotalPoints,
+  };
+}
+
+exports._test_buildUserEarningsMigrationPlan = buildUserEarningsMigrationPlan;
 
 function isUserActiveWithin48h(userData) {
   if (!userData) return false;
@@ -95,6 +226,272 @@ async function getWebhookAuthToken() {
   cachedWebhookAuthFetchedAtMs = now;
   return cachedWebhookAuth;
 }
+
+exports.backfillMigrationUnifiedEarnings = onSchedule("0 3 * * *", async () => {
+  const pageSize = 1000;
+  const maxBatchWrites = 500;
+  let lastDoc = null;
+  let processed = 0;
+  let updated = 0;
+  let failed = 0;
+  let page = 0;
+
+  for (;;) {
+    let query = db.collection(USERS_COLLECTION).orderBy(admin.firestore.FieldPath.documentId()).limit(pageSize);
+    if (lastDoc) {
+      query = query.startAfter(lastDoc);
+    }
+
+    const snap = await query.get();
+    if (snap.empty) {
+      console.log(JSON.stringify({ op: "backfillMigrationUnifiedEarnings", level: "info", message: "completed", processed, updated, failed }));
+      break;
+    }
+
+    page += 1;
+    processed += snap.size;
+    lastDoc = snap.docs[snap.docs.length - 1];
+
+    const targets = [];
+    for (const doc of snap.docs) {
+      const data = doc.data() || {};
+      if (!Object.prototype.hasOwnProperty.call(data, USER_MIGRATION_FLAG)) {
+        targets.push(doc.ref);
+      }
+    }
+
+    for (let i = 0; i < targets.length; i += maxBatchWrites) {
+      const slice = targets.slice(i, i + maxBatchWrites);
+      if (!slice.length) continue;
+      let attempts = 0;
+      for (;;) {
+        attempts += 1;
+        const batch = db.batch();
+        for (const ref of slice) {
+          batch.update(ref, { [USER_MIGRATION_FLAG]: false });
+        }
+        try {
+          await batch.commit();
+          updated += slice.length;
+          console.log(JSON.stringify({ op: "backfillMigrationUnifiedEarnings", level: "info", page, batchSize: slice.length, updatedSoFar: updated }));
+          break;
+        } catch (e) {
+          console.error("backfillMigrationUnifiedEarnings batch error", e);
+          if (attempts >= 3) {
+            failed += slice.length;
+            console.error(JSON.stringify({ op: "backfillMigrationUnifiedEarnings", level: "error", page, failedBatchSize: slice.length }));
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1000 * attempts));
+        }
+      }
+    }
+  }
+});
+
+async function migrateUserEarningsCore(uid) {
+  const userRef = db.collection(USERS_COLLECTION).doc(uid);
+  const realtimeRef = userRef
+    .collection(EARNINGS_SUBCOLLECTION)
+    .doc(EARNINGS_REALTIME_DOC);
+  const subCoinsQuery = userRef.collection(USER_COINS_SUBCOLLECTION);
+  const globalCoinsQuery = db
+    .collection(USER_COINS_GLOBAL_COLLECTION)
+    .where(COIN_OWNER_ID, "==", uid);
+
+  const result = await db.runTransaction(async (tx) => {
+    const [userSnap, realtimeSnap, subCoinsSnap, globalCoinsSnap] =
+      await Promise.all([
+        tx.get(userRef),
+        tx.get(realtimeRef),
+        tx.get(subCoinsQuery),
+        tx.get(globalCoinsQuery),
+      ]);
+
+    if (!userSnap.exists) {
+      throw new Error(`User ${uid} not found`);
+    }
+
+    const userData = userSnap.data() || {};
+
+    if (userData[USER_MIGRATION_FLAG] === true) {
+      return {
+        alreadyMigrated: true,
+        migrationStatus: {
+          userDocExists: true,
+          flagPresent: true,
+        },
+      };
+    }
+
+    const realtimeData = realtimeSnap.exists ? (realtimeSnap.data() || {}) : {};
+
+    const subCoinsDocs = subCoinsSnap.docs.map((d) => ({
+      id: d.id,
+      data: d.data(),
+    }));
+
+    const globalCoinsDocs = globalCoinsSnap.docs.map((d) => ({
+      id: d.id,
+      data: d.data(),
+    }));
+
+    try {
+      const plan = buildUserEarningsMigrationPlan({
+        uid,
+        userData,
+        realtimeData,
+        subCoinsDocs,
+        globalCoinsDocs,
+      });
+
+      tx.set(userRef, plan.newUserDoc, { merge: true });
+      tx.set(realtimeRef, plan.newRealtimeDoc, { merge: true });
+
+      for (const doc of subCoinsSnap.docs) {
+        tx.delete(doc.ref);
+      }
+
+      for (const doc of globalCoinsSnap.docs) {
+        tx.delete(doc.ref);
+      }
+
+      return {
+        alreadyMigrated: false,
+        finalTotalPoints: plan.finalTotalPoints,
+        migrationStatus: {
+          userDocExists: true,
+          realtimeDocExists: realtimeSnap.exists,
+          subCoinsCount: subCoinsSnap.size,
+          globalCoinsCount: globalCoinsSnap.size,
+        },
+      };
+    } catch (e) {
+      console.error("migrateUserEarnings transaction inner error", e);
+      throw e;
+    }
+  });
+
+  return result;
+}
+
+exports.migrateUserEarnings = onSchedule("0 3 * * *", async () => {
+  const pageSize = 200;
+  let processed = 0;
+  let migrated = 0;
+  let already = 0;
+  let lastDoc = null;
+
+  for (;;) {
+    let query = db.collection(USERS_COLLECTION)
+      .where(USER_MIGRATION_FLAG, "==", false)
+      .limit(pageSize);
+    if (lastDoc) {
+      query = query.startAfter(lastDoc);
+    }
+
+    const snap = await query.get();
+    if (snap.empty) {
+      break;
+    }
+
+    processed += snap.size;
+    lastDoc = snap.docs[snap.docs.length - 1];
+
+    for (const doc of snap.docs) {
+      const uid = doc.id;
+      try {
+        const startMs = Date.now();
+        const result = await migrateUserEarningsCore(uid);
+        const durationMs = Date.now() - startMs;
+        if (result.alreadyMigrated) {
+          already += 1;
+        } else {
+          migrated += 1;
+        }
+        console.log(JSON.stringify({
+          op: "migrateUserEarnings",
+          uid,
+          durationMs,
+          alreadyMigrated: result.alreadyMigrated,
+          migrationStatus: result.migrationStatus || null,
+        }));
+      } catch (e) {
+        console.error("migrateUserEarnings scheduled error", e);
+      }
+    }
+  }
+
+  console.log(JSON.stringify({
+    op: "migrateUserEarningsSummary",
+    processed,
+    migrated,
+    alreadyMigrated: already,
+  }));
+});
+
+exports.cleanupMigratedEarningsEarningsDocs = onSchedule("0 4 * * *", async () => {
+  const pageSize = 200;
+  let processed = 0;
+  let deleted = 0;
+  let missing = 0;
+  let lastDoc = null;
+
+  for (;;) {
+    let query = db.collection(USERS_COLLECTION)
+      .where(USER_MIGRATION_FLAG, "==", true)
+      .limit(pageSize);
+
+    if (lastDoc) {
+      query = query.startAfter(lastDoc);
+    }
+
+    const snap = await query.get();
+    if (snap.empty) {
+      break;
+    }
+
+    processed += snap.size;
+    lastDoc = snap.docs[snap.docs.length - 1];
+
+    for (const doc of snap.docs) {
+      const uid = doc.id;
+      try {
+        const realtimeRef = doc.ref
+          .collection(EARNINGS_SUBCOLLECTION)
+          .doc(EARNINGS_REALTIME_DOC);
+        const realtimeSnap = await realtimeRef.get();
+
+        if (realtimeSnap.exists) {
+          await realtimeRef.delete();
+          deleted += 1;
+          console.log(JSON.stringify({
+            op: "cleanupEarningsDoc",
+            uid,
+            deleted: true,
+          }));
+        } else {
+          missing += 1;
+          console.log(JSON.stringify({
+            op: "cleanupEarningsDoc",
+            uid,
+            deleted: false,
+            reason: "missing",
+          }));
+        }
+      } catch (e) {
+        console.error("cleanupEarningsDoc error", e);
+      }
+    }
+  }
+
+  console.log(JSON.stringify({
+    op: "cleanupEarningsDocSummary",
+    processed,
+    deleted,
+    missing,
+  }));
+});
 
 exports.handleRevenueCatWebhook = onRequest(async (req, res) => {
   try {

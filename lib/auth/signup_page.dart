@@ -58,6 +58,21 @@ class _SignupPageState extends State<SignupPage> {
       _error = null;
     });
     try {
+      String ts() => DateTime.now().toIso8601String();
+      void log(
+        String level,
+        String op,
+        String msg, {
+        Object? error,
+        StackTrace? stack,
+        Map<String, Object?> extra = const {},
+      }) {
+        final extras = extra.isEmpty ? '' : ' | extra=${extra.toString()}';
+        final err = error == null ? '' : ' | error=$error';
+        final st = stack == null ? '' : ' | stack=${stack.toString()}';
+        debugPrint('[$level][${ts()}][$op] $msg$extras$err$st');
+      }
+
       final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
@@ -66,35 +81,55 @@ class _SignupPageState extends State<SignupPage> {
       final uid = cred.user!.uid;
       final username = _emailController.text.trim().split('@').first;
       final referralCode = _generateReferralCode();
-      await FirestoreHelper.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .set({
-            FirestoreUserFields.uid: uid,
-            FirestoreUserFields.email: cred.user!.email,
-            FirestoreUserFields.username: username,
-            FirestoreUserFields.referralCode: referralCode,
-            FirestoreUserFields.invitedBy: null,
-            FirestoreUserFields.referralLocked: false,
-            FirestoreUserFields.role: FirestoreUserRoles.free,
-            FirestoreUserFields.rank: FirestoreUserRanks.explorer,
-            FirestoreUserFields.totalPoints: 0,
-            // hourlyRate is now in earnings/realtime subcollection
-            FirestoreUserFields.lastMiningStart: null,
-            FirestoreUserFields.lastMiningEnd: null,
-            FirestoreUserFields.streakDays: 0,
-            FirestoreUserFields.totalSessions: 0,
-            FirestoreUserFields.country: null,
-            FirestoreUserFields.deviceId: null,
-            FirestoreUserFields.managerEnabled: false,
-            FirestoreUserFields.activeManagerId: null,
-            FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
-            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-            FirestoreUserFields.subscription: {
-              FirestoreUserSubscriptionFields.status: 'expired',
-              FirestoreUserSubscriptionFields.autoRenew: false,
-            },
-          }, SetOptions(merge: true));
+      log(
+        'INFO',
+        'uid-flag',
+        'creating signup user doc with uidMigrationCheckFinished=false',
+        extra: {'uid': uid},
+      );
+      try {
+        await FirestoreHelper.instance
+            .collection(FirestoreConstants.users)
+            .doc(uid)
+            .set({
+              FirestoreUserFields.uid: uid,
+              FirestoreUserFields.email: cred.user!.email,
+              FirestoreUserFields.username: username,
+              FirestoreUserFields.uidMigrationCheckFinished: false,
+              FirestoreUserFields.referralCode: referralCode,
+              FirestoreUserFields.invitedBy: null,
+              FirestoreUserFields.referralLocked: false,
+              FirestoreUserFields.role: FirestoreUserRoles.free,
+              FirestoreUserFields.rank: FirestoreUserRanks.explorer,
+              FirestoreUserFields.totalPoints: 0,
+              // hourlyRate is now in earnings/realtime subcollection
+              FirestoreUserFields.lastMiningStart: null,
+              FirestoreUserFields.lastMiningEnd: null,
+              FirestoreUserFields.streakDays: 0,
+              FirestoreUserFields.totalSessions: 0,
+              FirestoreUserFields.country: null,
+              FirestoreUserFields.deviceId: null,
+              FirestoreUserFields.managerEnabled: false,
+              FirestoreUserFields.activeManagerId: null,
+              FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
+              FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+              FirestoreUserFields.subscription: {
+                FirestoreUserSubscriptionFields.status: 'expired',
+                FirestoreUserSubscriptionFields.autoRenew: false,
+              },
+            }, SetOptions(merge: true));
+        log('INFO', 'uid-flag', 'created signup user doc', extra: {'uid': uid});
+      } on FirebaseException catch (fe, st) {
+        log(
+          'ERROR',
+          'uid-flag',
+          'failed creating signup user doc',
+          error: 'code=${fe.code}, plugin=${fe.plugin}, message=${fe.message}',
+          stack: st,
+          extra: {'uid': uid},
+        );
+        rethrow;
+      }
 
       // Initialize unified earnings fields on user doc
       await FirestoreHelper.instance

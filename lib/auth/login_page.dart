@@ -41,15 +41,38 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> _ensureUserDocExists(User user) async {
+    String ts() => DateTime.now().toIso8601String();
+    void log(
+      String level,
+      String op,
+      String msg, {
+      Object? error,
+      StackTrace? stack,
+      Map<String, Object?> extra = const {},
+    }) {
+      final extras = extra.isEmpty ? '' : ' | extra=${extra.toString()}';
+      final err = error == null ? '' : ' | error=$error';
+      final st = stack == null ? '' : ' | stack=${stack.toString()}';
+      debugPrint('[$level][${ts()}][$op] $msg$extras$err$st');
+    }
+
     final ref = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(user.uid);
+    log(
+      'INFO',
+      'uid-flag',
+      'ensureUserDocExists start',
+      extra: {'uid': user.uid, 'path': ref.path},
+    );
     final snap = await ref.get();
     if (snap.exists) {
       final data = snap.data() ?? {};
       final existingEmail = data[FirestoreUserFields.email] as String?;
       final existingUpdatedAt =
           data[FirestoreUserFields.updatedAt] as Timestamp?;
+      final hasUidMigrationFinished =
+          (data[FirestoreUserFields.uidMigrationCheckFinished] as bool?);
 
       bool needsUpdate = false;
       if (existingEmail != user.email) {
@@ -64,10 +87,83 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       if (needsUpdate) {
-        await ref.set({
-          FirestoreUserFields.email: user.email,
-          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
+        try {
+          log(
+            'INFO',
+            'uid-flag',
+            'updating existing user metadata',
+            extra: {'uid': user.uid},
+          );
+          await ref.set({
+            FirestoreUserFields.email: user.email,
+            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          log(
+            'INFO',
+            'uid-flag',
+            'updated existing user metadata',
+            extra: {'uid': user.uid},
+          );
+        } on FirebaseException catch (fe, st) {
+          log(
+            'ERROR',
+            'uid-flag',
+            'failed updating existing user metadata',
+            error:
+                'code=${fe.code}, plugin=${fe.plugin}, message=${fe.message}',
+            stack: st,
+            extra: {'uid': user.uid},
+          );
+        } catch (e, st) {
+          log(
+            'ERROR',
+            'uid-flag',
+            'unexpected error updating user metadata',
+            error: e,
+            stack: st,
+            extra: {'uid': user.uid},
+          );
+        }
+      }
+      // Ensure flag exists for existing users on first open/refresh
+      if (hasUidMigrationFinished == null) {
+        try {
+          log(
+            'INFO',
+            'uid-flag',
+            'backfilling uidMigrationCheckFinished=false',
+            extra: {'uid': user.uid},
+          );
+          await ref.set({
+            FirestoreUserFields.uidMigrationCheckFinished: false,
+            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+          log(
+            'INFO',
+            'uid-flag',
+            'backfilled uidMigrationCheckFinished=false',
+            extra: {'uid': user.uid},
+          );
+        } on FirebaseException catch (fe, st) {
+          log(
+            'ERROR',
+            'uid-flag',
+            'failed backfilling uidMigrationCheckFinished',
+            error:
+                'code=${fe.code}, plugin=${fe.plugin}, message=${fe.message}',
+            stack: st,
+            extra: {'uid': user.uid},
+          );
+        } catch (e, st) {
+          log(
+            'ERROR',
+            'uid-flag',
+            'unexpected error backfilling uidMigrationCheckFinished',
+            error: e,
+            stack: st,
+            extra: {'uid': user.uid},
+          );
+        }
       }
       return;
     }
@@ -80,34 +176,64 @@ class _LoginPageState extends State<LoginPage> {
         ? fallbackUsername
         : user.displayName!.trim();
 
-    await ref.set({
-      FirestoreUserFields.uid: user.uid,
-      FirestoreUserFields.email: email,
-      FirestoreUserFields.username: username,
-      FirestoreUserFields.referralCode: _generateReferralCode(),
-      FirestoreUserFields.invitedBy: null,
-      FirestoreUserFields.referralLocked: false,
-      FirestoreUserFields.role: FirestoreUserRoles.free,
-      FirestoreUserFields.rank: FirestoreUserRanks.explorer,
-      FirestoreUserFields.totalPoints: 0,
-      FirestoreUserFields.hourlyRate: 0,
-      FirestoreUserFields.lastMiningStart: null,
-      FirestoreUserFields.lastMiningEnd: null,
-      FirestoreUserFields.streakDays: 0,
-      FirestoreUserFields.totalSessions: 0,
-      FirestoreUserFields.country: null,
-      FirestoreUserFields.deviceId: null,
-      FirestoreUserFields.managerEnabled: false,
-      FirestoreUserFields.activeManagerId: null,
-      if (user.photoURL != null && user.photoURL!.isNotEmpty)
-        FirestoreUserFields.thumbnailUrl: user.photoURL,
-      FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
-      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-      FirestoreUserFields.subscription: {
-        FirestoreUserSubscriptionFields.status: 'expired',
-        FirestoreUserSubscriptionFields.autoRenew: false,
-      },
-    }, SetOptions(merge: true));
+    try {
+      log(
+        'INFO',
+        'uid-flag',
+        'creating new user doc with uidMigrationCheckFinished=false',
+        extra: {'uid': user.uid},
+      );
+      await ref.set({
+        FirestoreUserFields.uid: user.uid,
+        FirestoreUserFields.email: email,
+        FirestoreUserFields.username: username,
+        FirestoreUserFields.uidMigrationCheckFinished: false,
+        FirestoreUserFields.referralCode: _generateReferralCode(),
+        FirestoreUserFields.invitedBy: null,
+        FirestoreUserFields.referralLocked: false,
+        FirestoreUserFields.role: FirestoreUserRoles.free,
+        FirestoreUserFields.rank: FirestoreUserRanks.explorer,
+        FirestoreUserFields.totalPoints: 0,
+        FirestoreUserFields.hourlyRate: 0,
+        FirestoreUserFields.lastMiningStart: null,
+        FirestoreUserFields.lastMiningEnd: null,
+        FirestoreUserFields.streakDays: 0,
+        FirestoreUserFields.totalSessions: 0,
+        FirestoreUserFields.country: null,
+        FirestoreUserFields.deviceId: null,
+        FirestoreUserFields.managerEnabled: false,
+        FirestoreUserFields.activeManagerId: null,
+        if (user.photoURL != null && user.photoURL!.isNotEmpty)
+          FirestoreUserFields.thumbnailUrl: user.photoURL,
+        FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
+        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+        FirestoreUserFields.subscription: {
+          FirestoreUserSubscriptionFields.status: 'expired',
+          FirestoreUserSubscriptionFields.autoRenew: false,
+        },
+      }, SetOptions(merge: true));
+      log('INFO', 'uid-flag', 'created new user doc', extra: {'uid': user.uid});
+    } on FirebaseException catch (fe, st) {
+      log(
+        'ERROR',
+        'uid-flag',
+        'failed creating new user doc',
+        error: 'code=${fe.code}, plugin=${fe.plugin}, message=${fe.message}',
+        stack: st,
+        extra: {'uid': user.uid},
+      );
+      rethrow;
+    } catch (e, st) {
+      log(
+        'ERROR',
+        'uid-flag',
+        'unexpected error creating new user doc',
+        error: e,
+        stack: st,
+        extra: {'uid': user.uid},
+      );
+      rethrow;
+    }
   }
 
   Future<void> _login() async {
