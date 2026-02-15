@@ -112,17 +112,10 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     final now = DateTime.now();
-    final end = _lastEnd?.toDate();
-    if (end != null && now.isBefore(end)) {
-      await FirestoreHelper.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .set({
-            FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(now),
-            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-    }
-    final res = await EarningsEngine.syncEarnings();
+    final res = await MiningBatchCommitEngine.finishSession(
+      uid: uid,
+      forcedEnd: now,
+    );
     _totalPoints =
         (res[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
         _totalPoints;
@@ -135,32 +128,13 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     _maybeNotify(force: true);
   }
 
+  @Deprecated(
+    'Wallet coin mining end corrections are handled by MiningBatchCommitEngine.finishSession',
+  )
   Future<void> stopAllCoinMining() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    final now = DateTime.now();
-    final userRef = FirestoreHelper.instance
-        .collection(FirestoreConstants.users)
-        .doc(uid);
-    final userSnap = await userRef.get();
-    final data = userSnap.data() ?? {};
-    final wallet =
-        (data[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
-    final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
-    Map<String, dynamic> updates = {};
-    coins.forEach((ownerId, coinData) {
-      final map = coinData as Map<String, dynamic>;
-      final end =
-          map[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
-      if (end != null && now.isBefore(end.toDate())) {
-        updates['${FirestoreUserFields.wallet}.coins.$ownerId.${FirestoreUserCoinMiningFields.lastMiningEnd}'] =
-            Timestamp.fromDate(now);
-      }
-    });
-    if (updates.isNotEmpty) {
-      updates[FirestoreUserFields.updatedAt] = FieldValue.serverTimestamp();
-      await userRef.set(updates, SetOptions(merge: true));
-    }
+    debugPrint(
+      'stopAllCoinMining is deprecated; use MiningBatchCommitEngine.finishSession',
+    );
   }
 
   Future<void> init() async {
@@ -306,29 +280,14 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         baseRate: base,
       );
       final chosen = (decision['rate'] as num).toDouble();
-      final shouldWrite = decision['write'] == true;
-      if (shouldWrite) {
-        try {
-          await FirestoreHelper.instance
-              .collection(FirestoreConstants.users)
-              .doc(uid)
-              .set({
-                FirestoreUserFields.hourlyRate: chosen,
-                FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-              }, SetOptions(merge: true));
-          debugPrint('[RateSync] initialized uid.hourlyRate=$chosen');
-        } catch (e) {
-          debugPrint('[RateSync] init write failed: $e');
-        }
-      }
       _hourlyRate = chosen;
     }
     _startRateSyncIfMiningActive();
 
-    // Migration Check: If mining is active but components are missing (e.g. rateBase is 0),
+    // Migration Check: If components are missing (e.g. rateBase is 0),
     // trigger recalculation to populate components and infer ads.
-    // Throttle this to prevent infinite loops if recalculation fails or mining is actually ended.
-    if (_miningActive &&
+    // Throttle this to prevent infinite loops if recalculation fails.
+    if (!_miningActive &&
         _rateBase == 0.0 &&
         _hourlyRate > 0.0 &&
         (_lastRecalcAttempt == null ||
@@ -646,7 +605,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     }
     final devId = _deviceId ?? await DeviceId.get();
     try {
-      final res = await EarningsEngine.startMining(
+      final res = await MiningBatchCommitEngine.startSession(
         uid: uid,
         deviceId: devId,
         maxEnd: maxEnd,
@@ -1195,34 +1154,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _startRateSyncIfMiningActive() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    if (!_miningActive) {
-      _rateSyncTimer?.cancel();
-      _rateSyncTimer = null;
-      return;
-    }
-    if (_rateSyncTimer != null) return;
-    _rateSyncTimer = Timer.periodic(const Duration(seconds: 2), (
-      Timer t,
-    ) async {
-      if (!_miningActive) {
-        _rateSyncTimer?.cancel();
-        _rateSyncTimer = null;
-        return;
-      }
-      final rate = _hourlyRate;
-      if (rate.isNaN) return;
-      final last = _lastSyncedUserRate ?? -1.0;
-      if ((rate - last).abs() < 0.000001) return;
-      try {
-        await EarningsEngine.setUserHourlyRate(uid: uid, rate: rate);
-        _lastSyncedUserRate = rate;
-        debugPrint('[RateSync] sync mining→uid rate=$rate');
-      } catch (e) {
-        debugPrint('[RateSync] sync error: $e');
-      }
-    });
+    _rateSyncTimer?.cancel();
+    _rateSyncTimer = null;
   }
 
   @override

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:eta_network_admin/services/offline_mining_service.dart';
+import 'package:eta_network_admin/shared/firestore_constants.dart';
 
 class _FakeFirestore extends Fake implements FirebaseFirestore {
   final Map<String, Map<String, dynamic>> _users = {};
@@ -67,6 +68,9 @@ class _FakeGenericSnap<T extends Object?> extends Fake
 
   @override
   T? data() => _data;
+
+  @override
+  bool get exists => _data != null;
 
   @override
   String get id => _id;
@@ -169,10 +173,7 @@ void main() {
       await OfflineMiningCache.init();
     });
 
-    test('enqueue and process mining delta job once', () async {
-      final fake = _FakeFirestore();
-      fake._users['u1'] = {'totalPoints': 100.0};
-
+    test('enqueue stores unsynced earned locally', () async {
       await OfflineMiningSyncQueue.enqueueMiningDelta(
         uid: 'u1',
         delta: 5.0,
@@ -180,15 +181,47 @@ void main() {
         localAfter: 5.0,
       );
 
-      await OfflineMiningSyncQueue.processPendingJobs(fake);
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'offline_unsynced_earned_u1';
+      expect(prefs.getDouble(key), 5.0);
+    });
+  });
 
-      var snap = await fake.collection('users').doc('u1').get();
-      expect(snap.data()!['totalPoints'], 105.0);
+  group('MiningBatchCommitEngine', () {
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      await OfflineMiningCache.init();
+    });
 
-      await OfflineMiningSyncQueue.processPendingJobs(fake);
+    test('startSession and finishSession perform single writes', () async {
+      final fake = _FakeFirestore();
+      fake._users['u1'] = {
+        FirestoreUserFields.totalPoints: 100.0,
+        FirestoreUserFields.rateAds: 0.0,
+        FirestoreUserFields.rateManager: 0.0,
+        FirestoreUserFields.rateReferral: 0.0,
+        FirestoreUserFields.rateRank: 0.0,
+        FirestoreUserFields.rateStreak: 0.0,
+        FirestoreUserFields.streakDays: 0,
+      };
 
-      snap = await fake.collection('users').doc('u1').get();
-      expect(snap.data()!['totalPoints'], 105.0);
+      MiningBatchCommitEngine.debugSetDbForTests(fake);
+
+      final startRes = await MiningBatchCommitEngine.startSession(
+        uid: 'u1',
+        deviceId: 'dev1',
+        maxEnd: DateTime.now().add(const Duration(hours: 1)),
+      );
+
+      expect(startRes[FirestoreUserFields.totalPoints], 100.0);
+
+      final finishRes = await MiningBatchCommitEngine.finishSession(
+        uid: 'u1',
+        forcedEnd: DateTime.now().add(const Duration(hours: 1)),
+      );
+
+      final total = finishRes[FirestoreUserFields.totalPoints] as double;
+      expect(total, greaterThan(100.0));
     });
   });
 }

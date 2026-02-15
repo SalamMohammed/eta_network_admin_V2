@@ -72,16 +72,6 @@ class RankEngine {
         FirestoreUserFields.rank: bestRank,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       });
-      final logRef = FirestoreHelper.instance
-          .collection(FirestoreConstants.pointLogs)
-          .doc();
-      batch.set(logRef, {
-        FirestorePointLogFields.userId: uid,
-        FirestorePointLogFields.type: FirestorePointLogTypes.bonus,
-        FirestorePointLogFields.amount: 0,
-        FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
-        FirestorePointLogFields.description: 'Rank updated to $bestRank',
-      });
       await batch.commit();
     }
   }

@@ -84,18 +84,6 @@ class ReferralEngine {
         FirestoreReferralFields.inviteeUsername: inviteeUsername,
     });
 
-    final points = FirestoreHelper.instance.collection(
-      FirestoreConstants.pointLogs,
-    );
-    final inviteeLog = points.doc();
-    batch.set(inviteeLog, {
-      FirestorePointLogFields.userId: uid,
-      FirestorePointLogFields.type: FirestorePointLogTypes.referral,
-      FirestorePointLogFields.amount: inviteeFixedBonus,
-      FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
-      FirestorePointLogFields.description: 'Referral fixed bonus applied',
-    });
-
     // Update points directly on unified user document
     batch.set(inviteeRef, {
       FirestoreUserFields.totalPoints: FieldValue.increment(inviteeFixedBonus),

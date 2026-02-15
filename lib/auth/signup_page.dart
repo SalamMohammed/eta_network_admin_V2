@@ -168,16 +168,6 @@ class _SignupPageState extends State<SignupPage> {
       await AuthVerificationService.sendVerificationEmail();
       */
 
-      await FirestoreHelper.instance
-          .collection(FirestoreConstants.pointLogs)
-          .add({
-            FirestorePointLogFields.userId: uid,
-            FirestorePointLogFields.type: FirestorePointLogTypes.bonus,
-            FirestorePointLogFields.amount: 0,
-            FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
-            FirestorePointLogFields.description: 'Account created',
-          });
-
       if (mounted) {
         if (widget.goToSelectorAfterAuth) {
           Navigator.pushReplacement(
