@@ -1,7 +1,35 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+class OfflineMiningUserLock {
+  static final Map<String, Future<void>> _tails = {};
+
+  static Future<T> runLocked<T>(String uid, Future<T> Function() action) {
+    final previous = _tails[uid] ?? Future.value();
+    final completer = Completer<void>();
+    final current = previous.then((_) => completer.future);
+    _tails[uid] = current;
+    return previous.then((_) async {
+      try {
+        final result = await action();
+        completer.complete();
+        if (identical(_tails[uid], current)) {
+          _tails.remove(uid);
+        }
+        return result;
+      } catch (e, st) {
+        completer.complete();
+        if (identical(_tails[uid], current)) {
+          _tails.remove(uid);
+        }
+        Error.throwWithStackTrace(e, st);
+      }
+    });
+  }
+}
 
 class OfflineMiningCache {
   static const _version = 1;
@@ -124,7 +152,14 @@ class OfflineMiningSyncQueue {
       if (queue.isEmpty) return;
       final next = <Map<String, dynamic>>[];
       for (final job in queue) {
-        final ok = await _processJob(db, job);
+        final uid = job['uid'] as String?;
+        if (uid == null || uid.isEmpty) {
+          continue;
+        }
+        final ok = await OfflineMiningUserLock.runLocked<bool>(
+          uid,
+          () => _processJobUnlocked(db, job),
+        );
         if (!ok) {
           final attempts = (job['attempts'] as int?) ?? 0;
           job['attempts'] = attempts + 1;
@@ -137,7 +172,7 @@ class OfflineMiningSyncQueue {
     }
   }
 
-  static Future<bool> _processJob(
+  static Future<bool> _processJobUnlocked(
     FirebaseFirestore db,
     Map<String, dynamic> job,
   ) async {
@@ -185,12 +220,20 @@ class OfflineMiningEngine {
   OfflineMiningEngine(this.db);
 
   Future<Map<String, dynamic>> ensureCachedUser(String uid) async {
-    final cached = await OfflineMiningCache.loadUserDoc(uid);
-    if (cached != null) return cached;
-    return reloadFromRemote(uid);
+    return OfflineMiningUserLock.runLocked(uid, () async {
+      final cached = await OfflineMiningCache.loadUserDoc(uid);
+      if (cached != null) return cached;
+      return _reloadFromRemoteInternal(uid);
+    });
   }
 
   Future<Map<String, dynamic>> reloadFromRemote(String uid) async {
+    return OfflineMiningUserLock.runLocked(uid, () async {
+      return _reloadFromRemoteInternal(uid);
+    });
+  }
+
+  Future<Map<String, dynamic>> _reloadFromRemoteInternal(String uid) async {
     final snap = await db.collection('users').doc(uid).get();
     final data = snap.data() ?? <String, dynamic>{};
     await OfflineMiningCache.saveUserDoc(uid, data);
@@ -294,45 +337,48 @@ class OfflineMiningEngine {
     String uid,
     Map<String, dynamic> simulatedUser,
   ) {
-    return OfflineMiningCache.saveUserDoc(uid, simulatedUser);
+    return OfflineMiningUserLock.runLocked(
+      uid,
+      () => OfflineMiningCache.saveUserDoc(uid, simulatedUser),
+    );
   }
 
   Future<void> finalizeSessionAndSync(String uid) async {
-    final cached = await OfflineMiningCache.loadUserDoc(uid);
-    if (cached == null) {
-      return;
-    }
+    await OfflineMiningUserLock.runLocked(uid, () async {
+      final cached = await OfflineMiningCache.loadUserDoc(uid);
+      if (cached == null) {
+        return;
+      }
 
-    final simulated = simulateFromCache(cached, DateTime.now());
+      final simulated = simulateFromCache(cached, DateTime.now());
 
-    final localBeforeRaw = cached['totalPoints'];
-    final localAfterRaw = simulated['totalPoints'];
+      final localBeforeRaw = cached['totalPoints'];
+      final localAfterRaw = simulated['totalPoints'];
 
-    final double localBefore = localBeforeRaw is num
-        ? localBeforeRaw.toDouble()
-        : 0.0;
-    final double localAfter = localAfterRaw is num
-        ? localAfterRaw.toDouble()
-        : localBefore;
+      final double localBefore = localBeforeRaw is num
+          ? localBeforeRaw.toDouble()
+          : 0.0;
+      final double localAfter = localAfterRaw is num
+          ? localAfterRaw.toDouble()
+          : localBefore;
 
-    final deltaSimulated = localAfter - localBefore;
-    if (deltaSimulated < 0) {
-      throw Exception('Negative simulated delta for $uid');
-    }
+      final deltaSimulated = localAfter - localBefore;
+      if (deltaSimulated < 0) {
+        throw Exception('Negative simulated delta for $uid');
+      }
 
-    await OfflineMiningCache.saveUserDoc(uid, simulated);
+      await OfflineMiningCache.saveUserDoc(uid, simulated);
 
-    if (deltaSimulated == 0) {
-      return;
-    }
+      if (deltaSimulated == 0) {
+        return;
+      }
 
-    await OfflineMiningSyncQueue.enqueueMiningDelta(
-      uid: uid,
-      delta: deltaSimulated,
-      localBefore: localBefore,
-      localAfter: localAfter,
-    );
-
-    await OfflineMiningSyncQueue.processPendingJobs(db);
+      await OfflineMiningSyncQueue.enqueueMiningDelta(
+        uid: uid,
+        delta: deltaSimulated,
+        localBefore: localBefore,
+        localAfter: localAfter,
+      );
+    });
   }
 }
