@@ -65,6 +65,120 @@ class OfflineMiningCache {
   }
 }
 
+class OfflineMiningSyncQueue {
+  static const _queueKey = 'offline_mining_sync_queue_v1';
+  static SharedPreferences? _prefs;
+  static bool _processing = false;
+
+  static Future<void> _init() async {
+    _prefs ??= await SharedPreferences.getInstance();
+  }
+
+  static Future<List<Map<String, dynamic>>> _loadQueue() async {
+    await _init();
+    final raw = _prefs!.getString(_queueKey);
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final decoded = json.decode(raw) as List<dynamic>;
+      return decoded
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e as Map))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> _saveQueue(List<Map<String, dynamic>> queue) async {
+    await _init();
+    final encoded = json.encode(queue);
+    await _prefs!.setString(_queueKey, encoded);
+  }
+
+  static Future<void> enqueueMiningDelta({
+    required String uid,
+    required double delta,
+    required double localBefore,
+    required double localAfter,
+  }) async {
+    if (delta == 0) return;
+    final queue = await _loadQueue();
+    final job = <String, dynamic>{
+      'type': 'miningDelta',
+      'uid': uid,
+      'delta': delta,
+      'localBefore': localBefore,
+      'localAfter': localAfter,
+      'createdAtMs': DateTime.now().millisecondsSinceEpoch,
+      'attempts': 0,
+    };
+    queue.add(job);
+    await _saveQueue(queue);
+  }
+
+  static Future<void> processPendingJobs(FirebaseFirestore db) async {
+    if (_processing) return;
+    _processing = true;
+    try {
+      final queue = await _loadQueue();
+      if (queue.isEmpty) return;
+      final next = <Map<String, dynamic>>[];
+      for (final job in queue) {
+        final ok = await _processJob(db, job);
+        if (!ok) {
+          final attempts = (job['attempts'] as int?) ?? 0;
+          job['attempts'] = attempts + 1;
+          next.add(job);
+        }
+      }
+      await _saveQueue(next);
+    } finally {
+      _processing = false;
+    }
+  }
+
+  static Future<bool> _processJob(
+    FirebaseFirestore db,
+    Map<String, dynamic> job,
+  ) async {
+    final type = job['type'] as String?;
+    if (type != 'miningDelta') return true;
+    final uid = job['uid'] as String?;
+    if (uid == null || uid.isEmpty) return true;
+    final deltaRaw = job['delta'];
+    final double delta = deltaRaw is num ? deltaRaw.toDouble() : 0.0;
+    if (delta <= 0) return true;
+    final userRef = db.collection('users').doc(uid);
+    try {
+      await db.runTransaction((tx) async {
+        final snap = await tx.get(userRef);
+        final data = snap.data() ?? <String, dynamic>{};
+        final remoteTotalRaw = data['totalPoints'];
+        final double remoteTotal = remoteTotalRaw is num
+            ? remoteTotalRaw.toDouble()
+            : 0.0;
+        final newTotal = remoteTotal + delta;
+        final update = <String, dynamic>{
+          'totalPoints': newTotal,
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+        tx.set(userRef, update, SetOptions(merge: true));
+      });
+      final cached = await OfflineMiningCache.loadUserDoc(uid);
+      if (cached != null) {
+        final totalRaw = cached['totalPoints'];
+        final double localBase = totalRaw is num ? totalRaw.toDouble() : 0.0;
+        final updated = Map<String, dynamic>.from(cached);
+        updated['totalPoints'] = localBase + delta;
+        await OfflineMiningCache.saveUserDoc(uid, updated);
+      }
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+}
+
 class OfflineMiningEngine {
   final FirebaseFirestore db;
 
@@ -191,38 +305,34 @@ class OfflineMiningEngine {
 
     final simulated = simulateFromCache(cached, DateTime.now());
 
-    final userRef = db.collection('users').doc(uid);
-    await db.runTransaction((tx) async {
-      final snap = await tx.get(userRef);
-      final remote = snap.data() ?? <String, dynamic>{};
+    final localBeforeRaw = cached['totalPoints'];
+    final localAfterRaw = simulated['totalPoints'];
 
-      final remoteTotalRaw = remote['totalPoints'];
-      final localBeforeRaw = cached['totalPoints'];
-      final localAfterRaw = simulated['totalPoints'];
+    final double localBefore = localBeforeRaw is num
+        ? localBeforeRaw.toDouble()
+        : 0.0;
+    final double localAfter = localAfterRaw is num
+        ? localAfterRaw.toDouble()
+        : localBefore;
 
-      final double remoteTotal = remoteTotalRaw is num
-          ? remoteTotalRaw.toDouble()
-          : 0.0;
-      final double localBefore = localBeforeRaw is num
-          ? localBeforeRaw.toDouble()
-          : 0.0;
-      final double localAfter = localAfterRaw is num
-          ? localAfterRaw.toDouble()
-          : remoteTotal;
-
-      final deltaSimulated = localAfter - localBefore;
-      if (deltaSimulated < 0) {
-        throw Exception('Negative simulated delta for $uid');
-      }
-
-      final expectedTotal = remoteTotal + deltaSimulated;
-
-      final update = Map<String, dynamic>.from(simulated);
-      update['totalPoints'] = expectedTotal;
-
-      tx.set(userRef, update, SetOptions(merge: true));
-    });
+    final deltaSimulated = localAfter - localBefore;
+    if (deltaSimulated < 0) {
+      throw Exception('Negative simulated delta for $uid');
+    }
 
     await OfflineMiningCache.saveUserDoc(uid, simulated);
+
+    if (deltaSimulated == 0) {
+      return;
+    }
+
+    await OfflineMiningSyncQueue.enqueueMiningDelta(
+      uid: uid,
+      delta: deltaSimulated,
+      localBefore: localBefore,
+      localAfter: localAfter,
+    );
+
+    await OfflineMiningSyncQueue.processPendingJobs(db);
   }
 }

@@ -12,6 +12,7 @@ import 'config_service.dart';
 import 'user_service.dart';
 import 'coin_service.dart';
 import 'background_service.dart';
+import 'offline_mining_service.dart';
 
 class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   static final MiningStateService _instance = MiningStateService._internal();
@@ -826,6 +827,9 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
         BackgroundService.scheduleManagerWakeup(_lastEnd!.toDate());
       }
       _startRateSyncIfMiningActive();
+      unawaited(
+        OfflineMiningSyncQueue.processPendingJobs(FirestoreHelper.instance),
+      );
     }
   }
 

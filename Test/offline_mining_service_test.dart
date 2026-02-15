@@ -14,6 +14,17 @@ class _FakeFirestore extends Fake implements FirebaseFirestore {
     }
     return _FakeCollection(_users);
   }
+
+  @override
+  Future<T> runTransaction<T>(
+    TransactionHandler<T> transactionHandler, {
+    Duration timeout = const Duration(seconds: 5),
+    int maxAttempts = 5,
+  }) async {
+    final tx = _FakeTransaction(_users);
+    final result = await transactionHandler(tx);
+    return result;
+  }
 }
 
 class _FakeCollection extends Fake
@@ -40,24 +51,58 @@ class _FakeDoc extends Fake implements DocumentReference<Map<String, dynamic>> {
   @override
   Future<DocumentSnapshot<Map<String, dynamic>>> get([GetOptions? options]) {
     final data = _store[_id];
-    return Future.value(_FakeSnap(_id, data));
+    return Future.value(_FakeGenericSnap<Map<String, dynamic>>(_id, data));
   }
 
   @override
   String get id => _id;
 }
 
-class _FakeSnap extends Fake implements DocumentSnapshot<Map<String, dynamic>> {
+class _FakeGenericSnap<T extends Object?> extends Fake
+    implements DocumentSnapshot<T> {
   final String _id;
-  final Map<String, dynamic>? _data;
+  final T? _data;
 
-  _FakeSnap(this._id, this._data);
+  _FakeGenericSnap(this._id, this._data);
 
   @override
-  Map<String, dynamic>? data() => _data;
+  T? data() => _data;
 
   @override
   String get id => _id;
+}
+
+class _FakeTransaction extends Fake implements Transaction {
+  final Map<String, Map<String, dynamic>> _store;
+
+  _FakeTransaction(this._store);
+
+  @override
+  Future<DocumentSnapshot<T>> get<T extends Object?>(
+    DocumentReference<T> documentReference,
+  ) {
+    final id = documentReference.id;
+    final data = _store[id];
+    return Future.value(_FakeGenericSnap<T>(id, data as T?));
+  }
+
+  @override
+  Transaction set<T>(
+    DocumentReference<T> documentReference,
+    T data, [
+    SetOptions? options,
+  ]) {
+    final id = documentReference.id;
+    final existing = _store[id] ?? <String, dynamic>{};
+    final map = data is Map<String, dynamic> ? data : <String, dynamic>{};
+    if (options != null && options.merge == true) {
+      final merged = Map<String, dynamic>.from(existing)..addAll(map);
+      _store[id] = merged;
+    } else {
+      _store[id] = Map<String, dynamic>.from(map);
+    }
+    return this;
+  }
 }
 
 void main() {
@@ -115,6 +160,35 @@ void main() {
       final cached = await OfflineMiningCache.loadUserDoc('u1');
       expect(cached, isNotNull);
       expect(cached!['hourlyRate'], 1.5);
+    });
+  });
+
+  group('OfflineMiningSyncQueue', () {
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      await OfflineMiningCache.init();
+    });
+
+    test('enqueue and process mining delta job once', () async {
+      final fake = _FakeFirestore();
+      fake._users['u1'] = {'totalPoints': 100.0};
+
+      await OfflineMiningSyncQueue.enqueueMiningDelta(
+        uid: 'u1',
+        delta: 5.0,
+        localBefore: 0.0,
+        localAfter: 5.0,
+      );
+
+      await OfflineMiningSyncQueue.processPendingJobs(fake);
+
+      var snap = await fake.collection('users').doc('u1').get();
+      expect(snap.data()!['totalPoints'], 105.0);
+
+      await OfflineMiningSyncQueue.processPendingJobs(fake);
+
+      snap = await fake.collection('users').doc('u1').get();
+      expect(snap.data()!['totalPoints'], 105.0);
     });
   });
 }
