@@ -6,6 +6,7 @@ import '../shared/firestore_constants.dart';
 import '../utils/firestore_helper.dart';
 import 'config_service.dart';
 import 'user_service.dart';
+import 'offline_mining_service.dart';
 
 class SubscriptionService {
   static final SubscriptionService _instance = SubscriptionService._internal();
@@ -352,6 +353,7 @@ class SubscriptionService {
       if (managerIdToWrite != null)
         FirestoreUserFields.activeManagerId: managerIdToWrite,
     }, SetOptions(merge: true));
+    await OfflineMiningEngine(FirestoreHelper.instance).reloadFromRemote(uid);
   }
 
   Future<String?> _getManagerIdFromPlan(String planId) async {

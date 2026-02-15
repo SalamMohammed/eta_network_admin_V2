@@ -11,6 +11,7 @@ import '../../services/earnings_engine.dart';
 import '../../services/mining_state_service.dart';
 import '../../services/sql_api_service.dart';
 import '../../services/user_service.dart';
+import '../../services/offline_mining_service.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
@@ -844,6 +845,9 @@ class _ProfilePageState extends State<ProfilePage> {
           FirestoreUserFields.thumbnailUrl: url,
           FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
+    await OfflineMiningEngine(
+      FirestoreHelper.instance,
+    ).reloadFromRemote(uidLocal);
     setState(() {
       thumbnailUrl = url;
     });
@@ -1416,6 +1420,9 @@ class _AccountInfoSheetState extends State<_AccountInfoSheet> {
       }
 
       await _userRef.set(payload, SetOptions(merge: true));
+      await OfflineMiningEngine(FirestoreHelper.instance).reloadFromRemote(
+        _userRef.id,
+      );
 
       widget.onUsernameUpdated(newUsername);
       if (!mounted) return;

@@ -11,6 +11,7 @@ import 'package:flutter/widgets.dart';
 import '../shared/constants.dart';
 import 'sql_api_service.dart';
 import 'config_service.dart';
+import 'offline_mining_service.dart';
 
 class CoinService with WidgetsBindingObserver {
   // MASTER SWITCH: Set to true to use SQL, false for Firestore
@@ -450,6 +451,7 @@ class CoinService with WidgetsBindingObserver {
             });
           });
     }
+    await OfflineMiningEngine(FirestoreHelper.instance).reloadFromRemote(uid);
   }
 
   static Future<Map<String, dynamic>> startCoinMining(
@@ -645,6 +647,7 @@ class CoinService with WidgetsBindingObserver {
     }, SetOptions(merge: true));
 
     // OPTIMIZATION: Merge local data instead of re-fetching
+    await OfflineMiningEngine(FirestoreHelper.instance).reloadFromRemote(uid);
     return newState;
   }
 

@@ -6,6 +6,7 @@ import 'rank_engine.dart';
 import 'config_service.dart';
 import 'user_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'offline_mining_service.dart';
 
 class EarningsEngine {
   static final Map<String, DateTime> _lastLocalWrites = {};
@@ -1212,7 +1213,7 @@ class EarningsEngine {
     final userRef = _db.collection(FirestoreConstants.users).doc(uid);
     final logRef = _db.collection(FirestoreConstants.pointLogs).doc();
 
-    return _db.runTransaction((transaction) async {
+    final result = await _db.runTransaction((transaction) async {
       final userSnap = await transaction.get(userRef);
       final data = userSnap.exists ? (userSnap.data() ?? {}) : {};
 
@@ -1223,9 +1224,6 @@ class EarningsEngine {
       final double currentHourlyRate =
           (data[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
 
-      // We add boostAmount to currentHourlyRate.
-      // This assumes other components haven't changed since last sync.
-      // This is a safe assumption for a quick boost action.
       final double newHourlyRate = currentHourlyRate + boostAmount;
 
       transaction.set(userRef, {
@@ -1236,16 +1234,20 @@ class EarningsEngine {
 
       transaction.set(logRef, {
         FirestorePointLogFields.userId: uid,
-        FirestorePointLogFields.type:
-            FirestorePointLogTypes.bonus, // Or create a new type if needed
-        FirestorePointLogFields.amount:
-            0, // Rate boost doesn't give immediate points
+        FirestorePointLogFields.type: FirestorePointLogTypes.bonus,
+        FirestorePointLogFields.amount: 0,
         FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
         FirestorePointLogFields.description: 'Ad Reward: Rate +$boostAmount/hr',
       });
 
       return newAds;
     });
+
+    try {
+      await OfflineMiningEngine(_db).reloadFromRemote(uid);
+    } catch (_) {}
+
+    return result;
   }
 
   @Deprecated('Use boostAdRate instead')

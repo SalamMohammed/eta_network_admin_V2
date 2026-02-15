@@ -84,7 +84,7 @@ class _SignupPageState extends State<SignupPage> {
       log(
         'INFO',
         'uid-flag',
-        'creating signup user doc with uidMigrationCheckFinished=false',
+        'creating signup user doc with unified earnings defaults',
         extra: {'uid': uid},
       );
       try {
@@ -95,14 +95,13 @@ class _SignupPageState extends State<SignupPage> {
               FirestoreUserFields.uid: uid,
               FirestoreUserFields.email: cred.user!.email,
               FirestoreUserFields.username: username,
-              FirestoreUserFields.uidMigrationCheckFinished: false,
+              FirestoreUserFields.migrationUnifiedEarnings: true,
               FirestoreUserFields.referralCode: referralCode,
               FirestoreUserFields.invitedBy: null,
               FirestoreUserFields.referralLocked: false,
               FirestoreUserFields.role: FirestoreUserRoles.free,
               FirestoreUserFields.rank: FirestoreUserRanks.explorer,
               FirestoreUserFields.totalPoints: 0,
-              // hourlyRate is now in earnings/realtime subcollection
               FirestoreUserFields.lastMiningStart: null,
               FirestoreUserFields.lastMiningEnd: null,
               FirestoreUserFields.streakDays: 0,
