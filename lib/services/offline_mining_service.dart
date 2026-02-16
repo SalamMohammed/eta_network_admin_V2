@@ -220,6 +220,7 @@ class MiningSessionState {
   final DateTime startTime;
   final DateTime plannedEnd;
   final double startTotalPoints;
+  final int totalInvited;
   final double rateBase;
   final double rateStreak;
   final double rateRank;
@@ -234,6 +235,7 @@ class MiningSessionState {
     required this.startTime,
     required this.plannedEnd,
     required this.startTotalPoints,
+    required this.totalInvited,
     required this.rateBase,
     required this.rateStreak,
     required this.rateRank,
@@ -313,6 +315,17 @@ class MiningBatchCommitEngine {
         }
         final userData = userSnap.data() ?? <String, dynamic>{};
 
+        int totalInvited = 0;
+        final totalInvitedRaw =
+            userData[FirestoreUserFields.totalInvited];
+        if (totalInvitedRaw is num) {
+          totalInvited = totalInvitedRaw.toInt();
+        } else if (totalInvitedRaw != null) {
+          debugPrint(
+            '[MiningBatchCommitEngine] non-numeric totalInvited for $uid: $totalInvitedRaw',
+          );
+        }
+
         final String rank =
             (userData[FirestoreUserFields.rank] as String?) ??
             FirestoreUserRanks.explorer;
@@ -327,18 +340,24 @@ class MiningBatchCommitEngine {
             ? (baseRate * 0.05 * streakDays)
             : 0.0;
 
+        double referralMultiplier = 1.0;
+        if (totalInvited > 0) {
+          referralMultiplier += (totalInvited.clamp(0, 200) / 1000.0);
+        }
+
         double rateReferral = 0.0;
         if (activeReferralCount != null) {
           int effectiveCount = activeReferralCount;
           if (maxRefs > 0 && effectiveCount > maxRefs) {
             effectiveCount = maxRefs;
           }
-          rateReferral = effectiveCount * perRef * baseRate;
+          rateReferral = effectiveCount * perRef * baseRate * referralMultiplier;
         } else {
           rateReferral =
               (userData[FirestoreUserFields.rateReferral] as num?)
-                  ?.toDouble() ??
-              0.0;
+                      ?.toDouble() ??
+                  0.0;
+          rateReferral *= referralMultiplier;
         }
         if (maxBonusRate > 0.0 && rateReferral > maxBonusRate) {
           rateReferral = maxBonusRate;
@@ -371,6 +390,7 @@ class MiningBatchCommitEngine {
             rateAds;
 
         final Map<String, dynamic> writeData = {
+          FirestoreUserFields.totalInvited: totalInvited,
           FirestoreUserFields.rateBase: baseRate,
           FirestoreUserFields.rateRank: rateRank,
           FirestoreUserFields.rateStreak: rateStreak,
@@ -416,6 +436,8 @@ class MiningBatchCommitEngine {
         startTotalPoints:
             (result[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
             0.0,
+        totalInvited:
+            (result[FirestoreUserFields.totalInvited] as num?)?.toInt() ?? 0,
         rateBase:
             (result[FirestoreUserFields.rateBase] as num?)?.toDouble() ?? 0.0,
         rateStreak:

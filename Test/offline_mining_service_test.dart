@@ -203,6 +203,7 @@ void main() {
         FirestoreUserFields.rateRank: 0.0,
         FirestoreUserFields.rateStreak: 0.0,
         FirestoreUserFields.streakDays: 0,
+        FirestoreUserFields.totalInvited: 0,
       };
 
       MiningBatchCommitEngine.debugSetDbForTests(fake);
@@ -222,6 +223,79 @@ void main() {
 
       final total = finishRes[FirestoreUserFields.totalPoints] as double;
       expect(total, greaterThan(100.0));
+    });
+
+    test('totalInvited influences referral rate when activeReferralCount provided', () async {
+      final fake = _FakeFirestore();
+      fake._users['u1'] = {
+        FirestoreUserFields.totalPoints: 0.0,
+        FirestoreUserFields.rateAds: 0.0,
+        FirestoreUserFields.rateManager: 0.0,
+        FirestoreUserFields.rateReferral: 0.0,
+        FirestoreUserFields.rateRank: 0.0,
+        FirestoreUserFields.rateStreak: 0.0,
+        FirestoreUserFields.streakDays: 0,
+        FirestoreUserFields.totalInvited: 100,
+      };
+
+      MiningBatchCommitEngine.debugSetDbForTests(fake);
+
+      final lowInvitedStart = await MiningBatchCommitEngine.startSession(
+        uid: 'u1',
+        deviceId: 'dev1',
+        activeReferralCount: 1,
+      );
+
+      final lowRate = lowInvitedStart[FirestoreUserFields.rateReferral] as double;
+      expect(lowRate, greaterThan(0.0));
+
+      fake._users['u1']![FirestoreUserFields.totalInvited] = 0;
+
+      final noInvitedStart = await MiningBatchCommitEngine.startSession(
+        uid: 'u1',
+        deviceId: 'dev1',
+        activeReferralCount: 1,
+      );
+
+      final noRate = noInvitedStart[FirestoreUserFields.rateReferral] as double;
+      expect(noRate, greaterThan(0.0));
+      expect(lowRate, greaterThan(noRate));
+    });
+
+    test('missing or non-numeric totalInvited treated as zero', () async {
+      final fake = _FakeFirestore();
+      fake._users['u1'] = {
+        FirestoreUserFields.totalPoints: 0.0,
+        FirestoreUserFields.rateAds: 0.0,
+        FirestoreUserFields.rateManager: 0.0,
+        FirestoreUserFields.rateReferral: 0.0,
+        FirestoreUserFields.rateRank: 0.0,
+        FirestoreUserFields.rateStreak: 0.0,
+        FirestoreUserFields.streakDays: 0,
+      };
+
+      MiningBatchCommitEngine.debugSetDbForTests(fake);
+
+      final startMissing = await MiningBatchCommitEngine.startSession(
+        uid: 'u1',
+        deviceId: 'dev1',
+        activeReferralCount: 1,
+      );
+
+      final rateMissing = startMissing[FirestoreUserFields.rateReferral] as double;
+
+      fake._users['u1']![FirestoreUserFields.totalInvited] = 'not-a-number';
+
+      final startInvalid = await MiningBatchCommitEngine.startSession(
+        uid: 'u1',
+        deviceId: 'dev1',
+        activeReferralCount: 1,
+      );
+
+      final rateInvalid = startInvalid[FirestoreUserFields.rateReferral] as double;
+
+      expect(rateMissing, greaterThan(0.0));
+      expect(rateInvalid, closeTo(rateMissing, 0.0001));
     });
   });
 }

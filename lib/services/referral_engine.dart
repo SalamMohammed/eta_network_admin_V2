@@ -43,10 +43,6 @@ class ReferralEngine {
         0.0;
 
     final batch = FirestoreHelper.instance.batch();
-    final referralsCol = FirestoreHelper.instance.collection(
-      FirestoreConstants.referrals,
-    );
-    final referralDoc = referralsCol.doc();
 
     batch.update(inviteeRef, {
       '${FirestoreUserFields.stats}.${FirestoreUserFields.invitedBy}':
@@ -73,15 +69,6 @@ class ReferralEngine {
           FieldValue.increment(1),
       '${FirestoreUserFields.referrals}.${FirestoreUserFields.recentReferrals}':
           FieldValue.arrayUnion([referralSummary]),
-    });
-
-    batch.set(referralDoc, {
-      FirestoreReferralFields.inviterId: inviterUid,
-      FirestoreReferralFields.inviteeId: uid,
-      FirestoreReferralFields.timestamp: FieldValue.serverTimestamp(),
-      FirestoreReferralFields.isActive: true,
-      if (inviteeUsername != null)
-        FirestoreReferralFields.inviteeUsername: inviteeUsername,
     });
 
     // Update points directly on unified user document

@@ -314,124 +314,70 @@ class _ReferralsPageState extends State<ReferralsPage> {
 
     // PHASE 2: LOAD STATS & TEAM (SECONDARY)
     try {
-      // 2. Prepare Referrals Query
-      final referralsRef = FirestoreHelper.instance
+      final sharedDocFuture = FirestoreHelper.instance
           .collection(FirestoreConstants.referrals)
-          .where(FirestoreReferralFields.inviterId, isEqualTo: uid);
-
-      // 3. Fetch Recent Referrals (Economic Limit)
-      final recentReferralsFuture = referralsRef
-          .orderBy(FirestoreReferralFields.timestamp, descending: true)
-          .limit(20)
+          .doc(uid)
           .get();
 
-      // 4. Referral stats (denormalized counts) - now read from user doc
       final statsDocFuture = FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(uid)
           .get();
 
-      // 5. Active Count Query (Realtime Aggregation)
-      final activeThreshold = DateTime.now().subtract(
-        const Duration(hours: 48),
-      );
-      final activeCountFuture = FirestoreHelper.instance
-          .collection(FirestoreConstants.users)
-          .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
-          .where(
-            FirestoreUserFields.lastMiningEnd,
-            isGreaterThan: Timestamp.fromDate(activeThreshold),
-          )
-          .count()
-          .get();
+      final results = await Future.wait([sharedDocFuture, statsDocFuture]);
 
-      final results = await Future.wait([
-        recentReferralsFuture,
-        statsDocFuture,
-        activeCountFuture,
-      ]);
-
-      final recentSnap = results[0] as QuerySnapshot<Map<String, dynamic>>;
+      final sharedDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>;
       final statsDoc = results[1] as DocumentSnapshot<Map<String, dynamic>>;
-      final activeCountAgg = results[2] as AggregateQuerySnapshot;
 
-      // Process Referrals List
       final List<_ReferralItem> finalOrderedItems = [];
-      final Set<String> inviteeIds = {};
-      for (final doc in recentSnap.docs) {
-        final data = doc.data();
-        final inviteeId =
-            data[FirestoreReferralFields.inviteeId] as String? ?? '';
-        if (inviteeId.isNotEmpty) {
-          inviteeIds.add(inviteeId);
-        }
-      }
+      int activeInvited = 0;
 
-      final Map<String, Map<String, dynamic>> inviteeUserData = {};
-      if (inviteeIds.isNotEmpty) {
-        final userFutures = inviteeIds
-            .map(
-              (id) => FirestoreHelper.instance
-                  .collection(FirestoreConstants.users)
-                  .doc(id)
-                  .get(),
-            )
-            .toList();
-        final userDocs = await Future.wait(userFutures);
-        for (final uDoc in userDocs) {
-          if (!uDoc.exists) continue;
-          final data = uDoc.data();
-          if (data != null) {
-            inviteeUserData[uDoc.id] = data;
-          }
-        }
-      }
+      if (sharedDoc.exists) {
+        final data = sharedDoc.data() ?? {};
+        final inviteesRaw = data['invitees'];
+        if (inviteesRaw is Map<String, dynamic>) {
+          inviteesRaw.forEach((_, value) {
+            if (value is! Map<String, dynamic>) {
+              return;
+            }
+            final ts =
+                (value[FirestoreReferralFields.timestamp] as Timestamp?)
+                    ?.toDate() ??
+                DateTime.now();
+            final dateStr =
+                '${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')}';
 
-      for (final doc in recentSnap.docs) {
-        final data = doc.data();
-        final inviteeId =
-            data[FirestoreReferralFields.inviteeId] as String? ?? '';
-        if (inviteeId.isEmpty) continue;
+            final savedUsername =
+                value[FirestoreReferralFields.inviteeUsername] as String?;
+            final username = (savedUsername ?? '').trim().isEmpty
+                ? 'Unknown'
+                : savedUsername!;
 
-        final ts =
-            (data[FirestoreReferralFields.timestamp] as Timestamp?)?.toDate() ??
-            DateTime.now();
-        final dateStr =
-            '${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')}';
+            final isActive =
+                (value[FirestoreReferralFields.isActive] as bool?) ?? false;
+            final status = isActive ? 'Active' : 'Not Started';
+            if (isActive) {
+              activeInvited++;
+            }
 
-        final savedUsername =
-            data[FirestoreReferralFields.inviteeUsername] as String?;
-        final userData = inviteeUserData[inviteeId];
+            finalOrderedItems.add(
+              _ReferralItem(
+                username: username,
+                status: status,
+                joined: dateStr,
+              ),
+            );
+          });
 
-        String username;
-        if (savedUsername != null && savedUsername.isNotEmpty) {
-          username = savedUsername;
-        } else if (userData != null) {
-          username =
-              (userData[FirestoreUserFields.username] as String?) ?? 'Unknown';
-        } else {
-          username = 'Unknown';
-        }
-
-        String status;
-        if (userData != null) {
-          final activity = userActivityStatusFromUserData(userData);
-          if (activity == UserActivityStatus.active) {
-            status = 'Active';
-          } else if (activity == UserActivityStatus.notStarted) {
-            status = 'Not Started';
-          } else {
-            status = 'Inactive';
+          finalOrderedItems.sort((a, b) => b.joined.compareTo(a.joined));
+          if (finalOrderedItems.length > 20) {
+            finalOrderedItems.removeRange(20, finalOrderedItems.length);
           }
         } else {
-          final isActive =
-              (data[FirestoreReferralFields.isActive] as bool?) ?? false;
-          status = isActive ? 'Active' : 'Not Started';
+          debugPrint('Referrals shared doc has invalid invitees map for $uid');
         }
-
-        finalOrderedItems.add(
-          _ReferralItem(username: username, status: status, joined: dateStr),
-        );
+      } else {
+        debugPrint('Referrals shared doc missing for $uid');
       }
 
       if (mounted) {
@@ -439,8 +385,8 @@ class _ReferralsPageState extends State<ReferralsPage> {
           final statsData = statsDoc.data() ?? {};
           _totalInvited =
               (statsData[FirestoreUserFields.totalInvited] as num?)?.toInt() ??
-                  0;
-          _activeInvited = activeCountAgg.count ?? 0;
+              0;
+          _activeInvited = activeInvited;
           _referrals = finalOrderedItems;
           _loading = false;
         });

@@ -30,6 +30,7 @@ const REFERRAL_INVITER_ID = 'inviterId';
 const REFERRAL_INVITEE_ID = 'inviteeId';
 const REFERRAL_TIMESTAMP = 'timestamp';
 const REFERRAL_IS_ACTIVE = 'isActive';
+const REFERRAL_INVITEE_USERNAME = 'inviteeUsername';
 
 // Subscription Fields
 const SUB_STATUS = 'status';
@@ -44,6 +45,7 @@ const USER_ACTIVE_MANAGER_ID = 'activeManagerId';
 const USER_FCM_TOKEN = 'fcmToken';
 const USER_INVITED_BY = 'invitedBy';
 const USER_TOTAL_INVITED = 'totalInvited';
+const USER_USERNAME = 'username';
 
 const USER_MINING_END_NOTIFIED_END_MS = 'miningEndNotifiedEndMs';
 const USER_MINING_END_NOTIFIED_AT = 'miningEndNotifiedAt';
@@ -99,8 +101,9 @@ const ALLOWED_APP_IDS = new Set(['com.eta.network', 'net.etanetwork.app', 'net.e
 const managerIdCache = new Map();
 const MANAGER_ID_CACHE_TTL_MS = 10 * 60 * 1000;
 const referralShardMetaCache = new Map();
+const referralUsernameCache = new Map();
 
-async function upsertReferralInviteeShard(inviterId, inviteeUid, isActive, timestampValue) {
+async function upsertReferralInviteeShard(inviterId, inviteeUid, isActive, timestampValue, inviteeUsername) {
   if (!inviterId || !inviteeUid) {
     return;
   }
@@ -126,12 +129,16 @@ async function upsertReferralInviteeShard(inviterId, inviteeUid, isActive, times
 
   const newAggRef = referralAggCollection.doc(aggDocId);
   const timestampField = timestampValue || admin.firestore.FieldValue.serverTimestamp();
+  const usernameField = typeof inviteeUsername === "string"
+    ? inviteeUsername
+    : null;
   await newAggRef.set(
     {
       invitees: {
         [inviteeUid]: {
           isActive: !!isActive,
           timestamp: timestampField,
+          [REFERRAL_INVITEE_USERNAME]: usernameField,
         },
       },
     },
@@ -410,6 +417,7 @@ exports.migrateReferralStatsAndReferrals = onSchedule("0 4 * * *", async () => {
 
   // Step 2: Migrate legacy referrals docs into sharded aggregator docs and delete legacy docs
   let lastReferralDoc = null;
+  const usernameCache = new Map();
   for (;;) {
     let refQuery = db
       .collection(REFERRALS_COLLECTION)
@@ -438,7 +446,26 @@ exports.migrateReferralStatsAndReferrals = onSchedule("0 4 * * *", async () => {
       const isActive = !!data[REFERRAL_IS_ACTIVE];
       const ts = data[REFERRAL_TIMESTAMP] || null;
 
-      await upsertReferralInviteeShard(inviterId, inviteeId, isActive, ts);
+      let inviteeUsername = "";
+      if (usernameCache.has(inviteeId)) {
+        inviteeUsername = usernameCache.get(inviteeId);
+      } else {
+        try {
+          const userSnap = await db.collection(USERS_COLLECTION).doc(inviteeId).get();
+          if (userSnap.exists) {
+            const userData = userSnap.data() || {};
+            inviteeUsername = (userData[USER_USERNAME] || "").toString().trim();
+          }
+        } catch (e) {
+          inviteeUsername = "";
+        }
+        if (!inviteeUsername) {
+          inviteeUsername = (data[REFERRAL_INVITEE_USERNAME] || "").toString().trim();
+        }
+        usernameCache.set(inviteeId, inviteeUsername);
+      }
+
+      await upsertReferralInviteeShard(inviterId, inviteeId, isActive, ts, inviteeUsername);
       await doc.ref.delete();
     }
   }
@@ -1121,6 +1148,7 @@ exports.updateReferralStatsOnUserWrite = onDocumentWritten(
     }
 
     const userRef = db.collection(USERS_COLLECTION).doc(uid);
+    const inviteeUsername = (afterData[USER_USERNAME] || "").toString().trim();
 
     if (beforeInviterId) {
       const oldInviterUserRef = db.collection(USERS_COLLECTION).doc(beforeInviterId);
@@ -1157,7 +1185,7 @@ exports.updateReferralStatsOnUserWrite = onDocumentWritten(
         { [USER_INVITED_BY]: afterInviterId },
         { merge: true },
       );
-      await upsertReferralInviteeShard(afterInviterId, uid, false, null);
+      await upsertReferralInviteeShard(afterInviterId, uid, false, null, inviteeUsername);
     }
   },
 );
