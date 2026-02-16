@@ -72,27 +72,24 @@ class _ReferralsRanksPageState extends State<ReferralsRanksPage> {
     });
 
     try {
-      // 1. Get top referrers from stats
-      // Note: This requires an index on referral_stats.totalInvited descending
+      // 1. Get top referrers from users, ordered by totalInvited
+      // Note: This requires an index on users.totalInvited descending
       final statsSnap = await FirestoreHelper.instance
-          .collection(FirestoreConstants.referralStats)
-          .orderBy('totalInvited', descending: true)
+          .collection(FirestoreConstants.users)
+          .orderBy(FirestoreUserFields.totalInvited, descending: true)
           .limit(20)
           .get();
 
       final List<_ReferrerRow> loadedRows = [];
 
-      // 2. For each, get user doc and calculate active count
+      // 2. For each, user doc is already this doc; calculate active count
       for (final doc in statsSnap.docs) {
         final uid = doc.id;
-        final statsData = doc.data();
-        final totalInvited = (statsData['totalInvited'] as num?)?.toInt() ?? 0;
+        final userData = doc.data();
+        final totalInvited =
+            (userData[FirestoreUserFields.totalInvited] as num?)?.toInt() ?? 0;
 
-        // Parallel fetch: User Doc + Active Count
-        final userDocFuture = FirestoreHelper.instance
-            .collection(FirestoreConstants.users)
-            .doc(uid)
-            .get();
+        // Parallel fetch: Active Count
 
         final activeThreshold = DateTime.now().subtract(
           const Duration(hours: 48),
@@ -107,11 +104,9 @@ class _ReferralsRanksPageState extends State<ReferralsRanksPage> {
             .count()
             .get();
 
-        final results = await Future.wait([userDocFuture, activeCountFuture]);
-        final userSnap = results[0] as DocumentSnapshot<Map<String, dynamic>>;
-        final activeAgg = results[1] as AggregateQuerySnapshot;
+        final results = await Future.wait([activeCountFuture]);
+        final activeAgg = results[0] as AggregateQuerySnapshot;
 
-        final userData = userSnap.data() ?? {};
         final name = (userData[FirestoreUserFields.username] as String?) ?? uid;
         final rank =
             (userData[FirestoreUserFields.rank] as String?) ?? 'Explorer';

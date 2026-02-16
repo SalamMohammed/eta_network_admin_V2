@@ -46,6 +46,7 @@ class FirestoreUserFields {
   static const String country = 'country';
   static const String address = 'address';
   static const String gender = 'gender';
+  static const String totalInvited = 'totalInvited';
   static const String deviceId = 'deviceId';
   static const String createdAt = 'createdAt';
   static const String updatedAt = 'updatedAt';

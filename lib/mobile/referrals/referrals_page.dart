@@ -325,9 +325,9 @@ class _ReferralsPageState extends State<ReferralsPage> {
           .limit(20)
           .get();
 
-      // 4. Referral stats (denormalized counts)
+      // 4. Referral stats (denormalized counts) - now read from user doc
       final statsDocFuture = FirestoreHelper.instance
-          .collection(FirestoreConstants.referralStats)
+          .collection(FirestoreConstants.users)
           .doc(uid)
           .get();
 
@@ -437,7 +437,9 @@ class _ReferralsPageState extends State<ReferralsPage> {
       if (mounted) {
         setState(() {
           final statsData = statsDoc.data() ?? {};
-          _totalInvited = (statsData['totalInvited'] as num?)?.toInt() ?? 0;
+          _totalInvited =
+              (statsData[FirestoreUserFields.totalInvited] as num?)?.toInt() ??
+                  0;
           _activeInvited = activeCountAgg.count ?? 0;
           _referrals = finalOrderedItems;
           _loading = false;

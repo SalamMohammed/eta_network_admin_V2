@@ -24,6 +24,12 @@ const APP_CONFIG_COLLECTION = 'app_config';
 const APP_CONFIG_GENERAL_DOC = 'general';
 const SUBSCRIPTION_FIELD = 'subscription';
 const WEBHOOK_AUTH_FIELD = 'revenueCatWebhookAuth';
+const REFERRAL_SHARDS_COLLECTION = 'referral_shards';
+const REFERRAL_ALERTS_COLLECTION = 'referral_alerts';
+const REFERRAL_INVITER_ID = 'inviterId';
+const REFERRAL_INVITEE_ID = 'inviteeId';
+const REFERRAL_TIMESTAMP = 'timestamp';
+const REFERRAL_IS_ACTIVE = 'isActive';
 
 // Subscription Fields
 const SUB_STATUS = 'status';
@@ -37,6 +43,7 @@ const USER_MANAGER_ENABLED = 'managerEnabled';
 const USER_ACTIVE_MANAGER_ID = 'activeManagerId';
 const USER_FCM_TOKEN = 'fcmToken';
 const USER_INVITED_BY = 'invitedBy';
+const USER_TOTAL_INVITED = 'totalInvited';
 
 const USER_MINING_END_NOTIFIED_END_MS = 'miningEndNotifiedEndMs';
 const USER_MINING_END_NOTIFIED_AT = 'miningEndNotifiedAt';
@@ -91,6 +98,81 @@ const ALLOWED_APP_IDS = new Set(['com.eta.network', 'net.etanetwork.app', 'net.e
 
 const managerIdCache = new Map();
 const MANAGER_ID_CACHE_TTL_MS = 10 * 60 * 1000;
+const referralShardMetaCache = new Map();
+
+async function upsertReferralInviteeShard(inviterId, inviteeUid, isActive, timestampValue) {
+  if (!inviterId || !inviteeUid) {
+    return;
+  }
+  const referralAggCollection = db.collection(REFERRALS_COLLECTION);
+  const referralShardsMetaCollection = db.collection(REFERRAL_SHARDS_COLLECTION);
+
+  let meta = referralShardMetaCache.get(inviterId);
+  if (!meta) {
+    const shardMetaRef = referralShardsMetaCollection.doc(inviterId);
+    const shardMetaSnap = await shardMetaRef.get();
+    const currentShard = shardMetaSnap.exists
+      ? (shardMetaSnap.data().currentShard || 0)
+      : 0;
+    meta = { currentShard };
+    referralShardMetaCache.set(inviterId, meta);
+  }
+
+  const shardMetaRef = referralShardsMetaCollection.doc(inviterId);
+  const { currentShard } = meta;
+  const aggDocId = currentShard === 0
+    ? inviterId
+    : `${inviterId}_shard_${currentShard}`;
+
+  const newAggRef = referralAggCollection.doc(aggDocId);
+  const timestampField = timestampValue || admin.firestore.FieldValue.serverTimestamp();
+  await newAggRef.set(
+    {
+      invitees: {
+        [inviteeUid]: {
+          isActive: !!isActive,
+          timestamp: timestampField,
+        },
+      },
+    },
+    { merge: true },
+  );
+
+  const newAggSnap = await newAggRef.get();
+  if (!newAggSnap.exists) {
+    return;
+  }
+  const data = newAggSnap.data() || {};
+  const approxBytes = Buffer.byteLength(JSON.stringify(data));
+  if (approxBytes <= 800000) {
+    return;
+  }
+
+  console.warn('upsertReferralInviteeShard: referral aggregate near 1MB', {
+    inviterId,
+    approxBytes,
+  });
+  try {
+    await db.collection(REFERRAL_ALERTS_COLLECTION).add({
+      inviterId,
+      sizeBytes: approxBytes,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    console.log('upsertReferralInviteeShard: failed to write referral_alerts', {
+      inviterId,
+      error: e && e.message,
+    });
+  }
+
+  const nextShardIndex = meta.currentShard + 1;
+  meta.currentShard = nextShardIndex;
+  referralShardMetaCache.set(inviterId, meta);
+  await shardMetaRef.set(
+    { currentShard: nextShardIndex },
+    { merge: true },
+  );
+}
 
 function toNumber(value, defaultValue = 0) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -282,6 +364,82 @@ exports.backfillMigrationUnifiedEarnings = onSchedule("0 3 * * *", async () => {
           await new Promise((resolve) => setTimeout(resolve, 1000 * attempts));
         }
       }
+    }
+  }
+});
+
+exports.migrateReferralStatsAndReferrals = onSchedule("0 4 * * *", async () => {
+  const pageSize = 500;
+
+  // Step 1: Migrate referral_stats -> users.totalInvited and delete referral_stats docs
+  let lastStatsDoc = null;
+  for (;;) {
+    let statsQuery = db
+      .collection(REFERRAL_STATS_COLLECTION)
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(pageSize);
+    if (lastStatsDoc) {
+      statsQuery = statsQuery.startAfter(lastStatsDoc);
+    }
+
+    const statsSnap = await statsQuery.get();
+    if (statsSnap.empty) {
+      break;
+    }
+    lastStatsDoc = statsSnap.docs[statsSnap.docs.length - 1];
+
+    const batch = db.batch();
+    for (const doc of statsSnap.docs) {
+      const uid = doc.id;
+      const data = doc.data() || {};
+      const totalInvitedValue = typeof data[USER_TOTAL_INVITED] === "number"
+        ? data[USER_TOTAL_INVITED]
+        : typeof data.totalInvited === "number"
+          ? data.totalInvited
+          : 0;
+      const userRef = db.collection(USERS_COLLECTION).doc(uid);
+      batch.set(
+        userRef,
+        { [USER_TOTAL_INVITED]: totalInvitedValue },
+        { merge: true },
+      );
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+  }
+
+  // Step 2: Migrate legacy referrals docs into sharded aggregator docs and delete legacy docs
+  let lastReferralDoc = null;
+  for (;;) {
+    let refQuery = db
+      .collection(REFERRALS_COLLECTION)
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(pageSize);
+    if (lastReferralDoc) {
+      refQuery = refQuery.startAfter(lastReferralDoc);
+    }
+
+    const refSnap = await refQuery.get();
+    if (refSnap.empty) {
+      break;
+    }
+    lastReferralDoc = refSnap.docs[refSnap.docs.length - 1];
+
+    for (const doc of refSnap.docs) {
+      const data = doc.data() || {};
+      const inviterId = (data[REFERRAL_INVITER_ID] || "").toString().trim();
+      const inviteeId = (data[REFERRAL_INVITEE_ID] || "").toString().trim();
+
+      // Skip docs that are not legacy referral entries (e.g., aggregator shards)
+      if (!inviterId || !inviteeId) {
+        continue;
+      }
+
+      const isActive = !!data[REFERRAL_IS_ACTIVE];
+      const ts = data[REFERRAL_TIMESTAMP] || null;
+
+      await upsertReferralInviteeShard(inviterId, inviteeId, isActive, ts);
+      await doc.ref.delete();
     }
   }
 });
@@ -665,6 +823,9 @@ async function ensureQueueExists() {
   return queueName;
 }
 
+// In-memory cache of last processed mining end timestamp per uid (per function instance).
+const lastMiningEndCache = new Map();
+
 function getFunctionUrl(functionName) {
   const project = process.env.GCLOUD_PROJECT;
   if (!project) throw new Error("GCLOUD_PROJECT is not set");
@@ -781,6 +942,13 @@ exports.scheduleMiningEndNotification = onDocumentWritten(
 
     if (!afterSnap.exists) return;
 
+    const uid = event.params.uid;
+    console.log("scheduleMiningEndNotification: invoked", {
+      uid,
+      hasBefore: beforeSnap.exists,
+      hasAfter: afterSnap.exists,
+    });
+
     const beforeData = beforeSnap.exists ? beforeSnap.data() || {} : {};
     const afterData = afterSnap.data() || {};
 
@@ -798,8 +966,14 @@ exports.scheduleMiningEndNotification = onDocumentWritten(
       // Exception: If the previous attempt failed?
       // The client stores 'miningEndTaskScheduledEndMs' only after success.
       // So if that matches, we are good.
+      const endMsCurrent = afterEndTs.toMillis();
       const scheduledEndMs = Number(afterData[USER_MINING_END_TASK_SCHEDULED_END_MS] || 0);
-      if (Number.isFinite(scheduledEndMs) && scheduledEndMs === afterEndTs.toMillis()) {
+      if (Number.isFinite(scheduledEndMs) && scheduledEndMs === endMsCurrent) {
+        lastMiningEndCache.set(uid, endMsCurrent);
+        console.log("scheduleMiningEndNotification: skip (same endTs and already scheduled)", {
+          uid,
+          endMs: endMsCurrent,
+        });
         return;
       }
       // If not scheduled yet but time didn't change (e.g. other field update), we should proceed to schedule it?
@@ -837,10 +1011,25 @@ exports.scheduleMiningEndNotification = onDocumentWritten(
     if (!endTs || typeof endTs.toMillis !== "function") return;
 
     const endMs = endTs.toMillis();
+
+    const cachedEndMs = lastMiningEndCache.get(uid);
+    if (Number.isFinite(cachedEndMs) && cachedEndMs === endMs) {
+      console.log("scheduleMiningEndNotification: skip (in-memory cache hit)", {
+        uid,
+        endMs,
+      });
+      return;
+    }
+
     const scheduledEndMs = Number(afterData[USER_MINING_END_TASK_SCHEDULED_END_MS] || 0);
     
     // Idempotency check: if already scheduled for this exact time, skip
     if (Number.isFinite(scheduledEndMs) && scheduledEndMs === endMs) {
+      lastMiningEndCache.set(uid, endMs);
+      console.log("scheduleMiningEndNotification: skip (scheduledEndMs matches endMs)", {
+        uid,
+        endMs,
+      });
       return;
     }
 
@@ -849,7 +1038,6 @@ exports.scheduleMiningEndNotification = onDocumentWritten(
 
     const queueName = await ensureQueueExists();
     const url = getFunctionUrl("sendMiningEndNotificationTask");
-    const uid = event.params.uid;
 
     const scheduleAtMs = Math.max(Date.now() + 10 * 1000, endMs);
     const taskId = `miningEnd-${uid}-${endMs}`;
@@ -892,6 +1080,11 @@ exports.scheduleMiningEndNotification = onDocumentWritten(
       },
       { merge: true },
     );
+    lastMiningEndCache.set(uid, endMs);
+    console.log("scheduleMiningEndNotification: scheduled task and updated cache", {
+      uid,
+      endMs,
+    });
   },
 );
 
@@ -903,19 +1096,6 @@ exports.updateReferralStatsOnReferralCreate = onDocumentWritten(
     if (beforeSnap.exists || !afterSnap.exists) {
       return;
     }
-    const data = afterSnap.data() || {};
-    const inviterId = (data.inviterId || '').toString().trim();
-    const inviteeId = (data.inviteeId || '').toString().trim();
-    if (!inviterId) {
-      return;
-    }
-    const statsRef = db.collection(REFERRAL_STATS_COLLECTION).doc(inviterId);
-    await statsRef.set(
-      {
-        totalInvited: admin.firestore.FieldValue.increment(1),
-      },
-      { merge: true },
-    );
   },
 );
 
@@ -927,6 +1107,7 @@ exports.updateReferralStatsOnUserWrite = onDocumentWritten(
     if (!afterSnap.exists) {
       return;
     }
+    const uid = event.params.uid;
     const beforeData = beforeSnap.exists ? beforeSnap.data() || {} : {};
     const afterData = afterSnap.data() || {};
 
@@ -935,25 +1116,48 @@ exports.updateReferralStatsOnUserWrite = onDocumentWritten(
     const beforeInviterId = (beforeInviterRaw || '').toString().trim();
     const afterInviterId = (afterInviterRaw || '').toString().trim();
 
-    // Only update if inviter changed
     if (beforeInviterId === afterInviterId) {
       return;
     }
 
-    // Handle inviter change
+    const userRef = db.collection(USERS_COLLECTION).doc(uid);
+
     if (beforeInviterId) {
-      const oldStatsRef = db.collection(REFERRAL_STATS_COLLECTION).doc(beforeInviterId);
-      await oldStatsRef.set(
-        { totalInvited: admin.firestore.FieldValue.increment(-1) },
+      const oldInviterUserRef = db.collection(USERS_COLLECTION).doc(beforeInviterId);
+      await oldInviterUserRef.set(
+        { [USER_TOTAL_INVITED]: admin.firestore.FieldValue.increment(-1) },
         { merge: true },
       );
+      const referralAggCollection = db.collection(REFERRALS_COLLECTION);
+      const referralShardsMetaCollection = db.collection(REFERRAL_SHARDS_COLLECTION);
+      const oldShardMetaRef = referralShardsMetaCollection.doc(beforeInviterId);
+      const oldShardMetaSnap = await oldShardMetaRef.get();
+      const maxShardIndex = oldShardMetaSnap.exists
+        ? (oldShardMetaSnap.data().currentShard || 0)
+        : 0;
+      for (let i = 0; i <= maxShardIndex; i++) {
+        const docId = i === 0 ? beforeInviterId : `${beforeInviterId}_shard_${i}`;
+        const oldAggRef = referralAggCollection.doc(docId);
+        try {
+          await oldAggRef.update({
+            [`invitees.${uid}`]: admin.firestore.FieldValue.delete(),
+          });
+        } catch (e) {
+          // ignore missing shard docs
+        }
+      }
     }
     if (afterInviterId) {
-      const newStatsRef = db.collection(REFERRAL_STATS_COLLECTION).doc(afterInviterId);
-      await newStatsRef.set(
-        { totalInvited: admin.firestore.FieldValue.increment(1) },
+      const newInviterUserRef = db.collection(USERS_COLLECTION).doc(afterInviterId);
+      await newInviterUserRef.set(
+        { [USER_TOTAL_INVITED]: admin.firestore.FieldValue.increment(1) },
         { merge: true },
       );
+      await userRef.set(
+        { [USER_INVITED_BY]: afterInviterId },
+        { merge: true },
+      );
+      await upsertReferralInviteeShard(afterInviterId, uid, false, null);
     }
   },
 );
