@@ -52,6 +52,7 @@ class _MobileHomePageState extends State<MobileHomePage>
   int _rewardedSessionStartMs = 0;
   int _rewardedWatchedThisSession = 0;
   double _rewardedSessionBaseHourlyRate = 0.0;
+  bool _startMiningInProgress = false;
 
   @override
   void initState() {
@@ -932,6 +933,8 @@ class _MobileHomePageState extends State<MobileHomePage>
                 progress: progress,
                 remaining: remaining,
                 onStart: () async {
+                  if (_startMiningInProgress) return;
+                  _startMiningInProgress = true;
                   try {
                     final res = await _miningService.startMining();
                     if (!context.mounted) return;
@@ -961,6 +964,8 @@ class _MobileHomePageState extends State<MobileHomePage>
                     ScaffoldMessenger.of(
                       context,
                     ).showSnackBar(SnackBar(content: Text('Start failed: $e')));
+                  } finally {
+                    _startMiningInProgress = false;
                   }
                 },
                 showRewarded: _adsService.config.enableRewarded,

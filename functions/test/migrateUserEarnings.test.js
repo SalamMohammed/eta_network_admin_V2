@@ -15,7 +15,6 @@ function run() {
     const userData = {
       totalPoints: 100,
       mining: {
-        totalPoints: 150,
         hourlyRate: 2,
       },
     };
@@ -32,9 +31,13 @@ function run() {
       globalCoinsDocs: [],
     });
 
-    assert.strictEqual(plan.finalTotalPoints, 200);
-    assert.strictEqual(plan.newUserDoc.totalPoints, 200);
-    assert.strictEqual(plan.newRealtimeDoc.totalPoints, 200);
+    assert.strictEqual(plan.finalTotalPoints, 150);
+    assert.strictEqual(plan.newUserDoc.totalPoints, 150);
+    assert.strictEqual(plan.newRealtimeDoc.totalPoints, 150);
+
+    const mining = plan.newUserDoc.mining;
+    assert.ok(mining);
+    assert.strictEqual("totalPoints" in mining, false);
   }
 
   // handles missing totals and zero balances

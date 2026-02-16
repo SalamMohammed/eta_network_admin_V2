@@ -108,11 +108,9 @@ function buildUserEarningsMigrationPlan({ uid, userData, realtimeData, subCoinsD
   const walletMap = (userData && userData[USER_WALLET_MAP]) || {};
 
   const rootTotal = toNumber(userData && userData[USER_TOTAL_POINTS]);
-  const miningTotal = toNumber(miningMap && miningMap[USER_TOTAL_POINTS]);
   const realtimeTotal = toNumber(realtimeData && realtimeData[USER_TOTAL_POINTS]);
 
-  const baseTotal = miningTotal > 0 ? miningTotal : rootTotal;
-  const finalTotalPoints = baseTotal + realtimeTotal;
+  const finalTotalPoints = rootTotal + realtimeTotal;
 
   const coinsMap = {};
 
@@ -152,7 +150,6 @@ function buildUserEarningsMigrationPlan({ uid, userData, realtimeData, subCoinsD
 
   const newMiningMap = {
     ...miningMap,
-    [USER_TOTAL_POINTS]: finalTotalPoints,
     [USER_LAST_MINING_START]: now,
     [USER_LAST_MINING_END]: null,
     [USER_LAST_SYNCED_AT]: now,

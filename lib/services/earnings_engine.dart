@@ -7,19 +7,8 @@ import 'rank_engine.dart';
 import 'config_service.dart';
 import 'user_service.dart';
 import 'offline_mining_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class EarningsEngine {
-  static final Map<String, DateTime> _lastLocalWrites = {};
-
-  static void _pruneLocalWrites() {
-    final now = DateTime.now();
-    // Remove entries older than 20 minutes to prevent memory leaks
-    _lastLocalWrites.removeWhere(
-      (key, time) => now.difference(time).inMinutes > 20,
-    );
-  }
-
   static Future<bool> migrateRealtimeToUnifiedIfNeeded() async {
     debugPrint(
       '[EarningsEngine] migrateRealtimeToUnifiedIfNeeded is disabled; unified model assumed',
@@ -327,9 +316,6 @@ class EarningsEngine {
     final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid);
-    final logRef = FirestoreHelper.instance
-        .collection(FirestoreConstants.pointLogs)
-        .doc();
 
     return FirestoreHelper.instance.runTransaction((transaction) async {
       final userSnap = await transaction.get(userRef);
@@ -352,16 +338,6 @@ class EarningsEngine {
         FirestoreUserFields.hourlyRate: newHourlyRate,
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
-
-      transaction.set(logRef, {
-        FirestorePointLogFields.userId: uid,
-        FirestorePointLogFields.type:
-            FirestorePointLogTypes.bonus, // Or create a new type if needed
-        FirestorePointLogFields.amount:
-            0, // Rate boost doesn't give immediate points
-        FirestorePointLogFields.timestamp: FieldValue.serverTimestamp(),
-        FirestorePointLogFields.description: 'Ad Reward: Rate +$boostAmount/hr',
-      });
 
       return newAds;
     });

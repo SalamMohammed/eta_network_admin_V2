@@ -265,6 +265,10 @@ class MiningBatchCommitEngine {
     String? cachedManagerId,
     int? activeReferralCount,
   }) async {
+    final opId = 'start-$uid-${DateTime.now().millisecondsSinceEpoch}';
+    debugPrint(
+      '[MiningBatchCommitEngine] op=$opId startSession call uid=$uid',
+    );
     return OfflineMiningUserLock.runLocked(uid, () async {
       final appConfig = await ConfigService().getGeneralConfig();
       final double baseRate =
@@ -432,7 +436,7 @@ class MiningBatchCommitEngine {
       _sessions[uid] = session;
 
       debugPrint(
-        '[MiningBatchCommitEngine] startSession uid=$uid start=${now.toIso8601String()} end=${plannedEnd.toIso8601String()}',
+        '[MiningBatchCommitEngine] op=$opId startSession committed uid=$uid start=${now.toIso8601String()} end=${plannedEnd.toIso8601String()}',
       );
 
       return result;
@@ -443,6 +447,10 @@ class MiningBatchCommitEngine {
     required String uid,
     DateTime? forcedEnd,
   }) async {
+    final opId = 'finish-$uid-${DateTime.now().millisecondsSinceEpoch}';
+    debugPrint(
+      '[MiningBatchCommitEngine] op=$opId finishSession call uid=$uid',
+    );
     return OfflineMiningUserLock.runLocked(uid, () async {
       final session = _sessions[uid];
       if (session == null || session.finished) {
@@ -532,7 +540,7 @@ class MiningBatchCommitEngine {
       _sessions.remove(uid);
 
       debugPrint(
-        '[MiningBatchCommitEngine] finishSession uid=$uid earned=${result[FirestoreUserFields.totalPoints]}',
+        '[MiningBatchCommitEngine] op=$opId finishSession committed uid=$uid totalPoints=${result[FirestoreUserFields.totalPoints]}',
       );
 
       return result;
