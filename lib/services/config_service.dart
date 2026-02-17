@@ -94,8 +94,9 @@ class ConfigService {
       return _masterCache!;
     }
 
+    SharedPreferences? prefs;
     try {
-      final prefs = await SharedPreferences.getInstance();
+      prefs = await SharedPreferences.getInstance();
       if (!forceRefresh) {
         final int? ts = prefs.getInt(_prefsKeyMasterTs);
         if (ts != null) {
@@ -131,6 +132,23 @@ class ConfigService {
       }
     } catch (e) {
       debugPrint('ConfigService: Error fetching master config: $e');
+      if (prefs == null) {
+        try {
+          prefs = await SharedPreferences.getInstance();
+        } catch (_) {}
+      }
+    }
+
+    if (prefs != null) {
+      try {
+        final String? jsonStr = prefs.getString(_prefsKeyMaster);
+        if (jsonStr != null) {
+          _masterCache = jsonDecode(jsonStr);
+          return _masterCache!;
+        }
+      } catch (e) {
+        debugPrint('ConfigService: Error reading cached master config: $e');
+      }
     }
     return {};
   }

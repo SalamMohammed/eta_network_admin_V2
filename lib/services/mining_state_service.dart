@@ -86,7 +86,17 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
 
   // Getters
   double get totalPoints => _totalPoints;
-  double get hourlyRate => _hourlyRate;
+  double get hourlyRate {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      final session = MiningBatchCommitEngine.getSession(uid);
+      if (session != null && !session.finished) {
+        return session.hourlyRate;
+      }
+    }
+    return _hourlyRate;
+  }
+
   double get rateBase => _rateBase;
   double get rateStreak => _rateStreak;
   double get rateRank => _rateRank;
@@ -269,7 +279,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
 
     final now = DateTime.now();
     _miningActive = _lastEnd != null && now.isBefore(_lastEnd!.toDate());
-    if (!_miningActive) {
+    if (!_miningActive && _hourlyRate <= 0.0) {
       final general = await ConfigService().getGeneralConfig();
       final base =
           (general[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
@@ -702,35 +712,23 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Boosts the ad rate by a calculated amount.
-  /// Returns the amount of rate increase (boostAmount).
-  /// Boosts the ad rate by a calculated amount.
-  /// Returns the amount of rate increase (boostAmount).
   Future<double> boostAdRateNew({required double percent}) async {
-    // Strictly use the admin-configured base rate (fetched from config/Firestore)
-    // This ensures we calculate bonus based on the correct base, not total points or stale UI state.
-    final baseRateToUse = _rateBase;
-
-    if (baseRateToUse <= 0) return 0.0;
     if (percent <= 0) return 0.0;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return 0.0;
+    if (!_miningActive) return 0.0;
 
-    if (!_miningActive) {
+    final boostAmount = MiningBatchCommitEngine.applyAdPercentBoost(
+      uid: uid,
+      percent: percent,
+    );
+    if (boostAmount <= 0) {
       return 0.0;
     }
 
-    final frac = (percent / 100.0).clamp(0.0, 1e6);
-    final boostAmount = baseRateToUse * frac;
-
-    // Call new engine method
-    await EarningsEngine.boostAdRate(uid: uid, boostAmount: boostAmount);
-
-    // Update local state immediately for UI responsiveness
     _rateAds += boostAmount;
     _hourlyRate += boostAmount;
 
-    // Notify UI
     notifyListeners();
 
     return boostAmount;

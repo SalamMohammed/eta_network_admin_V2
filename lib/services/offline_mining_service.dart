@@ -229,6 +229,7 @@ class MiningSessionState {
   final double rateManager;
   final double rateAds;
   final double hourlyRate;
+  final int streakDays;
   bool finished;
 
   MiningSessionState({
@@ -244,6 +245,7 @@ class MiningSessionState {
     required this.rateManager,
     required this.rateAds,
     required this.hourlyRate,
+    required this.streakDays,
     this.finished = false,
   });
 }
@@ -260,6 +262,76 @@ class MiningBatchCommitEngine {
     return _sessions[uid];
   }
 
+  static void applyAdBoost({required String uid, required double boostAmount}) {
+    if (boostAmount <= 0) {
+      return;
+    }
+    final session = _sessions[uid];
+    if (session == null || session.finished) {
+      return;
+    }
+    final now = DateTime.now();
+    DateTime newStartTime = session.startTime;
+    double newStartTotalPoints = session.startTotalPoints;
+    if (now.isAfter(session.startTime)) {
+      final elapsedHours =
+          now.difference(session.startTime).inMilliseconds / (1000 * 60 * 60);
+      final earnedAtOldRate = elapsedHours * session.hourlyRate;
+      if (earnedAtOldRate > 0) {
+        newStartTotalPoints += earnedAtOldRate;
+      }
+      newStartTime = now;
+    }
+    final newRateAds = session.rateAds + boostAmount;
+    final newHourlyRate =
+        session.rateBase +
+        session.rateRank +
+        session.rateStreak +
+        session.rateReferral +
+        session.rateManager +
+        newRateAds;
+    _sessions[uid] = MiningSessionState(
+      uid: session.uid,
+      startTime: newStartTime,
+      plannedEnd: session.plannedEnd,
+      startTotalPoints: newStartTotalPoints,
+      totalInvited: session.totalInvited,
+      rateBase: session.rateBase,
+      rateStreak: session.rateStreak,
+      rateRank: session.rateRank,
+      rateReferral: session.rateReferral,
+      rateManager: session.rateManager,
+      rateAds: newRateAds,
+      hourlyRate: newHourlyRate,
+      streakDays: session.streakDays,
+      finished: session.finished,
+    );
+  }
+
+  static double applyAdPercentBoost({
+    required String uid,
+    required double percent,
+  }) {
+    if (percent <= 0) {
+      return 0.0;
+    }
+    final session = _sessions[uid];
+    if (session == null || session.finished) {
+      return 0.0;
+    }
+    final baseRate = session.rateBase;
+    if (baseRate <= 0) {
+      return 0.0;
+    }
+    final frac = (percent / 100.0).clamp(0.0, 1e6);
+    final boostAmount = baseRate * frac;
+    if (boostAmount <= 0) {
+      return 0.0;
+    }
+    applyAdBoost(uid: uid, boostAmount: boostAmount);
+    return boostAmount;
+  }
+
   static Future<Map<String, dynamic>> startSession({
     required String uid,
     String? deviceId,
@@ -271,9 +343,10 @@ class MiningBatchCommitEngine {
     final opId = 'start-$uid-${DateTime.now().millisecondsSinceEpoch}';
     debugPrint('[MiningBatchCommitEngine] op=$opId startSession call uid=$uid');
     return OfflineMiningUserLock.runLocked(uid, () async {
-      final appConfig = await ConfigService().getGeneralConfig();
-      final streakConfig = await ConfigService().getStreakConfig();
-      final ranksConfig = await ConfigService().getRanksConfig();
+      final cfg = ConfigService();
+      final appConfig = await cfg.getGeneralConfig(forceRefresh: true);
+      final streakConfig = await cfg.getStreakConfig(forceRefresh: true);
+      final ranksConfig = await cfg.getRanksConfig(forceRefresh: true);
       final double baseRate =
           (appConfig[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
           0.2;
@@ -282,7 +355,7 @@ class MiningBatchCommitEngine {
               ?.toDouble() ??
           24.0;
 
-      final refConfig = await ConfigService().getReferralConfig();
+      final refConfig = await cfg.getReferralConfig(forceRefresh: true);
       double perRef =
           (refConfig[FirestoreReferralConfigFields.referrerPercentPerReferral]
                   as num?)
@@ -326,8 +399,8 @@ class MiningBatchCommitEngine {
           );
         }
 
-        final int streakDays =
-            (userData[FirestoreUserFields.streakDays] as int?) ?? 0;
+        final int previousStreakDays =
+            (userData[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
         final String storedRank =
             (userData[FirestoreUserFields.rank] as String?) ??
             FirestoreUserRanks.explorer;
@@ -345,7 +418,7 @@ class MiningBatchCommitEngine {
             rankRules.isNotEmpty &&
             rankMults.isNotEmpty) {
           effectiveRank = RankEngine.getBestRank(
-            streakDays: streakDays,
+            streakDays: previousStreakDays,
             activeReferrals: activeReferralCount,
             ranksCfg: ranksConfig,
             currentRank: storedRank,
@@ -359,96 +432,131 @@ class MiningBatchCommitEngine {
         }
         final double rateRank = baseRate * (rankMultiplier - 1.0);
 
-        double rateStreak = 0.0;
-        if (streakDays > 0) {
-          final Map<String, dynamic> streakTable =
-              (streakConfig[FirestoreAppConfigFields.streakBonusTable]
-                  as Map<String, dynamic>?) ??
-              {};
-
-          if (streakTable.isNotEmpty) {
-            double streakMultiplier = 1.0;
-            double? bestKey;
-            for (final entry in streakTable.entries) {
-              final k = int.tryParse(entry.key);
-              if (k == null) continue;
-              if (k <= streakDays) {
-                final v = (entry.value as num?)?.toDouble() ?? 1.0;
-                if (bestKey == null || k > bestKey) {
-                  bestKey = k.toDouble();
-                  streakMultiplier = v;
-                }
-              }
-            }
-            if (streakMultiplier > 1.0) {
-              rateStreak = baseRate * (streakMultiplier - 1.0);
-            }
-          } else {
-            final int maxStreakDays =
-                (streakConfig[FirestoreStreakConfigFields.maxStreakDays]
-                        as num?)
-                    ?.toInt() ??
-                0;
-            final double maxStreakMult =
-                (streakConfig[FirestoreStreakConfigFields.maxStreakMultiplier]
-                        as num?)
-                    ?.toDouble() ??
-                1.0;
-            if (maxStreakDays > 0 && maxStreakMult > 1.0) {
-              final int effectiveDays = streakDays > maxStreakDays
-                  ? maxStreakDays
-                  : streakDays;
-              final double fraction = effectiveDays / maxStreakDays;
-              final double streakMultiplier =
-                  1.0 + (maxStreakMult - 1.0) * fraction;
-              if (streakMultiplier > 1.0) {
-                rateStreak = baseRate * (streakMultiplier - 1.0);
-              }
-            }
+        final lastEndTs =
+            userData[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+        final int msPerDay = 24 * 60 * 60 * 1000;
+        int sessionStreakDays = 0;
+        if (lastEndTs != null) {
+          final diffMs = now.difference(lastEndTs.toDate()).inMilliseconds;
+          if (diffMs >= 0 && diffMs < msPerDay) {
+            sessionStreakDays = previousStreakDays + 1;
           }
         }
 
-        double referralMultiplier = 1.0;
-        if (totalInvited > 0) {
-          referralMultiplier += (totalInvited.clamp(0, 200) / 1000.0);
+        double rateStreak = 0.0;
+        if (sessionStreakDays > 0) {
+          rateStreak = _computeStreakRate(
+            streakConfig: streakConfig,
+            sessionStreakDays: sessionStreakDays,
+            baseRate: baseRate,
+            uid: uid,
+            opId: opId,
+          );
         }
 
         double rateReferral = 0.0;
-        if (activeReferralCount != null) {
-          int effectiveCount = activeReferralCount;
-          if (maxRefs > 0 && effectiveCount > maxRefs) {
-            effectiveCount = maxRefs;
+        final tiersRaw =
+            refConfig[FirestoreReferralConfigFields.referralBonusTiers];
+        if (tiersRaw is Map<String, dynamic> && tiersRaw.isNotEmpty) {
+          double? selectedThreshold;
+          double? selectedBonus;
+          tiersRaw.forEach((key, value) {
+            final threshold = int.tryParse(key);
+            if (threshold == null) {
+              return;
+            }
+            if (totalInvited >= threshold) {
+              final bonus = (value as num?)?.toDouble();
+              if (bonus == null) {
+                return;
+              }
+              if (selectedThreshold == null ||
+                  threshold > selectedThreshold!.toInt()) {
+                selectedThreshold = threshold.toDouble();
+                selectedBonus = bonus;
+              }
+            }
+          });
+          if (selectedBonus != null) {
+            rateReferral = selectedBonus!;
           }
-          rateReferral =
-              effectiveCount * perRef * baseRate * referralMultiplier;
-        } else {
-          rateReferral =
-              (userData[FirestoreUserFields.rateReferral] as num?)
-                  ?.toDouble() ??
-              0.0;
-          rateReferral *= referralMultiplier;
+        }
+        if (rateReferral == 0.0) {
+          double referralMultiplier = 1.0;
+          if (totalInvited > 0) {
+            referralMultiplier += (totalInvited.clamp(0, 200) / 1000.0);
+          }
+          if (activeReferralCount != null) {
+            int effectiveCount = activeReferralCount;
+            if (maxRefs > 0 && effectiveCount > maxRefs) {
+              effectiveCount = maxRefs;
+            }
+            rateReferral =
+                effectiveCount * perRef * baseRate * referralMultiplier;
+          } else {
+            rateReferral =
+                (userData[FirestoreUserFields.rateReferral] as num?)
+                    ?.toDouble() ??
+                0.0;
+            rateReferral *= referralMultiplier;
+          }
         }
         if (maxBonusRate > 0.0 && rateReferral > maxBonusRate) {
           rateReferral = maxBonusRate;
         }
+        debugPrint(
+          '[MiningBatchCommitEngine] op=$opId referral bonus uid=$uid totalInvited=$totalInvited activeReferrals=$activeReferralCount rateReferral=$rateReferral maxBonusRate=$maxBonusRate',
+        );
 
-        final double existingRateManager =
-            (userData[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
-            0.0;
-        final double rateManager = existingRateManager;
+        double rateManager = 0.0;
+        double managerBonusPerHour = 0.0;
 
-        final double managerBonusPerHour =
-            (userData[FirestoreUserFields.managerBonusPerHour] as num?)
-                ?.toDouble() ??
-            0.0;
+        final bool managerEnabled =
+            (userData[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+        final String? activeManagerId =
+            userData[FirestoreUserFields.activeManagerId] as String?;
+
+        if (!managerEnabled ||
+            activeManagerId == null ||
+            activeManagerId.isEmpty) {
+          debugPrint(
+            '[MiningBatchCommitEngine] op=$opId manager inactive uid=$uid enabled=$managerEnabled managerId=$activeManagerId',
+          );
+        } else {
+          final managerRef = _db
+              .collection(FirestoreConstants.managers)
+              .doc(activeManagerId);
+          final managerSnap = await transaction.get(managerRef);
+          final managerData = managerSnap.data() ?? <String, dynamic>{};
+          final double rawMultiplier =
+              (managerData[FirestoreManagerFields.managerMultiplier] as num?)
+                  ?.toDouble() ??
+              0.0;
+          if (rawMultiplier <= 0.0) {
+            debugPrint(
+              '[MiningBatchCommitEngine] op=$opId manager multiplier missing or zero uid=$uid managerId=$activeManagerId raw=$rawMultiplier',
+            );
+          } else {
+            double clamped = rawMultiplier;
+            if (clamped < 0.1) {
+              clamped = 0.1;
+            } else if (clamped > 10.0) {
+              clamped = 10.0;
+            }
+            managerBonusPerHour = baseRate * (clamped - 1.0);
+            rateManager = managerBonusPerHour;
+            debugPrint(
+              '[MiningBatchCommitEngine] op=$opId manager bonus uid=$uid managerId=$activeManagerId multiplier=$clamped baseRate=$baseRate bonusPerHour=$managerBonusPerHour',
+            );
+          }
+        }
 
         final List<String> managedCoinSelections =
             (userData[FirestoreUserFields.managedCoinSelections] as List?)
                 ?.cast<String>() ??
             <String>[];
 
-        final double rateAds =
-            (userData[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
+        final double rateAds = 0.0;
 
         final double newHourlyRate =
             baseRate +
@@ -457,6 +565,10 @@ class MiningBatchCommitEngine {
             rateReferral +
             rateManager +
             rateAds;
+
+        debugPrint(
+          '[MiningBatchCommitEngine] op=$opId rate mix uid=$uid base=$baseRate streak=$rateStreak rank=$rateRank referral=$rateReferral manager=$rateManager ads=$rateAds hourly=$newHourlyRate',
+        );
 
         final Map<String, dynamic> writeData = {
           FirestoreUserFields.totalInvited: totalInvited,
@@ -488,10 +600,22 @@ class MiningBatchCommitEngine {
             (userData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
             0.0;
 
+        final debug = <String, dynamic>{
+          'baseRate': baseRate,
+          'streakBonus': rateStreak,
+          'rankBonus': rateRank,
+          'referralBonus': rateReferral,
+          'managerBonus': rateManager,
+          'hourlyRate': newHourlyRate,
+          'totalInvited': totalInvited,
+          'sessionStreakDays': sessionStreakDays,
+        };
+
         return {
           ...writeData,
+          'debug': debug,
           FirestoreUserFields.totalPoints: totalPoints,
-          FirestoreUserFields.streakDays: streakDays,
+          FirestoreUserFields.streakDays: sessionStreakDays,
         };
       });
 
@@ -524,6 +648,8 @@ class MiningBatchCommitEngine {
             (result[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0,
         hourlyRate:
             (result[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0,
+        streakDays:
+            (result[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0,
       );
       _sessions[uid] = session;
 
@@ -533,6 +659,73 @@ class MiningBatchCommitEngine {
 
       return result;
     });
+  }
+
+  static double _computeStreakRate({
+    required Map<String, dynamic> streakConfig,
+    required int sessionStreakDays,
+    required double baseRate,
+    required String uid,
+    required String opId,
+  }) {
+    if (sessionStreakDays <= 0) {
+      return 0.0;
+    }
+    final Map<String, dynamic> streakTable =
+        (streakConfig[FirestoreAppConfigFields.streakBonusTable]
+            as Map<String, dynamic>?) ??
+        {};
+    final int maxStreakDays =
+        (streakConfig[FirestoreStreakConfigFields.maxStreakDays] as num?)
+            ?.toInt() ??
+        0;
+    final double maxStreakMult =
+        (streakConfig[FirestoreStreakConfigFields.maxStreakMultiplier] as num?)
+            ?.toDouble() ??
+        1.0;
+
+    double streakMultiplier = 1.0;
+
+    if (streakTable.isNotEmpty) {
+      if (maxStreakDays > 0 &&
+          maxStreakMult > 1.0 &&
+          sessionStreakDays > maxStreakDays) {
+        streakMultiplier = maxStreakMult;
+      } else {
+        double? bestKey;
+        for (final entry in streakTable.entries) {
+          final k = int.tryParse(entry.key);
+          if (k == null) continue;
+          if (k <= sessionStreakDays) {
+            final v = (entry.value as num?)?.toDouble() ?? 1.0;
+            if (bestKey == null || k > bestKey) {
+              bestKey = k.toDouble();
+              streakMultiplier = v;
+            }
+          }
+        }
+      }
+    } else if (maxStreakDays > 0 && maxStreakMult > 1.0) {
+      if (sessionStreakDays >= maxStreakDays) {
+        streakMultiplier = maxStreakMult;
+      } else {
+        final double fraction = sessionStreakDays / maxStreakDays;
+        streakMultiplier = 1.0 + (maxStreakMult - 1.0) * fraction;
+      }
+    }
+
+    if (streakMultiplier <= 1.0) {
+      debugPrint(
+        '[MiningBatchCommitEngine] op=$opId streak uid=$uid days=$sessionStreakDays multiplier=$streakMultiplier bonusPerHour=0.0',
+      );
+      return 0.0;
+    }
+
+    final double rateStreak = baseRate * (streakMultiplier - 1.0);
+    debugPrint(
+      '[MiningBatchCommitEngine] op=$opId streak uid=$uid days=$sessionStreakDays maxDays=$maxStreakDays multiplier=$streakMultiplier bonusPerHour=$rateStreak',
+    );
+    return rateStreak;
   }
 
   static Future<Map<String, dynamic>> finishSession({
@@ -601,53 +794,15 @@ class MiningBatchCommitEngine {
           }
         });
 
-        int currentStreakDays =
-            (liveData[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
-        final lastDayRaw = liveData[FirestoreUserFields.streakLastUpdatedDay];
         const int msPerDay = 24 * 60 * 60 * 1000;
-        int? lastDayIndex;
-        if (lastDayRaw is int) {
-          lastDayIndex = lastDayRaw;
-        } else if (lastDayRaw is Timestamp) {
-          final dt = lastDayRaw.toDate().toUtc();
-          lastDayIndex = dt.millisecondsSinceEpoch ~/ msPerDay;
-        } else if (lastDayRaw is String && lastDayRaw.isNotEmpty) {
-          DateTime? parsed;
-          try {
-            parsed = DateTime.parse(lastDayRaw);
-          } catch (_) {
-            parsed = null;
-          }
-          if (parsed != null) {
-            final dt = DateTime.utc(parsed.year, parsed.month, parsed.day);
-            lastDayIndex = dt.millisecondsSinceEpoch ~/ msPerDay;
-          }
-        }
-
         final endUtc = DateTime.utc(
           effectiveEnd.year,
           effectiveEnd.month,
           effectiveEnd.day,
         );
         final int todayIndex = endUtc.millisecondsSinceEpoch ~/ msPerDay;
-
-        int nextStreakDays = currentStreakDays;
-        int nextDayIndex = lastDayIndex ?? 0;
-
-        if (lastDayIndex == null) {
-          nextStreakDays = 1;
-          nextDayIndex = todayIndex;
-        } else if (todayIndex == lastDayIndex) {
-          if (nextStreakDays <= 0) {
-            nextStreakDays = 1;
-          }
-        } else if (todayIndex == lastDayIndex + 1) {
-          nextStreakDays = currentStreakDays + 1;
-          nextDayIndex = todayIndex;
-        } else if (todayIndex > lastDayIndex + 1) {
-          nextStreakDays = 1;
-          nextDayIndex = todayIndex;
-        }
+        final int nextStreakDays = session.streakDays;
+        final int nextDayIndex = todayIndex;
 
         final int currentTotalSessions =
             (liveData[FirestoreUserFields.totalSessions] as num?)?.toInt() ?? 0;

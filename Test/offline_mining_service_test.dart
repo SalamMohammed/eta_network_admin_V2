@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -191,6 +193,38 @@ void main() {
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
       await OfflineMiningCache.init();
+      final prefs = await SharedPreferences.getInstance();
+      final master = {
+        FirestoreAppConfigDocs.general: {
+          FirestoreAppConfigFields.baseRate: 1.0,
+          FirestoreAppConfigFields.sessionDurationHours: 24.0,
+        },
+        FirestoreAppConfigDocs.referrals: {
+          FirestoreReferralConfigFields.referralBonusTiers: {
+            '0': 0.0,
+            '10': 0.1,
+            '100': 0.2,
+          },
+        },
+        FirestoreAppConfigDocs.streak: {
+          FirestoreStreakConfigFields.maxStreakDays: 10,
+          FirestoreStreakConfigFields.maxStreakMultiplier: 2.0,
+          FirestoreAppConfigFields.streakBonusTable: {
+            '1': 1.0,
+            '3': 1.2,
+            '4': 1.3,
+            '5': 1.5,
+            '6': 1.6,
+            '10': 2.0,
+          },
+        },
+        FirestoreAppConfigDocs.ranks: {},
+      };
+      await prefs.setString('app_config_master_cache', jsonEncode(master));
+      await prefs.setInt(
+        'app_config_master_ts',
+        DateTime.now().millisecondsSinceEpoch,
+      );
     });
 
     test('startSession and finishSession perform single writes', () async {
@@ -225,49 +259,137 @@ void main() {
       expect(total, greaterThan(100.0));
     });
 
-    test('finishSession updates streakDays and totalSessions atomically', () async {
-      final fake = _FakeFirestore();
-      final now = DateTime.now().toUtc();
-      const int msPerDay = 24 * 60 * 60 * 1000;
-      final int yesterdayIndex =
-          now.subtract(const Duration(days: 1)).millisecondsSinceEpoch ~/
-              msPerDay;
+    test(
+      'finishSession updates streakDays and totalSessions atomically',
+      () async {
+        final fake = _FakeFirestore();
+        final now = DateTime.now().toUtc();
+        const int msPerDay = 24 * 60 * 60 * 1000;
+        final int yesterdayIndex =
+            now.subtract(const Duration(days: 1)).millisecondsSinceEpoch ~/
+            msPerDay;
 
-      fake._users['u1'] = {
-        FirestoreUserFields.totalPoints: 0.0,
-        FirestoreUserFields.rateAds: 0.0,
-        FirestoreUserFields.rateManager: 0.0,
-        FirestoreUserFields.rateReferral: 0.0,
-        FirestoreUserFields.rateRank: 0.0,
-        FirestoreUserFields.rateStreak: 0.0,
-        FirestoreUserFields.streakDays: 3,
-        FirestoreUserFields.streakLastUpdatedDay: yesterdayIndex,
-        FirestoreUserFields.totalSessions: 5,
-      };
+        fake._users['u1'] = {
+          FirestoreUserFields.totalPoints: 0.0,
+          FirestoreUserFields.rateAds: 0.0,
+          FirestoreUserFields.rateManager: 0.0,
+          FirestoreUserFields.rateReferral: 0.0,
+          FirestoreUserFields.rateRank: 0.0,
+          FirestoreUserFields.rateStreak: 0.0,
+          FirestoreUserFields.streakDays: 3,
+          FirestoreUserFields.streakLastUpdatedDay: yesterdayIndex,
+          FirestoreUserFields.totalSessions: 5,
+          FirestoreUserFields.lastMiningEnd:
+              Timestamp.fromMillisecondsSinceEpoch(
+                now.subtract(const Duration(hours: 23)).millisecondsSinceEpoch,
+              ),
+        };
 
-      MiningBatchCommitEngine.debugSetDbForTests(fake);
+        MiningBatchCommitEngine.debugSetDbForTests(fake);
 
-      await MiningBatchCommitEngine.startSession(
-        uid: 'u1',
-        deviceId: 'dev1',
-        maxEnd: now.add(const Duration(hours: 1)),
-      );
+        await MiningBatchCommitEngine.startSession(
+          uid: 'u1',
+          deviceId: 'dev1',
+          maxEnd: now.add(const Duration(hours: 1)),
+        );
 
-      final finishRes = await MiningBatchCommitEngine.finishSession(
-        uid: 'u1',
-        forcedEnd: now.add(const Duration(minutes: 30)),
-      );
+        final finishRes = await MiningBatchCommitEngine.finishSession(
+          uid: 'u1',
+          forcedEnd: now.add(const Duration(minutes: 30)),
+        );
 
-      final streak =
-          finishRes[FirestoreUserFields.streakDays] as int;
-      final sessions =
-          finishRes[FirestoreUserFields.totalSessions] as int;
+        final streak = finishRes[FirestoreUserFields.streakDays] as int;
+        final sessions = finishRes[FirestoreUserFields.totalSessions] as int;
 
-      expect(streak, 4);
-      expect(sessions, 6);
-    });
+        expect(streak, 4);
+        expect(sessions, 6);
+      },
+    );
 
-    test('totalInvited influences referral rate when activeReferralCount provided', () async {
+    test(
+      'streak bonus applies multipliers from config for various days',
+      () async {
+        Future<Map<String, dynamic>> runWithStreak(int previousStreak) async {
+          final fake = _FakeFirestore();
+          fake._users['u1'] = {
+            FirestoreUserFields.totalPoints: 0.0,
+            FirestoreUserFields.rateAds: 0.0,
+            FirestoreUserFields.rateManager: 0.0,
+            FirestoreUserFields.rateReferral: 0.0,
+            FirestoreUserFields.rateRank: 0.0,
+            FirestoreUserFields.rateStreak: 0.0,
+            FirestoreUserFields.streakDays: previousStreak,
+            FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(
+              DateTime.now().subtract(const Duration(hours: 1)),
+            ),
+          };
+
+          MiningBatchCommitEngine.debugSetDbForTests(fake);
+
+          final res = await MiningBatchCommitEngine.startSession(
+            uid: 'u1',
+            deviceId: 'dev1',
+          );
+          return res;
+        }
+
+        final s1 = await runWithStreak(0);
+        final r1 =
+            (s1[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0;
+        final h1 =
+            (s1[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+
+        final s3 = await runWithStreak(2);
+        final r3 =
+            (s3[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0;
+        final h3 =
+            (s3[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+
+        final s4 = await runWithStreak(3);
+        final r4 =
+            (s4[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0;
+        final h4 =
+            (s4[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+
+        final s5 = await runWithStreak(4);
+        final r5 =
+            (s5[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0;
+        final h5 =
+            (s5[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+
+        final s6 = await runWithStreak(5);
+        final r6 =
+            (s6[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0;
+        final h6 =
+            (s6[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+
+        final s11 = await runWithStreak(10);
+        final r11 =
+            (s11[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0;
+        final h11 =
+            (s11[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0;
+
+        expect(r1, closeTo(0.0, 0.000001));
+        expect(h1, closeTo(1.0, 0.000001));
+
+        expect(r3, closeTo(0.2, 0.000001));
+        expect(h3, closeTo(1.2, 0.000001));
+
+        expect(r4, closeTo(0.3, 0.000001));
+        expect(h4, closeTo(1.3, 0.000001));
+
+        expect(r5, closeTo(0.5, 0.000001));
+        expect(h5, closeTo(1.5, 0.000001));
+
+        expect(r6, closeTo(0.6, 0.000001));
+        expect(h6, closeTo(1.6, 0.000001));
+
+        expect(r11, closeTo(1.0, 0.000001));
+        expect(h11, closeTo(2.0, 0.000001));
+      },
+    );
+
+    test('referral rate computed when activeReferralCount provided', () async {
       final fake = _FakeFirestore();
       fake._users['u1'] = {
         FirestoreUserFields.totalPoints: 0.0,
@@ -282,26 +404,26 @@ void main() {
 
       MiningBatchCommitEngine.debugSetDbForTests(fake);
 
-      final lowInvitedStart = await MiningBatchCommitEngine.startSession(
+      final firstStart = await MiningBatchCommitEngine.startSession(
         uid: 'u1',
         deviceId: 'dev1',
         activeReferralCount: 1,
       );
 
-      final lowRate = lowInvitedStart[FirestoreUserFields.rateReferral] as double;
-      expect(lowRate, greaterThan(0.0));
+      final firstRate = firstStart[FirestoreUserFields.rateReferral] as double;
+      expect(firstRate, greaterThan(0.0));
 
       fake._users['u1']![FirestoreUserFields.totalInvited] = 0;
 
-      final noInvitedStart = await MiningBatchCommitEngine.startSession(
+      final secondStart = await MiningBatchCommitEngine.startSession(
         uid: 'u1',
         deviceId: 'dev1',
         activeReferralCount: 1,
       );
 
-      final noRate = noInvitedStart[FirestoreUserFields.rateReferral] as double;
-      expect(noRate, greaterThan(0.0));
-      expect(lowRate, greaterThan(noRate));
+      final secondRate =
+          secondStart[FirestoreUserFields.rateReferral] as double;
+      expect(secondRate, greaterThan(0.0));
     });
 
     test('missing or non-numeric totalInvited treated as zero', () async {
@@ -324,7 +446,8 @@ void main() {
         activeReferralCount: 1,
       );
 
-      final rateMissing = startMissing[FirestoreUserFields.rateReferral] as double;
+      final rateMissing =
+          startMissing[FirestoreUserFields.rateReferral] as double;
 
       fake._users['u1']![FirestoreUserFields.totalInvited] = 'not-a-number';
 
@@ -334,10 +457,54 @@ void main() {
         activeReferralCount: 1,
       );
 
-      final rateInvalid = startInvalid[FirestoreUserFields.rateReferral] as double;
+      final rateInvalid =
+          startInvalid[FirestoreUserFields.rateReferral] as double;
 
       expect(rateMissing, greaterThan(0.0));
       expect(rateInvalid, closeTo(rateMissing, 0.0001));
+    });
+
+    test('referral tiers map totalInvited to deterministic bonus', () async {
+      final fake = _FakeFirestore();
+      fake._users['u1'] = {
+        FirestoreUserFields.totalPoints: 0.0,
+        FirestoreUserFields.rateAds: 0.0,
+        FirestoreUserFields.rateManager: 0.0,
+        FirestoreUserFields.rateReferral: 0.0,
+        FirestoreUserFields.rateRank: 0.0,
+        FirestoreUserFields.rateStreak: 0.0,
+        FirestoreUserFields.streakDays: 0,
+        FirestoreUserFields.totalInvited: 0,
+      };
+
+      MiningBatchCommitEngine.debugSetDbForTests(fake);
+
+      final start0 = await MiningBatchCommitEngine.startSession(
+        uid: 'u1',
+        deviceId: 'dev1',
+      );
+
+      fake._users['u1']![FirestoreUserFields.totalInvited] = 10;
+
+      final start10 = await MiningBatchCommitEngine.startSession(
+        uid: 'u1',
+        deviceId: 'dev1',
+      );
+
+      fake._users['u1']![FirestoreUserFields.totalInvited] = 100;
+
+      final start100 = await MiningBatchCommitEngine.startSession(
+        uid: 'u1',
+        deviceId: 'dev1',
+      );
+
+      final r0 = start0[FirestoreUserFields.rateReferral] as double;
+      final r10 = start10[FirestoreUserFields.rateReferral] as double;
+      final r100 = start100[FirestoreUserFields.rateReferral] as double;
+
+      expect(r0, closeTo(0.0, 0.000001));
+      expect(r10, greaterThan(r0));
+      expect(r100, greaterThan(r10));
     });
   });
 }
