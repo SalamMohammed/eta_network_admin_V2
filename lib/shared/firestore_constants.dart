@@ -16,6 +16,11 @@ class FirestoreConstants {
 class FirestoreUserSubCollections {
   static const String coins = 'coins';
   static const String earnings = 'earnings';
+  static const String referralMeta = 'referral_meta';
+}
+
+class FirestoreUserReferralMetaDocs {
+  static const String invitedBy = 'invitedBy';
 }
 
 class FirestoreEarningsDocs {

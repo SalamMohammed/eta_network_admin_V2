@@ -1115,77 +1115,158 @@ exports.scheduleMiningEndNotification = onDocumentWritten(
   },
 );
 
-exports.updateReferralStatsOnReferralCreate = onDocumentWritten(
-  `${REFERRALS_COLLECTION}/{referralId}`,
-  async (event) => {
-    const beforeSnap = event.data.before;
-    const afterSnap = event.data.after;
-    if (beforeSnap.exists || !afterSnap.exists) {
-      return;
-    }
-  },
-);
+const USER_REFERRAL_META_SUBCOLLECTION = 'referral_meta';
+const USER_INVITED_BY_META_DOC = 'invitedBy';
 
 exports.updateReferralStatsOnUserWrite = onDocumentWritten(
-  `${USERS_COLLECTION}/{uid}`,
+  `${USERS_COLLECTION}/{uid}/${USER_REFERRAL_META_SUBCOLLECTION}/${USER_INVITED_BY_META_DOC}`,
   async (event) => {
     const beforeSnap = event.data.before;
     const afterSnap = event.data.after;
     if (!afterSnap.exists) {
       return;
     }
-    const uid = event.params.uid;
-    const beforeData = beforeSnap.exists ? beforeSnap.data() || {} : {};
     const afterData = afterSnap.data() || {};
-
-    const beforeInviterRaw = beforeData[USER_INVITED_BY];
-    const afterInviterRaw = afterData[USER_INVITED_BY];
-    const beforeInviterId = (beforeInviterRaw || '').toString().trim();
-    const afterInviterId = (afterInviterRaw || '').toString().trim();
-
-    if (beforeInviterId === afterInviterId) {
+    const alreadyApplied = !!afterData.statsApplied;
+    if (alreadyApplied) {
       return;
     }
 
-    const userRef = db.collection(USERS_COLLECTION).doc(uid);
-    const inviteeUsername = (afterData[USER_USERNAME] || "").toString().trim();
+    const inviterRaw = afterData[REFERRAL_INVITER_ID];
+    const inviterId = (inviterRaw || "").toString().trim();
+    if (!inviterId) {
+      return;
+    }
 
-    if (beforeInviterId) {
-      const oldInviterUserRef = db.collection(USERS_COLLECTION).doc(beforeInviterId);
-      await oldInviterUserRef.set(
-        { [USER_TOTAL_INVITED]: admin.firestore.FieldValue.increment(-1) },
-        { merge: true },
-      );
-      const referralAggCollection = db.collection(REFERRALS_COLLECTION);
-      const referralShardsMetaCollection = db.collection(REFERRAL_SHARDS_COLLECTION);
-      const oldShardMetaRef = referralShardsMetaCollection.doc(beforeInviterId);
-      const oldShardMetaSnap = await oldShardMetaRef.get();
-      const maxShardIndex = oldShardMetaSnap.exists
-        ? (oldShardMetaSnap.data().currentShard || 0)
-        : 0;
-      for (let i = 0; i <= maxShardIndex; i++) {
-        const docId = i === 0 ? beforeInviterId : `${beforeInviterId}_shard_${i}`;
-        const oldAggRef = referralAggCollection.doc(docId);
-        try {
-          await oldAggRef.update({
-            [`invitees.${uid}`]: admin.firestore.FieldValue.delete(),
-          });
-        } catch (e) {
-          // ignore missing shard docs
-        }
-      }
-    }
-    if (afterInviterId) {
-      const newInviterUserRef = db.collection(USERS_COLLECTION).doc(afterInviterId);
-      await newInviterUserRef.set(
-        { [USER_TOTAL_INVITED]: admin.firestore.FieldValue.increment(1) },
-        { merge: true },
-      );
-      await userRef.set(
-        { [USER_INVITED_BY]: afterInviterId },
-        { merge: true },
-      );
-      await upsertReferralInviteeShard(afterInviterId, uid, false, null, inviteeUsername);
-    }
+    const uid = event.params.uid;
+    const userRef = db.collection(USERS_COLLECTION).doc(uid);
+    const userSnap = await userRef.get();
+    const userData = userSnap.exists ? userSnap.data() || {} : {};
+    const inviteeUsername = (userData[USER_USERNAME] || "").toString().trim();
+
+    const newInviterUserRef = db.collection(USERS_COLLECTION).doc(inviterId);
+    await newInviterUserRef.set(
+      { [USER_TOTAL_INVITED]: admin.firestore.FieldValue.increment(1) },
+      { merge: true },
+    );
+    await userRef.set(
+      { [USER_INVITED_BY]: inviterId },
+      { merge: true },
+    );
+    await upsertReferralInviteeShard(inviterId, uid, false, null, inviteeUsername);
+    await afterSnap.ref.set({ statsApplied: true }, { merge: true });
   },
 );
+
+exports.refreshReferralActiveStatusDaily = onSchedule("0 5 * * *", async () => {
+  const pageSize = 200;
+  const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+  let lastRefDoc = null;
+
+  for (;;) {
+    let refQuery = db
+      .collection(REFERRALS_COLLECTION)
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(pageSize);
+    if (lastRefDoc) {
+      refQuery = refQuery.startAfter(lastRefDoc);
+    }
+
+    const refSnap = await refQuery.get();
+    if (refSnap.empty) {
+      break;
+    }
+    lastRefDoc = refSnap.docs[refSnap.docs.length - 1];
+
+    for (const doc of refSnap.docs) {
+      const data = doc.data() || {};
+      const invitees = data.invitees;
+      if (!invitees || typeof invitees !== "object") {
+        continue;
+      }
+
+      const updates = {};
+      let hasChanges = false;
+
+      for (const [inviteeUid, inviteeData] of Object.entries(invitees)) {
+        if (!inviteeUid || !inviteeData || typeof inviteeData !== "object") {
+          continue;
+        }
+
+        const currentActive = !!inviteeData[REFERRAL_IS_ACTIVE];
+        const userRef = db.collection(USERS_COLLECTION).doc(inviteeUid);
+        const userSnap = await userRef.get();
+
+        let shouldBeActive = false;
+        if (userSnap.exists) {
+          const userData = userSnap.data() || {};
+          const lastEnd = userData[USER_LAST_MINING_END];
+          if (lastEnd && typeof lastEnd.toMillis === "function") {
+            const lastEndMs = lastEnd.toMillis();
+            const nowMs = Date.now();
+            if (nowMs - lastEndMs <= twoDaysMs) {
+              shouldBeActive = true;
+            }
+          }
+        }
+
+        if (shouldBeActive !== currentActive) {
+          updates[`invitees.${inviteeUid}.${REFERRAL_IS_ACTIVE}`] = shouldBeActive;
+          hasChanges = true;
+        }
+      }
+
+      if (hasChanges) {
+        await doc.ref.update(updates);
+      }
+    }
+  }
+});
+
+exports.backfillInvitedByReferralMeta = onSchedule("30 5 * * *", async () => {
+  const pageSize = 500;
+  let lastUserDoc = null;
+
+  for (;;) {
+    let userQuery = db
+      .collection(USERS_COLLECTION)
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(pageSize);
+    if (lastUserDoc) {
+      userQuery = userQuery.startAfter(lastUserDoc);
+    }
+
+    const userSnap = await userQuery.get();
+    if (userSnap.empty) {
+      break;
+    }
+    lastUserDoc = userSnap.docs[userSnap.docs.length - 1];
+
+    for (const userDoc of userSnap.docs) {
+      const uid = userDoc.id;
+      const data = userDoc.data() || {};
+      const inviterRaw = data[USER_INVITED_BY];
+      const inviterId = (inviterRaw || "").toString().trim();
+      if (!inviterId) {
+        continue;
+      }
+
+      const metaRef = db
+        .collection(USERS_COLLECTION)
+        .doc(uid)
+        .collection(USER_REFERRAL_META_SUBCOLLECTION)
+        .doc(USER_INVITED_BY_META_DOC);
+      const metaSnap = await metaRef.get();
+      if (metaSnap.exists) {
+        continue;
+      }
+
+      await metaRef.set({
+        [REFERRAL_INVITER_ID]: inviterId,
+        statsApplied: true,
+        source: "migration",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  }
+});

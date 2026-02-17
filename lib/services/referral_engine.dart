@@ -77,6 +77,15 @@ class ReferralEngine {
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
 
+    final referralMetaRef = inviteeRef
+        .collection(FirestoreUserSubCollections.referralMeta)
+        .doc(FirestoreUserReferralMetaDocs.invitedBy);
+    batch.set(referralMetaRef, {
+      FirestoreReferralFields.inviterId: inviterUid,
+      'source': 'signup',
+      'createdAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: false));
+
     await batch.commit();
   }
 
