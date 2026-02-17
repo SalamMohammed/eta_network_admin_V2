@@ -28,12 +28,15 @@ class _ReferralItem {
   });
 }
 
+enum _ReferralFilter { all, active }
+
 class _ReferralsPageState extends State<ReferralsPage> {
   String? _referralCode;
   bool _loading = true;
   int _totalInvited = 0;
   int _activeInvited = 0;
   List<_ReferralItem> _referrals = [];
+  _ReferralFilter _filter = _ReferralFilter.all;
 
   SnackBar _themedSnack(String message) {
     const bg = Color(0xFF141E28);
@@ -380,12 +383,57 @@ class _ReferralsPageState extends State<ReferralsPage> {
         debugPrint('Referrals shared doc missing for $uid');
       }
 
+      final statsData = statsDoc.data() ?? {};
+      int totalInvited =
+          (statsData[FirestoreUserFields.totalInvited] as num?)?.toInt() ?? 0;
+
+      if (finalOrderedItems.isEmpty && totalInvited > 0) {
+        try {
+          final legacyQs = await FirestoreHelper.instance
+              .collection(FirestoreConstants.referrals)
+              .where(FirestoreReferralFields.inviterId, isEqualTo: uid)
+              .orderBy(FirestoreReferralFields.timestamp, descending: true)
+              .limit(20)
+              .get();
+
+          for (final d in legacyQs.docs) {
+            final data = d.data();
+            final ts =
+                (data[FirestoreReferralFields.timestamp] as Timestamp?)
+                    ?.toDate() ??
+                DateTime.now();
+            final dateStr =
+                '${ts.year}-${ts.month.toString().padLeft(2, '0')}-${ts.day.toString().padLeft(2, '0')}';
+
+            final savedUsername =
+                data[FirestoreReferralFields.inviteeUsername] as String?;
+            final username = (savedUsername ?? '').trim().isEmpty
+                ? 'Unknown'
+                : savedUsername!;
+
+            final isActive =
+                (data[FirestoreReferralFields.isActive] as bool?) ?? false;
+            final status = isActive ? 'Active' : 'Not Started';
+            if (isActive) {
+              activeInvited++;
+            }
+
+            finalOrderedItems.add(
+              _ReferralItem(
+                username: username,
+                status: status,
+                joined: dateStr,
+              ),
+            );
+          }
+        } catch (e) {
+          debugPrint('Referrals legacy fallback failed for $uid: $e');
+        }
+      }
+
       if (mounted) {
         setState(() {
-          final statsData = statsDoc.data() ?? {};
-          _totalInvited =
-              (statsData[FirestoreUserFields.totalInvited] as num?)?.toInt() ??
-              0;
+          _totalInvited = totalInvited;
           _activeInvited = activeInvited;
           _referrals = finalOrderedItems;
           _loading = false;
@@ -679,6 +727,13 @@ class _ReferralsPageState extends State<ReferralsPage> {
                           icon: Icons.group_rounded,
                           accent: Colors.white54,
                           scale: s,
+                          onTap: _loading
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _filter = _ReferralFilter.all;
+                                  });
+                                },
                         ),
                       ),
                       SizedBox(width: s(12)),
@@ -689,6 +744,13 @@ class _ReferralsPageState extends State<ReferralsPage> {
                           icon: Icons.bolt_rounded,
                           accent: buttonBlue,
                           scale: s,
+                          onTap: _loading
+                              ? null
+                              : () {
+                                  setState(() {
+                                    _filter = _ReferralFilter.active;
+                                  });
+                                },
                         ),
                       ),
                     ],
@@ -706,7 +768,14 @@ class _ReferralsPageState extends State<ReferralsPage> {
                       ),
                       const Spacer(),
                       TextButton(
-                        onPressed: _loading ? null : _showAllTeam,
+                        onPressed: _loading
+                            ? null
+                            : () {
+                                setState(() {
+                                  _filter = _ReferralFilter.all;
+                                });
+                                _showAllTeam();
+                              },
                         style: TextButton.styleFrom(
                           foregroundColor: buttonBlue,
                         ),
@@ -728,36 +797,44 @@ class _ReferralsPageState extends State<ReferralsPage> {
                       color: Colors.white.withValues(alpha: 0.02),
                       border: Border.all(color: Colors.white12),
                     ),
-                    child: _referrals.isEmpty && !_loading
-                        ? Padding(
+                    child: Builder(
+                      builder: (context) {
+                        final visible = _filter == _ReferralFilter.active
+                            ? _referrals
+                                  .where((r) => r.status == 'Active')
+                                  .toList()
+                            : _referrals;
+                        if (visible.isEmpty && !_loading) {
+                          return Padding(
                             padding: EdgeInsets.all(s(16)),
                             child: const Center(
                               child: Text('No referrals yet'),
                             ),
-                          )
-                        : Column(
-                            children: [
-                              for (int i = 0; i < _referrals.length; i++) ...[
-                                _teamRow(
-                                  item: _referrals[i],
-                                  scale: s,
-                                  buttonBlue: buttonBlue,
-                                ),
-                                if (i != _referrals.length - 1)
-                                  Padding(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: s(16),
-                                    ),
-                                    child: Container(
-                                      height: 1,
-                                      color: Colors.white.withValues(
-                                        alpha: 0.06,
-                                      ),
-                                    ),
+                          );
+                        }
+                        return Column(
+                          children: [
+                            for (int i = 0; i < visible.length; i++) ...[
+                              _teamRow(
+                                item: visible[i],
+                                scale: s,
+                                buttonBlue: buttonBlue,
+                              ),
+                              if (i != visible.length - 1)
+                                Padding(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: s(16),
                                   ),
-                              ],
+                                  child: Container(
+                                    height: 1,
+                                    color: Colors.white.withValues(alpha: 0.06),
+                                  ),
+                                ),
                             ],
-                          ),
+                          ],
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
@@ -774,10 +851,11 @@ class _ReferralsPageState extends State<ReferralsPage> {
     required IconData icon,
     required Color accent,
     required double Function(double) scale,
+    VoidCallback? onTap,
   }) {
     const cardBg = Color(0xFF1B2632);
     const cardBg2 = Color(0xFF141E28);
-    return Container(
+    final content = Container(
       padding: EdgeInsets.all(scale(12)),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(scale(18)),
@@ -848,6 +926,19 @@ class _ReferralsPageState extends State<ReferralsPage> {
             ),
           ),
         ],
+      ),
+    );
+
+    if (onTap == null) {
+      return content;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(scale(18)),
+        onTap: onTap,
+        child: content,
       ),
     );
   }

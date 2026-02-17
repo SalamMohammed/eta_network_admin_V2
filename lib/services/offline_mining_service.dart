@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../shared/firestore_constants.dart';
 import 'config_service.dart';
+import 'rank_engine.dart';
 
 class OfflineMiningUserLock {
   static final Map<String, Future<void>> _tails = {};
@@ -268,11 +269,11 @@ class MiningBatchCommitEngine {
     int? activeReferralCount,
   }) async {
     final opId = 'start-$uid-${DateTime.now().millisecondsSinceEpoch}';
-    debugPrint(
-      '[MiningBatchCommitEngine] op=$opId startSession call uid=$uid',
-    );
+    debugPrint('[MiningBatchCommitEngine] op=$opId startSession call uid=$uid');
     return OfflineMiningUserLock.runLocked(uid, () async {
       final appConfig = await ConfigService().getGeneralConfig();
+      final streakConfig = await ConfigService().getStreakConfig();
+      final ranksConfig = await ConfigService().getRanksConfig();
       final double baseRate =
           (appConfig[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
           0.2;
@@ -316,8 +317,7 @@ class MiningBatchCommitEngine {
         final userData = userSnap.data() ?? <String, dynamic>{};
 
         int totalInvited = 0;
-        final totalInvitedRaw =
-            userData[FirestoreUserFields.totalInvited];
+        final totalInvitedRaw = userData[FirestoreUserFields.totalInvited];
         if (totalInvitedRaw is num) {
           totalInvited = totalInvitedRaw.toInt();
         } else if (totalInvitedRaw != null) {
@@ -326,19 +326,87 @@ class MiningBatchCommitEngine {
           );
         }
 
-        final String rank =
-            (userData[FirestoreUserFields.rank] as String?) ??
-            FirestoreUserRanks.explorer;
-        double rankMultiplier = 1.0;
-        if (rank == FirestoreUserRanks.builder) rankMultiplier = 1.2;
-        if (rank == FirestoreUserRanks.guardian) rankMultiplier = 1.5;
-        final double rateRank = baseRate * (rankMultiplier - 1.0);
-
         final int streakDays =
             (userData[FirestoreUserFields.streakDays] as int?) ?? 0;
-        final double rateStreak = streakDays > 0
-            ? (baseRate * 0.05 * streakDays)
-            : 0.0;
+        final String storedRank =
+            (userData[FirestoreUserFields.rank] as String?) ??
+            FirestoreUserRanks.explorer;
+        final Map<String, dynamic> rankRules =
+            (ranksConfig[FirestoreRankConfigFields.rankRules]
+                as Map<String, dynamic>?) ??
+            {};
+        final Map<String, dynamic> rankMults =
+            (ranksConfig[FirestoreRankConfigFields.rankMultipliers]
+                as Map<String, dynamic>?) ??
+            {};
+
+        String effectiveRank = storedRank;
+        if (activeReferralCount != null &&
+            rankRules.isNotEmpty &&
+            rankMults.isNotEmpty) {
+          effectiveRank = RankEngine.getBestRank(
+            streakDays: streakDays,
+            activeReferrals: activeReferralCount,
+            ranksCfg: ranksConfig,
+            currentRank: storedRank,
+          );
+        }
+
+        double rankMultiplier =
+            (rankMults[effectiveRank] as num?)?.toDouble() ?? 1.0;
+        if (rankMultiplier <= 0.0) {
+          rankMultiplier = 1.0;
+        }
+        final double rateRank = baseRate * (rankMultiplier - 1.0);
+
+        double rateStreak = 0.0;
+        if (streakDays > 0) {
+          final Map<String, dynamic> streakTable =
+              (streakConfig[FirestoreAppConfigFields.streakBonusTable]
+                  as Map<String, dynamic>?) ??
+              {};
+
+          if (streakTable.isNotEmpty) {
+            double streakMultiplier = 1.0;
+            double? bestKey;
+            for (final entry in streakTable.entries) {
+              final k = int.tryParse(entry.key);
+              if (k == null) continue;
+              if (k <= streakDays) {
+                final v = (entry.value as num?)?.toDouble() ?? 1.0;
+                if (bestKey == null || k > bestKey) {
+                  bestKey = k.toDouble();
+                  streakMultiplier = v;
+                }
+              }
+            }
+            if (streakMultiplier > 1.0) {
+              rateStreak = baseRate * (streakMultiplier - 1.0);
+            }
+          } else {
+            final int maxStreakDays =
+                (streakConfig[FirestoreStreakConfigFields.maxStreakDays]
+                        as num?)
+                    ?.toInt() ??
+                0;
+            final double maxStreakMult =
+                (streakConfig[FirestoreStreakConfigFields.maxStreakMultiplier]
+                        as num?)
+                    ?.toDouble() ??
+                1.0;
+            if (maxStreakDays > 0 && maxStreakMult > 1.0) {
+              final int effectiveDays = streakDays > maxStreakDays
+                  ? maxStreakDays
+                  : streakDays;
+              final double fraction = effectiveDays / maxStreakDays;
+              final double streakMultiplier =
+                  1.0 + (maxStreakMult - 1.0) * fraction;
+              if (streakMultiplier > 1.0) {
+                rateStreak = baseRate * (streakMultiplier - 1.0);
+              }
+            }
+          }
+        }
 
         double referralMultiplier = 1.0;
         if (totalInvited > 0) {
@@ -351,12 +419,13 @@ class MiningBatchCommitEngine {
           if (maxRefs > 0 && effectiveCount > maxRefs) {
             effectiveCount = maxRefs;
           }
-          rateReferral = effectiveCount * perRef * baseRate * referralMultiplier;
+          rateReferral =
+              effectiveCount * perRef * baseRate * referralMultiplier;
         } else {
           rateReferral =
               (userData[FirestoreUserFields.rateReferral] as num?)
-                      ?.toDouble() ??
-                  0.0;
+                  ?.toDouble() ??
+              0.0;
           rateReferral *= referralMultiplier;
         }
         if (maxBonusRate > 0.0 && rateReferral > maxBonusRate) {
@@ -399,6 +468,7 @@ class MiningBatchCommitEngine {
           FirestoreUserFields.rateAds: rateAds,
           FirestoreUserFields.hourlyRate: newHourlyRate,
           FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
+          FirestoreUserFields.rank: effectiveRank,
           FirestoreUserFields.lastMiningStart: Timestamp.fromDate(now),
           FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(plannedEnd),
           FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(now),
@@ -517,7 +587,7 @@ class MiningBatchCommitEngine {
 
         final wallet =
             (liveData[FirestoreUserFields.wallet] as Map<String, dynamic>?) ??
-                {};
+            {};
         final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
 
         final Map<String, dynamic> coinUpdates = {};
@@ -526,11 +596,62 @@ class MiningBatchCommitEngine {
           final end =
               map[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
           if (end != null && effectiveEnd.isBefore(end.toDate())) {
-            coinUpdates[
-                    '${FirestoreUserFields.wallet}.coins.$ownerId.${FirestoreUserCoinMiningFields.lastMiningEnd}'] =
+            coinUpdates['${FirestoreUserFields.wallet}.coins.$ownerId.${FirestoreUserCoinMiningFields.lastMiningEnd}'] =
                 Timestamp.fromDate(effectiveEnd);
           }
         });
+
+        int currentStreakDays =
+            (liveData[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
+        final lastDayRaw = liveData[FirestoreUserFields.streakLastUpdatedDay];
+        const int msPerDay = 24 * 60 * 60 * 1000;
+        int? lastDayIndex;
+        if (lastDayRaw is int) {
+          lastDayIndex = lastDayRaw;
+        } else if (lastDayRaw is Timestamp) {
+          final dt = lastDayRaw.toDate().toUtc();
+          lastDayIndex = dt.millisecondsSinceEpoch ~/ msPerDay;
+        } else if (lastDayRaw is String && lastDayRaw.isNotEmpty) {
+          DateTime? parsed;
+          try {
+            parsed = DateTime.parse(lastDayRaw);
+          } catch (_) {
+            parsed = null;
+          }
+          if (parsed != null) {
+            final dt = DateTime.utc(parsed.year, parsed.month, parsed.day);
+            lastDayIndex = dt.millisecondsSinceEpoch ~/ msPerDay;
+          }
+        }
+
+        final endUtc = DateTime.utc(
+          effectiveEnd.year,
+          effectiveEnd.month,
+          effectiveEnd.day,
+        );
+        final int todayIndex = endUtc.millisecondsSinceEpoch ~/ msPerDay;
+
+        int nextStreakDays = currentStreakDays;
+        int nextDayIndex = lastDayIndex ?? 0;
+
+        if (lastDayIndex == null) {
+          nextStreakDays = 1;
+          nextDayIndex = todayIndex;
+        } else if (todayIndex == lastDayIndex) {
+          if (nextStreakDays <= 0) {
+            nextStreakDays = 1;
+          }
+        } else if (todayIndex == lastDayIndex + 1) {
+          nextStreakDays = currentStreakDays + 1;
+          nextDayIndex = todayIndex;
+        } else if (todayIndex > lastDayIndex + 1) {
+          nextStreakDays = 1;
+          nextDayIndex = todayIndex;
+        }
+
+        final int currentTotalSessions =
+            (liveData[FirestoreUserFields.totalSessions] as num?)?.toInt() ?? 0;
+        final int nextTotalSessions = currentTotalSessions + 1;
 
         final Map<String, dynamic> writeData = {
           FirestoreUserFields.totalPoints: totalPointsLive + earned,
@@ -543,6 +664,9 @@ class MiningBatchCommitEngine {
           FirestoreUserFields.rateReferral: session.rateReferral,
           FirestoreUserFields.rateManager: session.rateManager,
           FirestoreUserFields.rateAds: session.rateAds,
+          FirestoreUserFields.streakDays: nextStreakDays,
+          FirestoreUserFields.streakLastUpdatedDay: nextDayIndex,
+          FirestoreUserFields.totalSessions: nextTotalSessions,
           FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
           ...coinUpdates,
         };

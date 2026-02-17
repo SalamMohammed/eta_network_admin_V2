@@ -225,6 +225,48 @@ void main() {
       expect(total, greaterThan(100.0));
     });
 
+    test('finishSession updates streakDays and totalSessions atomically', () async {
+      final fake = _FakeFirestore();
+      final now = DateTime.now().toUtc();
+      const int msPerDay = 24 * 60 * 60 * 1000;
+      final int yesterdayIndex =
+          now.subtract(const Duration(days: 1)).millisecondsSinceEpoch ~/
+              msPerDay;
+
+      fake._users['u1'] = {
+        FirestoreUserFields.totalPoints: 0.0,
+        FirestoreUserFields.rateAds: 0.0,
+        FirestoreUserFields.rateManager: 0.0,
+        FirestoreUserFields.rateReferral: 0.0,
+        FirestoreUserFields.rateRank: 0.0,
+        FirestoreUserFields.rateStreak: 0.0,
+        FirestoreUserFields.streakDays: 3,
+        FirestoreUserFields.streakLastUpdatedDay: yesterdayIndex,
+        FirestoreUserFields.totalSessions: 5,
+      };
+
+      MiningBatchCommitEngine.debugSetDbForTests(fake);
+
+      await MiningBatchCommitEngine.startSession(
+        uid: 'u1',
+        deviceId: 'dev1',
+        maxEnd: now.add(const Duration(hours: 1)),
+      );
+
+      final finishRes = await MiningBatchCommitEngine.finishSession(
+        uid: 'u1',
+        forcedEnd: now.add(const Duration(minutes: 30)),
+      );
+
+      final streak =
+          finishRes[FirestoreUserFields.streakDays] as int;
+      final sessions =
+          finishRes[FirestoreUserFields.totalSessions] as int;
+
+      expect(streak, 4);
+      expect(sessions, 6);
+    });
+
     test('totalInvited influences referral rate when activeReferralCount provided', () async {
       final fake = _FakeFirestore();
       fake._users['u1'] = {

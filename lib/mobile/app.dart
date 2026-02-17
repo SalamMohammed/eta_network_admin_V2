@@ -241,6 +241,12 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                             // Clear mining state and sign out.
                             MiningStateService().reset();
                             try {
+                              final prefs = await SharedPreferences.getInstance();
+                              await prefs.remove(
+                                'referral_code_${FirebaseAuth.instance.currentUser?.uid ?? ''}',
+                              );
+                            } catch (_) {}
+                            try {
                               await GoogleSignIn().signOut();
                             } catch (_) {}
                             await FirebaseAuth.instance.signOut();

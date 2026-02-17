@@ -12,6 +12,7 @@ import '../../services/mining_state_service.dart';
 import '../../services/sql_api_service.dart';
 import '../../services/user_service.dart';
 import '../../services/offline_mining_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
@@ -601,6 +602,12 @@ class _ProfilePageState extends State<ProfilePage> {
                       onPressed: () async {
                         MiningStateService().reset();
                         try {
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.remove(
+                            'referral_code_${FirebaseAuth.instance.currentUser?.uid ?? ''}',
+                          );
+                        } catch (_) {}
+                        try {
                           await GoogleSignIn().signOut();
                         } catch (_) {}
                         await FirebaseAuth.instance.signOut();
@@ -965,6 +972,12 @@ class _ProfilePageState extends State<ProfilePage> {
 
       // Final sign-out and redirect
       MiningStateService().reset();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(
+          'referral_code_${FirebaseAuth.instance.currentUser?.uid ?? ''}',
+        );
+      } catch (_) {}
       await FirebaseAuth.instance.signOut();
       if (mounted) {
         Navigator.pushAndRemoveUntil(
