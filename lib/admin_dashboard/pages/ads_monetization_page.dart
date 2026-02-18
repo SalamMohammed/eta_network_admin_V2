@@ -96,30 +96,36 @@ class _AdsMonetizationPageState extends State<AdsMonetizationPage> {
   Future<void> _save() async {
     setState(() => _loading = true);
     try {
+      final data = {
+        FirestoreAdsConfigFields.enableRewarded: enableRewarded,
+        FirestoreAdsConfigFields.enableBannerOnMiningPress:
+            enableBannerOnMiningPress,
+        FirestoreAdsConfigFields.rewardBonusPercent:
+            double.tryParse(rewardBonusCtrl.text.trim()) ?? 2,
+        FirestoreAdsConfigFields.maxRewardedPerDay:
+            int.tryParse(maxRewardsCtrl.text.trim()) ?? 5,
+        FirestoreAdsConfigFields.maxRewardedPerMiningSession:
+            int.tryParse(maxRewardsPerSessionCtrl.text.trim()) ?? 5,
+        FirestoreAdsConfigFields.bannerAdUnitIdAndroid:
+            bannerAndroidUnitIdCtrl.text.trim(),
+        FirestoreAdsConfigFields.bannerAdUnitIdIos:
+            bannerIosUnitIdCtrl.text.trim(),
+        FirestoreAdsConfigFields.rewardedAdUnitIdAndroid:
+            rewardedAndroidUnitIdCtrl.text.trim(),
+        FirestoreAdsConfigFields.rewardedAdUnitIdIos:
+            rewardedIosUnitIdCtrl.text.trim(),
+        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      };
+
       await FirestoreHelper.instance
           .collection(FirestoreConstants.appConfig)
           .doc(FirestoreAppConfigDocs.ads)
-          .set({
-            FirestoreAdsConfigFields.enableRewarded: enableRewarded,
-            FirestoreAdsConfigFields.enableBannerOnMiningPress:
-                enableBannerOnMiningPress,
-            FirestoreAdsConfigFields.rewardBonusPercent:
-                double.tryParse(rewardBonusCtrl.text.trim()) ?? 2,
-            FirestoreAdsConfigFields.maxRewardedPerDay:
-                int.tryParse(maxRewardsCtrl.text.trim()) ?? 5,
-            FirestoreAdsConfigFields.maxRewardedPerMiningSession:
-                int.tryParse(maxRewardsPerSessionCtrl.text.trim()) ?? 5,
-            FirestoreAdsConfigFields.bannerAdUnitIdAndroid:
-                bannerAndroidUnitIdCtrl.text.trim(),
-            FirestoreAdsConfigFields.bannerAdUnitIdIos: bannerIosUnitIdCtrl.text
-                .trim(),
-            FirestoreAdsConfigFields.rewardedAdUnitIdAndroid:
-                rewardedAndroidUnitIdCtrl.text.trim(),
-            FirestoreAdsConfigFields.rewardedAdUnitIdIos: rewardedIosUnitIdCtrl
-                .text
-                .trim(),
-            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          .set(data, SetOptions(merge: true));
+
+      await FirestoreHelper.instance
+          .collection(FirestoreConstants.appConfig)
+          .doc(FirestoreAppConfigDocs.master)
+          .update({FirestoreAppConfigDocs.ads: data});
 
       if (mounted) {
         ScaffoldMessenger.of(

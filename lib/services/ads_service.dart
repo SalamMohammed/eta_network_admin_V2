@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../utils/firestore_helper.dart';
 import '../shared/firestore_constants.dart';
+import 'config_service.dart';
 
 class AdsConfig {
   final bool enableRewarded;
@@ -207,15 +206,10 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
 
-      // 2. Fetch from Firestore
-      debugPrint('AdsService: Fetching config from Firestore');
-      final doc = await FirestoreHelper.instance
-          .collection(FirestoreConstants.appConfig)
-          .doc(FirestoreAppConfigDocs.ads)
-          .get();
-
-      final data = doc.data();
-      if (data != null) {
+      final data = await ConfigService().getAdsConfig(
+        forceRefresh: forceRefresh,
+      );
+      if (data.isNotEmpty) {
         _config = AdsConfig.fromFirestore(data);
 
         // 3. Save to cache

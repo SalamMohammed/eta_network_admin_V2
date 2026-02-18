@@ -200,28 +200,6 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
             ?.toDouble() ??
         24.0);
 
-    // Fetch Active Referral Count (Throttled 10m)
-    // Used for recalculating rates without expensive queries every time
-    if (_activeReferralCount == null ||
-        _lastReferralCountFetch == null ||
-        DateTime.now().difference(_lastReferralCountFetch!).inMinutes > 10) {
-      try {
-        final countQuery = await FirestoreHelper.instance
-            .collection(FirestoreConstants.users)
-            .where(FirestoreUserFields.invitedBy, isEqualTo: uid)
-            .where(
-              FirestoreUserFields.lastMiningEnd,
-              isGreaterThan: Timestamp.fromDate(DateTime.now()),
-            )
-            .count()
-            .get();
-        _activeReferralCount = countQuery.count;
-        _lastReferralCountFetch = DateTime.now();
-      } catch (e) {
-        debugPrint('Failed to fetch active referral count: $e');
-      }
-    }
-
     // Load User Data
     // OPTIMIZATION: Use data from syncRes if available to avoid UserService call
     Map<String, dynamic> d =

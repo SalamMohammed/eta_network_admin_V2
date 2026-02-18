@@ -84,6 +84,16 @@ class ConfigService {
     return {};
   }
 
+  Future<Map<String, dynamic>> getAdsConfig({bool forceRefresh = false}) async {
+    final master = await _getMasterConfig(forceRefresh: forceRefresh);
+    final section = master[FirestoreAppConfigDocs.ads];
+    if (section is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(section);
+    }
+    debugPrint('ConfigService: ads config missing in master');
+    return {};
+  }
+
   Future<Map<String, dynamic>> _getMasterConfig({
     bool forceRefresh = false,
   }) async {
