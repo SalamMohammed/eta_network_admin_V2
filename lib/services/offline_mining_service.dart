@@ -187,20 +187,13 @@ class OfflineMiningSyncQueue {
     if (delta <= 0) return true;
     final userRef = db.collection('users').doc(uid);
     try {
-      await db.runTransaction((tx) async {
-        final snap = await tx.get(userRef);
-        final data = snap.data() ?? <String, dynamic>{};
-        final remoteTotalRaw = data['totalPoints'];
-        final double remoteTotal = remoteTotalRaw is num
-            ? remoteTotalRaw.toDouble()
-            : 0.0;
-        final newTotal = remoteTotal + delta;
-        final update = <String, dynamic>{
-          'totalPoints': newTotal,
-          'updatedAt': FieldValue.serverTimestamp(),
-        };
-        tx.set(userRef, update, SetOptions(merge: true));
-      });
+      final batch = db.batch();
+      final update = <String, dynamic>{
+        'totalPoints': FieldValue.increment(delta),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      batch.set(userRef, update, SetOptions(merge: true));
+      await batch.commit();
       final cached = await OfflineMiningCache.loadUserDoc(uid);
       if (cached != null) {
         final totalRaw = cached['totalPoints'];
@@ -250,6 +243,26 @@ class MiningSessionState {
   });
 }
 
+class _MiningConfig {
+  final double baseRate;
+  final double durationHours;
+  final Map<String, dynamic> streakConfig;
+  final Map<String, dynamic> ranksConfig;
+  final Map<String, dynamic> referralConfig;
+  final double maxReferralBonusRate;
+  final int rewardedReferralMaxCount;
+
+  _MiningConfig({
+    required this.baseRate,
+    required this.durationHours,
+    required this.streakConfig,
+    required this.ranksConfig,
+    required this.referralConfig,
+    required this.maxReferralBonusRate,
+    required this.rewardedReferralMaxCount,
+  });
+}
+
 class MiningBatchCommitEngine {
   static FirebaseFirestore _db = FirebaseFirestore.instance;
   static final Map<String, MiningSessionState> _sessions = {};
@@ -260,6 +273,262 @@ class MiningBatchCommitEngine {
 
   static MiningSessionState? getSession(String uid) {
     return _sessions[uid];
+  }
+
+  static void _logReferral(
+    String opId,
+    String uid,
+    String message, {
+    int indent = 0,
+  }) {
+    final ts = DateTime.now().toIso8601String();
+    final prefix = ' ' * (indent * 2);
+    debugPrint('[$ts][REF][$opId][$uid] $prefix$message');
+  }
+
+  static Future<_MiningConfig> _loadMiningConfig(
+    String opId,
+    String uid,
+  ) async {
+    final startedAt = DateTime.now();
+    final cfg = ConfigService();
+    _logReferral(opId, uid, 'BEGIN config load for mining session', indent: 0);
+    final appConfig = await cfg.getGeneralConfig(forceRefresh: true);
+    final streakConfig = await cfg.getStreakConfig(forceRefresh: true);
+    final ranksConfig = await cfg.getRanksConfig(forceRefresh: true);
+    final referralConfig = await cfg.getReferralConfig(forceRefresh: true);
+
+    final double baseRate =
+        (appConfig[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
+        0.2;
+    final double durationHours =
+        (appConfig[FirestoreAppConfigFields.sessionDurationHours] as num?)
+            ?.toDouble() ??
+        24.0;
+    final double maxBonusRate =
+        (appConfig[FirestoreAppConfigFields.maxReferralBonusRate] as num?)
+            ?.toDouble() ??
+        0.0;
+    final int rewardedMaxRefs =
+        (referralConfig[FirestoreReferralConfigFields.rewardedReferralMaxCount]
+                as num?)
+            ?.toInt() ??
+        0;
+
+    if (referralConfig.isEmpty) {
+      _logReferral(
+        opId,
+        uid,
+        'referral config missing; referral bonus disabled for mining sessions',
+        indent: 1,
+      );
+    }
+
+    _logReferral(
+      opId,
+      uid,
+      'config values: baseRate=$baseRate ETA/hr, durationHours=$durationHours h, maxReferralBonusRate=$maxBonusRate ETA/hr, rewardedReferralMaxCount=$rewardedMaxRefs, tiers=${referralConfig[FirestoreReferralConfigFields.referralBonusTiers]}',
+      indent: 1,
+    );
+
+    final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+    _logReferral(
+      opId,
+      uid,
+      'END config load (elapsed=${elapsedMs}ms)',
+      indent: 0,
+    );
+
+    return _MiningConfig(
+      baseRate: baseRate,
+      durationHours: durationHours,
+      streakConfig: streakConfig,
+      ranksConfig: ranksConfig,
+      referralConfig: referralConfig,
+      maxReferralBonusRate: maxBonusRate,
+      rewardedReferralMaxCount: rewardedMaxRefs,
+    );
+  }
+
+  static double _computeReferralBonus({
+    required int totalInvited,
+    required Map<String, dynamic> referralConfig,
+    required double baseRate,
+    required double maxBonusRate,
+    required int maxRefs,
+    required String uid,
+    required String opId,
+  }) {
+    final startedAt = DateTime.now();
+    _logReferral(opId, uid, 'BEGIN referral calculation', indent: 0);
+    _logReferral(
+      opId,
+      uid,
+      'inputs: totalInvited=$totalInvited invites, baseRate=$baseRate ETA/hr, maxBonusRate=$maxBonusRate ETA/hr, rewardedReferralMaxCount=$maxRefs referrals',
+      indent: 1,
+    );
+
+    if (totalInvited <= 0) {
+      _logReferral(
+        opId,
+        uid,
+        'branch: totalInvited <= 0 → skip referral bonus',
+        indent: 1,
+      );
+      final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+      _logReferral(
+        opId,
+        uid,
+        'END referral calculation (rateReferral=0.0 ETA/hr, elapsed=${elapsedMs}ms)',
+        indent: 0,
+      );
+      return 0.0;
+    }
+
+    int effectiveInvites = totalInvited;
+    if (maxRefs > 0 && effectiveInvites > maxRefs) {
+      effectiveInvites = maxRefs;
+    }
+    _logReferral(
+      opId,
+      uid,
+      'effectiveInvites=$effectiveInvites referrals after maxRefs cap',
+      indent: 1,
+    );
+
+    final tiersRaw =
+        referralConfig[FirestoreReferralConfigFields.referralBonusTiers];
+    if (tiersRaw is! Map<String, dynamic> || tiersRaw.isEmpty) {
+      _logReferral(
+        opId,
+        uid,
+        'no referralBonusTiers configured or empty',
+        indent: 1,
+      );
+      final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+      _logReferral(
+        opId,
+        uid,
+        'END referral calculation (rateReferral=0.0 ETA/hr, elapsed=${elapsedMs}ms)',
+        indent: 0,
+      );
+      return 0.0;
+    }
+
+    _logReferral(
+      opId,
+      uid,
+      'evaluating referralBonusTiers=$tiersRaw',
+      indent: 1,
+    );
+
+    int? selectedThreshold;
+    double? selectedPercent;
+    int? highestThreshold;
+    double? highestPercent;
+
+    tiersRaw.forEach((key, value) {
+      final threshold = int.tryParse(key);
+      if (threshold == null) {
+        return;
+      }
+      final raw = (value as num?)?.toDouble();
+      if (raw == null) {
+        return;
+      }
+      double p = raw;
+      if (p > 1.0) {
+        p = p / 100.0;
+      }
+      if (p <= 0.0) {
+        return;
+      }
+      _logReferral(
+        opId,
+        uid,
+        'tier candidate: threshold=$threshold invites, normalizedPercent=$p',
+        indent: 2,
+      );
+      if (highestThreshold == null || threshold > highestThreshold!) {
+        highestThreshold = threshold;
+        highestPercent = p;
+      }
+      if (effectiveInvites <= threshold) {
+        if (selectedThreshold == null || threshold < selectedThreshold!) {
+          selectedThreshold = threshold;
+          selectedPercent = p;
+        }
+      }
+    });
+
+    double? tierPercent;
+    int? tierThreshold;
+    if (selectedThreshold != null && selectedPercent != null) {
+      tierThreshold = selectedThreshold;
+      tierPercent = selectedPercent;
+    } else if (highestThreshold != null && highestPercent != null) {
+      tierThreshold = highestThreshold;
+      tierPercent = highestPercent;
+    }
+
+    if (tierPercent == null || tierThreshold == null) {
+      _logReferral(
+        opId,
+        uid,
+        'branch: no valid tier found → referral bonus = 0',
+        indent: 1,
+      );
+      final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+      _logReferral(
+        opId,
+        uid,
+        'END referral calculation (rateReferral=0.0 ETA/hr, elapsed=${elapsedMs}ms)',
+        indent: 0,
+      );
+      return 0.0;
+    }
+
+    _logReferral(
+      opId,
+      uid,
+      'selected tier: threshold=$tierThreshold invites, multiplierPercent=$tierPercent',
+      indent: 1,
+    );
+
+    double rateReferral = baseRate * tierPercent;
+    _logReferral(
+      opId,
+      uid,
+      'formula (tier): rateReferral = baseRate($baseRate ETA/hr) × tierPercent($tierPercent)',
+      indent: 1,
+    );
+
+    if (maxBonusRate > 0.0 && rateReferral > maxBonusRate) {
+      rateReferral = maxBonusRate;
+      _logReferral(
+        opId,
+        uid,
+        'cap applied: maxReferralBonusRate=$maxBonusRate ETA/hr, final rateReferral=$rateReferral ETA/hr',
+        indent: 1,
+      );
+    } else {
+      _logReferral(
+        opId,
+        uid,
+        'no cap applied: maxReferralBonusRate=$maxBonusRate ETA/hr',
+        indent: 1,
+      );
+    }
+
+    final elapsedMs = DateTime.now().difference(startedAt).inMilliseconds;
+    _logReferral(
+      opId,
+      uid,
+      'END referral calculation (rateReferral=$rateReferral ETA/hr, elapsed=${elapsedMs}ms)',
+      indent: 0,
+    );
+
+    return rateReferral;
   }
 
   static void applyAdBoost({required String uid, required double boostAmount}) {
@@ -343,35 +612,20 @@ class MiningBatchCommitEngine {
     final opId = 'start-$uid-${DateTime.now().millisecondsSinceEpoch}';
     debugPrint('[MiningBatchCommitEngine] op=$opId startSession call uid=$uid');
     return OfflineMiningUserLock.runLocked(uid, () async {
-      final cfg = ConfigService();
-      final appConfig = await cfg.getGeneralConfig(forceRefresh: true);
-      final streakConfig = await cfg.getStreakConfig(forceRefresh: true);
-      final ranksConfig = await cfg.getRanksConfig(forceRefresh: true);
-      final double baseRate =
-          (appConfig[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
-          0.2;
-      final double durationHours =
-          (appConfig[FirestoreAppConfigFields.sessionDurationHours] as num?)
-              ?.toDouble() ??
-          24.0;
-
-      final refConfig = await cfg.getReferralConfig(forceRefresh: true);
-      double perRef =
-          (refConfig[FirestoreReferralConfigFields.referrerPercentPerReferral]
-                  as num?)
-              ?.toDouble() ??
-          0.25;
-      if (perRef > 1.0) {
-        perRef = perRef / 100.0;
-      }
-      final int maxRefs =
-          (refConfig[FirestoreReferralConfigFields.referrerMaxCount] as num?)
-              ?.toInt() ??
-          0;
-      final double maxBonusRate =
-          (appConfig[FirestoreAppConfigFields.maxReferralBonusRate] as num?)
-              ?.toDouble() ??
-          0.0;
+      _logReferral(
+        opId,
+        uid,
+        'START mining session: preparing config and user data',
+        indent: 0,
+      );
+      final miningConfig = await _loadMiningConfig(opId, uid);
+      final double baseRate = miningConfig.baseRate;
+      final double durationHours = miningConfig.durationHours;
+      final streakConfig = miningConfig.streakConfig;
+      final ranksConfig = miningConfig.ranksConfig;
+      final refConfig = miningConfig.referralConfig;
+      final double maxBonusRate = miningConfig.maxReferralBonusRate;
+      final int maxRefs = miningConfig.rewardedReferralMaxCount;
 
       final userRef = _db.collection(FirestoreConstants.users).doc(uid);
       final now = DateTime.now();
@@ -398,6 +652,12 @@ class MiningBatchCommitEngine {
             '[MiningBatchCommitEngine] non-numeric totalInvited for $uid: $totalInvitedRaw',
           );
         }
+        _logReferral(
+          opId,
+          uid,
+          'user data: totalInvitedRaw=$totalInvitedRaw, totalInvitedParsed=$totalInvited',
+          indent: 1,
+        );
 
         final int previousStreakDays =
             (userData[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
@@ -454,58 +714,14 @@ class MiningBatchCommitEngine {
           );
         }
 
-        double rateReferral = 0.0;
-        final tiersRaw =
-            refConfig[FirestoreReferralConfigFields.referralBonusTiers];
-        if (tiersRaw is Map<String, dynamic> && tiersRaw.isNotEmpty) {
-          double? selectedThreshold;
-          double? selectedBonus;
-          tiersRaw.forEach((key, value) {
-            final threshold = int.tryParse(key);
-            if (threshold == null) {
-              return;
-            }
-            if (totalInvited >= threshold) {
-              final bonus = (value as num?)?.toDouble();
-              if (bonus == null) {
-                return;
-              }
-              if (selectedThreshold == null ||
-                  threshold > selectedThreshold!.toInt()) {
-                selectedThreshold = threshold.toDouble();
-                selectedBonus = bonus;
-              }
-            }
-          });
-          if (selectedBonus != null) {
-            rateReferral = selectedBonus!;
-          }
-        }
-        if (rateReferral == 0.0) {
-          double referralMultiplier = 1.0;
-          if (totalInvited > 0) {
-            referralMultiplier += (totalInvited.clamp(0, 200) / 1000.0);
-          }
-          if (activeReferralCount != null) {
-            int effectiveCount = activeReferralCount;
-            if (maxRefs > 0 && effectiveCount > maxRefs) {
-              effectiveCount = maxRefs;
-            }
-            rateReferral =
-                effectiveCount * perRef * baseRate * referralMultiplier;
-          } else {
-            rateReferral =
-                (userData[FirestoreUserFields.rateReferral] as num?)
-                    ?.toDouble() ??
-                0.0;
-            rateReferral *= referralMultiplier;
-          }
-        }
-        if (maxBonusRate > 0.0 && rateReferral > maxBonusRate) {
-          rateReferral = maxBonusRate;
-        }
-        debugPrint(
-          '[MiningBatchCommitEngine] op=$opId referral bonus uid=$uid totalInvited=$totalInvited activeReferrals=$activeReferralCount rateReferral=$rateReferral maxBonusRate=$maxBonusRate',
+        final double rateReferral = _computeReferralBonus(
+          totalInvited: totalInvited,
+          referralConfig: refConfig,
+          baseRate: baseRate,
+          maxBonusRate: maxBonusRate,
+          maxRefs: maxRefs,
+          uid: uid,
+          opId: opId,
         );
 
         double rateManager = 0.0;

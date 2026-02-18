@@ -74,17 +74,14 @@ class ConfigService {
     bool forceRefresh = false,
   }) async {
     final master = await _getMasterConfig(forceRefresh: forceRefresh);
-    if (master.containsKey(FirestoreAppConfigDocs.referrals)) {
-      return Map<String, dynamic>.from(
-        master[FirestoreAppConfigDocs.referrals],
-      );
+    final section = master[FirestoreAppConfigDocs.referrals];
+    if (section is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(section);
     }
-    return _getConfig(
-      FirestoreAppConfigDocs.referrals,
-      _prefsKeyReferrals,
-      _prefsKeyReferralsTs,
-      forceRefresh: forceRefresh,
+    debugPrint(
+      'ConfigService: referrals config missing in master; referral bonuses disabled',
     );
+    return {};
   }
 
   Future<Map<String, dynamic>> _getMasterConfig({
