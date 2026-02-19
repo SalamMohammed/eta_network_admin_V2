@@ -21,18 +21,18 @@ class MobileAppScaffold extends StatefulWidget {
 class _MobileAppScaffoldState extends State<MobileAppScaffold> {
   // Tracks which tab is currently selected (0 = Home).
   int index = 0;
+  bool _profileInitialized = false;
 
   @override
   Widget build(BuildContext context) {
     // Background color for the navigation bar.
     const navBg = Color(0xFF141E28);
 
-    // List of pages corresponding to the tabs.
-    final pages = const [
-      MobileHomePage(),
-      BalancePage(),
-      ReferralsPage(),
-      ProfilePage(),
+    final pages = [
+      const MobileHomePage(),
+      const BalancePage(),
+      const ReferralsPage(),
+      _profileInitialized ? const ProfilePage() : const SizedBox.shrink(),
     ];
 
     // Listen to changes in the current user's authentication state.
@@ -61,7 +61,12 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
             indicatorColor:
                 Colors.transparent, // No highlight bubble behind the icon.
             selectedIndex: index,
-            onDestinationSelected: (i) => setState(() => index = i),
+            onDestinationSelected: (i) => setState(() {
+              index = i;
+              if (i == 3 && !_profileInitialized) {
+                _profileInitialized = true;
+              }
+            }),
             destinations: const [
               NavigationDestination(
                 icon: Icon(Icons.home_rounded),

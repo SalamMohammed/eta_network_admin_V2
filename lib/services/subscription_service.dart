@@ -268,7 +268,10 @@ class SubscriptionService {
       FirestoreUserSubscriptionFields.autoRenew: autoRenew,
     };
 
-    final existingSnap = await UserService().getUser(uid);
+    final existingSnap = await UserService().getUser(
+      uid,
+      forceRefresh: true,
+    );
     final existingData = existingSnap?.data() ?? {};
     final existingRole = existingData[FirestoreUserFields.role] as String?;
     final roleToWrite = existingRole == FirestoreUserRoles.admin

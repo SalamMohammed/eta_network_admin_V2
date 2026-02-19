@@ -27,13 +27,10 @@ class UserService {
     debugPrint('UserService: Live mode set to $isLive');
   }
 
-  /// Fetch the user document.
-  /// [freshness] defines how old the cache can be before refetching.
-  /// Default is 5 seconds to deduplicate simultaneous startup calls.
   Future<DocumentSnapshot<Map<String, dynamic>>?> getUser(
     String uid, {
     bool forceRefresh = false,
-    Duration freshness = const Duration(seconds: 5),
+    Duration freshness = const Duration(seconds: 60),
   }) async {
     if (forceRefresh) {
       _cachedUserSnapshot = null;

@@ -948,9 +948,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
 
-    // 1. Refresh state to get latest config/subscription
-    // OPTIMIZATION: Check if user is pro and manager enabled BEFORE refreshing
-    final userDoc = await UserService().getUser(uid);
+    final userDoc = await UserService().getUser(uid, forceRefresh: true);
     if (userDoc == null) {
       debugPrint('[MiningStateService] Failed to fetch user data');
       return;
