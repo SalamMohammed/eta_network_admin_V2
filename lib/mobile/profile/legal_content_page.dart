@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../shared/firestore_constants.dart';
 import '../../shared/theme/colors.dart';
 import '../../utils/firestore_helper.dart';
+import '../../services/config_service.dart';
 
 class LegalContentPage extends StatelessWidget {
   final String title;
@@ -24,11 +25,8 @@ class LegalContentPage extends StatelessWidget {
         ),
         title: Text(title),
       ),
-      body: FutureBuilder<DocumentSnapshot>(
-        future: FirestoreHelper.instance
-            .collection(FirestoreConstants.appConfig)
-            .doc(FirestoreAppConfigDocs.legal)
-            .get(),
+      body: FutureBuilder<Map<String, dynamic>>(
+        future: ConfigService().getLegalConfig(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -37,7 +35,7 @@ class LegalContentPage extends StatelessWidget {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
 
-          final data = snapshot.data?.data() as Map<String, dynamic>?;
+          final data = snapshot.data;
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(16),

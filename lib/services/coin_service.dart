@@ -308,11 +308,7 @@ class CoinService with WidgetsBindingObserver {
   }
 
   static Future<Map<String, dynamic>> getUserCoinConfig() async {
-    final snap = await FirestoreHelper.instance
-        .collection(FirestoreConstants.appConfig)
-        .doc(FirestoreAppConfigDocs.userCoin)
-        .get();
-    return snap.data() ?? {};
+    return ConfigService().getUserCoinConfig();
   }
 
   static Future<void> checkCoinUniqueness({
@@ -562,6 +558,10 @@ class CoinService with WidgetsBindingObserver {
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return {};
+
+    if (!useSqlBackend) {
+      await _CoinMiningSessionManager.processNowForCurrentUser();
+    }
 
     final g = await ConfigService().getGeneralConfig();
 
@@ -957,6 +957,10 @@ class _CoinMiningSessionManager {
     _scheduleNext(uid);
   }
 
+  static Future<void> processNowForCurrentUser() async {
+    await onAppResumed();
+  }
+
   static void _scheduleNext(String uid) {
     _timer?.cancel();
     if (_sessions.isEmpty) {
@@ -1035,11 +1039,16 @@ class _CoinMiningSessionManager {
       deltas.forEach((ownerId, delta) {
         final existingCoin =
             (coins[ownerId] as Map<String, dynamic>?) ?? <String, dynamic>{};
-        final currentTotal =
+        double currentTotal =
             (existingCoin[FirestoreUserCoinMiningFields.totalPoints] as num?)
                 ?.toDouble() ??
             0.0;
         final session = finished[ownerId];
+        if (currentTotal == 0.0 &&
+            session != null &&
+            session.baseTotalPoints > 0.0) {
+          currentTotal = session.baseTotalPoints;
+        }
         final newTotal = currentTotal + delta;
         existingCoin[FirestoreUserCoinMiningFields.totalPoints] = newTotal;
         if (session != null) {

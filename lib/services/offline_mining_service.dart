@@ -314,10 +314,10 @@ class MiningBatchCommitEngine {
     final startedAt = DateTime.now();
     final cfg = ConfigService();
     _logReferral(opId, uid, 'BEGIN config load for mining session', indent: 0);
-    final appConfig = await cfg.getGeneralConfig(forceRefresh: true);
-    final streakConfig = await cfg.getStreakConfig(forceRefresh: true);
-    final ranksConfig = await cfg.getRanksConfig(forceRefresh: true);
-    final referralConfig = await cfg.getReferralConfig(forceRefresh: true);
+    final appConfig = await cfg.getGeneralConfig();
+    final streakConfig = await cfg.getStreakConfig();
+    final ranksConfig = await cfg.getRanksConfig();
+    final referralConfig = await cfg.getReferralConfig();
 
     final double baseRate =
         (appConfig[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??

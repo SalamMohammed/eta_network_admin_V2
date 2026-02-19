@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../shared/firestore_constants.dart';
 import '../utils/firestore_helper.dart';
+import 'config_service.dart';
 
 class ReferralEngine {
   static Future<void> processReferralOnSignup({
@@ -31,11 +32,7 @@ class ReferralEngine {
       return;
     }
 
-    final cfgRef = FirestoreHelper.instance
-        .collection(FirestoreConstants.appConfig)
-        .doc(FirestoreAppConfigDocs.referrals);
-    final cfgSnap = await cfgRef.get();
-    final cfg = cfgSnap.data() ?? {};
+    final cfg = await ConfigService().getReferralConfig();
     final double inviteeFixedBonus =
         (cfg[FirestoreReferralConfigFields.inviteeFixedBonusPoints] as num?)
             ?.toDouble() ??

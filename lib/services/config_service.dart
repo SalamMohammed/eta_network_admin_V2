@@ -20,6 +20,10 @@ class ConfigService {
   static const String _prefsKeyRanksTs = 'app_config_ranks_ts';
   static const String _prefsKeyReferrals = 'app_config_referrals_cache';
   static const String _prefsKeyReferralsTs = 'app_config_referrals_ts';
+  static const String _prefsKeyUserCoin = 'app_config_user_coin_cache';
+  static const String _prefsKeyUserCoinTs = 'app_config_user_coin_ts';
+  static const String _prefsKeyLegal = 'app_config_legal_cache';
+  static const String _prefsKeyLegalTs = 'app_config_legal_ts';
   static const Duration _cacheDuration = Duration(hours: 24);
 
   final Map<String, Map<String, dynamic>> _memoryCache = {};
@@ -82,6 +86,38 @@ class ConfigService {
       'ConfigService: referrals config missing in master; referral bonuses disabled',
     );
     return {};
+  }
+
+  Future<Map<String, dynamic>> getUserCoinConfig({
+    bool forceRefresh = false,
+  }) async {
+    final master = await _getMasterConfig(forceRefresh: forceRefresh);
+    final section = master[FirestoreAppConfigDocs.userCoin];
+    if (section is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(section);
+    }
+    return _getConfig(
+      FirestoreAppConfigDocs.userCoin,
+      _prefsKeyUserCoin,
+      _prefsKeyUserCoinTs,
+      forceRefresh: forceRefresh,
+    );
+  }
+
+  Future<Map<String, dynamic>> getLegalConfig({
+    bool forceRefresh = false,
+  }) async {
+    final master = await _getMasterConfig(forceRefresh: forceRefresh);
+    final section = master[FirestoreAppConfigDocs.legal];
+    if (section is Map<String, dynamic>) {
+      return Map<String, dynamic>.from(section);
+    }
+    return _getConfig(
+      FirestoreAppConfigDocs.legal,
+      _prefsKeyLegal,
+      _prefsKeyLegalTs,
+      forceRefresh: forceRefresh,
+    );
   }
 
   Future<Map<String, dynamic>> getAdsConfig({bool forceRefresh = false}) async {
