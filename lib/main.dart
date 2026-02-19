@@ -8,6 +8,7 @@ import 'services/notification_service.dart';
 import 'services/ads_service.dart';
 import 'services/background_service.dart';
 import 'shared/constants.dart';
+import 'services/coin_service.dart';
 
 // This is the main entry point of the application.
 // It initializes all necessary services and starts the app.
@@ -40,10 +41,10 @@ class MyApp extends StatelessWidget {
     // Sets up the Material Design structure.
     return MaterialApp(
       title: 'ETA Network',
-      
+
       // Apply the custom dark theme defined in AppTheme.
       theme: AppTheme.dark,
-      
+
       // The starting screen is the AuthGate, which decides if the user is logged in or not.
       home: const AuthGate(),
     );
@@ -55,15 +56,16 @@ Future<void> _initBackgroundServices() async {
   try {
     // Initialize the notification service to handle push notifications.
     await NotificationService().init();
-    
+
     // Ensure the device token is registered for notifications.
     await NotificationService().ensureTokenRegistered();
-    
+
     // Initialize the advertising service.
     await AdsService().init();
-    
+
     // Initialize other general background tasks.
     await BackgroundService.init();
+    CoinService.init();
   } catch (_) {
     // If any service fails to start, catch the error silently so the app doesn't crash.
   }

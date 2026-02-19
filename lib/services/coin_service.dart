@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/firestore_helper.dart';
 import '../shared/firestore_constants.dart';
@@ -12,6 +13,7 @@ import '../shared/constants.dart';
 import 'sql_api_service.dart';
 import 'config_service.dart';
 import 'offline_mining_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class CoinService with WidgetsBindingObserver {
   // MASTER SWITCH: Set to true to use SQL, false for Firestore
@@ -51,83 +53,104 @@ class CoinService with WidgetsBindingObserver {
       for (final callback in _resumeCallbacks) {
         callback();
       }
+      if (!useSqlBackend) {
+        unawaited(_CoinMiningSessionManager.onAppResumed());
+      }
     }
   }
 
   static void init() {
-    // Just to ensure singleton is created and observer registered
     _instance;
+    if (!useSqlBackend) {
+      unawaited(_CoinMiningSessionManager.initForCurrentUser());
+    }
   }
 
   static Future<Map<String, dynamic>?> getUserCoin(String uid) async {
-    /* if (useSqlBackend) {
-      return SqlApiService.getUserCoin(uid);
-    } */
     final snap = await FirestoreHelper.instance
-        .collection(FirestoreConstants.userCoins)
+        .collection(FirestoreConstants.users)
         .doc(uid)
         .get();
-    return snap.data();
+    final data = snap.data() ?? {};
+    final coins = _extractWalletCoins(data);
+    final coin = coins[uid];
+    if (coin is Map<String, dynamic>) {
+      final m = Map<String, dynamic>.from(coin);
+
+      m[FirestoreUserCoinMiningFields.ownerId] =
+          m[FirestoreUserCoinMiningFields.ownerId] ?? uid;
+
+      m[FirestoreUserCoinFields.ownerId] =
+          m[FirestoreUserCoinFields.ownerId] ??
+          m[FirestoreUserCoinMiningFields.ownerId];
+
+      m[FirestoreUserCoinFields.name] =
+          m[FirestoreUserCoinFields.name] ??
+          m[FirestoreUserCoinMiningFields.name];
+      m[FirestoreUserCoinFields.symbol] =
+          m[FirestoreUserCoinFields.symbol] ??
+          m[FirestoreUserCoinMiningFields.symbol];
+      m[FirestoreUserCoinFields.imageUrl] =
+          m[FirestoreUserCoinFields.imageUrl] ??
+          m[FirestoreUserCoinMiningFields.imageUrl];
+      m[FirestoreUserCoinFields.description] =
+          m[FirestoreUserCoinFields.description] ??
+          m[FirestoreUserCoinMiningFields.description];
+      m[FirestoreUserCoinFields.socialLinks] =
+          m[FirestoreUserCoinFields.socialLinks] ??
+          m[FirestoreUserCoinMiningFields.socialLinks];
+
+      m[FirestoreUserCoinFields.baseRatePerHour] =
+          m[FirestoreUserCoinFields.baseRatePerHour] ??
+          m[FirestoreUserCoinMiningFields.hourlyRate];
+
+      return m;
+    }
+    return null;
   }
 
   static Stream<Map<String, dynamic>?> watchUserCoin(String uid) {
-    /* if (useSqlBackend) {
-      // Re-implementing using StreamController for full control
-      final controller = StreamController<Map<String, dynamic>?>();
-      Timer? timer;
-
-      void fetch() async {
-        if (controller.isClosed) return;
-        final data = await SqlApiService.getUserCoin(uid);
-        if (!controller.isClosed) controller.add(data);
-      }
-
-      void startTimer() {
-        timer?.cancel();
-        timer = Timer.periodic(const Duration(seconds: 15), (_) {
-          if (_isPaused) return;
-          fetch();
-        });
-      }
-
-      void onPause() {
-        timer?.cancel();
-        timer = null;
-      }
-
-      void onResume() {
-        if (!controller.isClosed) {
-          fetch();
-          startTimer();
-        }
-      }
-
-      void forceFetch() {
-        fetch();
-      }
-
-      controller.onListen = () {
-        fetch();
-        startTimer();
-        _resumeCallbacks.add(onResume);
-        _pauseCallbacks.add(onPause);
-        _refreshMyCoinsCallbacks.add(forceFetch);
-      };
-
-      controller.onCancel = () {
-        timer?.cancel();
-        _resumeCallbacks.remove(onResume);
-        _pauseCallbacks.remove(onPause);
-        _refreshMyCoinsCallbacks.remove(forceFetch);
-      };
-
-      return controller.stream.asBroadcastStream();
-    } */
     return FirestoreHelper.instance
-        .collection(FirestoreConstants.userCoins)
+        .collection(FirestoreConstants.users)
         .doc(uid)
         .snapshots()
-        .map((doc) => doc.data());
+        .map((doc) {
+          final data = doc.data() ?? {};
+          final coins = _extractWalletCoins(data);
+          final coin = coins[uid];
+          if (coin is Map<String, dynamic>) {
+            final m = Map<String, dynamic>.from(coin);
+            m[FirestoreUserCoinMiningFields.ownerId] =
+                m[FirestoreUserCoinMiningFields.ownerId] ?? uid;
+
+            m[FirestoreUserCoinFields.ownerId] =
+                m[FirestoreUserCoinFields.ownerId] ??
+                m[FirestoreUserCoinMiningFields.ownerId];
+
+            m[FirestoreUserCoinFields.name] =
+                m[FirestoreUserCoinFields.name] ??
+                m[FirestoreUserCoinMiningFields.name];
+            m[FirestoreUserCoinFields.symbol] =
+                m[FirestoreUserCoinFields.symbol] ??
+                m[FirestoreUserCoinMiningFields.symbol];
+            m[FirestoreUserCoinFields.imageUrl] =
+                m[FirestoreUserCoinFields.imageUrl] ??
+                m[FirestoreUserCoinMiningFields.imageUrl];
+            m[FirestoreUserCoinFields.description] =
+                m[FirestoreUserCoinFields.description] ??
+                m[FirestoreUserCoinMiningFields.description];
+            m[FirestoreUserCoinFields.socialLinks] =
+                m[FirestoreUserCoinFields.socialLinks] ??
+                m[FirestoreUserCoinMiningFields.socialLinks];
+
+            m[FirestoreUserCoinFields.baseRatePerHour] =
+                m[FirestoreUserCoinFields.baseRatePerHour] ??
+                m[FirestoreUserCoinMiningFields.hourlyRate];
+
+            return m;
+          }
+          return null;
+        });
   }
 
   // Cache for SQL backend
@@ -394,6 +417,49 @@ class CoinService with WidgetsBindingObserver {
       debugPrint('[CoinService] Firestore set failed | error=$e');
       rethrow;
     }
+
+    final userRefForWallet = FirestoreHelper.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid);
+    final userSnap = await userRefForWallet.get();
+    final userData = userSnap.data() ?? {};
+    final coins = _extractWalletCoins(userData);
+    final existingCoin =
+        (coins[uid] as Map<String, dynamic>?) ?? <String, dynamic>{};
+
+    final mergedCoin = Map<String, dynamic>.from(existingCoin);
+
+    final double baseRate =
+        (coin[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
+        0.0;
+    final name = (coin[FirestoreUserCoinFields.name] as String?) ?? '';
+    final symbol = (coin[FirestoreUserCoinFields.symbol] as String?) ?? '';
+    final imageUrl = (coin[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
+    final description =
+        (coin[FirestoreUserCoinFields.description] as String?) ?? '';
+    final links =
+        (coin[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ??
+        const [];
+
+    mergedCoin[FirestoreUserCoinMiningFields.ownerId] = uid;
+    mergedCoin[FirestoreUserCoinMiningFields.name] = name;
+    mergedCoin[FirestoreUserCoinMiningFields.symbol] = symbol;
+    mergedCoin[FirestoreUserCoinMiningFields.imageUrl] = imageUrl;
+    mergedCoin[FirestoreUserCoinMiningFields.description] = description;
+    mergedCoin[FirestoreUserCoinMiningFields.socialLinks] = links;
+    mergedCoin[FirestoreUserCoinMiningFields.hourlyRate] = baseRate;
+
+    final isActive = (coin[FirestoreUserCoinFields.isActive] as bool?) ?? true;
+    mergedCoin[FirestoreUserCoinFields.isActive] = isActive;
+
+    if (mergedCoin[FirestoreUserCoinMiningFields.totalPoints] == null) {
+      mergedCoin[FirestoreUserCoinMiningFields.totalPoints] = 0.0;
+    }
+
+    await userRefForWallet.set({
+      '${FirestoreUserFields.wallet}.coins.$uid': mergedCoin,
+      FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   static Future<void> addCoinForUser(String coinOwnerId) async {
@@ -570,11 +636,9 @@ class CoinService with WidgetsBindingObserver {
       return updatedRecord;
     } */
 
-    // Firestore Optimization: Use cached data if available to avoid reads
     Map<String, dynamic> coin = {};
     if (cachedCoinData != null &&
         cachedCoinData[FirestoreUserCoinMiningFields.name] != null) {
-      // Use cached data for coin details
       coin = cachedCoinData;
     } else {
       final coinSnap = await FirestoreHelper.instance
@@ -582,15 +646,35 @@ class CoinService with WidgetsBindingObserver {
           .doc(coinOwnerId)
           .get();
       coin = coinSnap.data() ?? {};
+
+      if (coin.isEmpty) {
+        final creatorSnap = await FirestoreHelper.instance
+            .collection(FirestoreConstants.users)
+            .doc(coinOwnerId)
+            .get();
+        final creatorData = creatorSnap.data() ?? {};
+        final creatorWallet =
+            (creatorData[FirestoreUserFields.wallet]
+                as Map<String, dynamic>?) ??
+            {};
+        final creatorCoins =
+            (creatorWallet['coins'] as Map<String, dynamic>?) ?? {};
+        final creatorCoin = creatorCoins[coinOwnerId];
+        if (creatorCoin is Map<String, dynamic>) {
+          coin = Map<String, dynamic>.from(creatorCoin);
+        }
+      }
     }
 
-    // Use hourlyRate from cached data if available, otherwise baseRatePerHour from global coin
     final double rate = (cachedCoinData != null)
         ? (cachedCoinData[FirestoreUserCoinMiningFields.hourlyRate] as num?)
                   ?.toDouble() ??
               0.0
-        : (coin[FirestoreUserCoinFields.baseRatePerHour] as num?)?.toDouble() ??
-              0.0;
+        : ((coin[FirestoreUserCoinFields.baseRatePerHour] as num?)
+                  ?.toDouble() ??
+              (coin[FirestoreUserCoinMiningFields.hourlyRate] as num?)
+                  ?.toDouble() ??
+              0.0);
 
     final name =
         (coin[FirestoreUserCoinFields.name] as String?) ??
@@ -635,45 +719,14 @@ class CoinService with WidgetsBindingObserver {
       return data;
     }
 
-    // Calculate pending points from previous session if it finished
-    double addedPoints = 0.0;
-    if (lastEnd != null) {
-      final lastSynced =
-          data[FirestoreUserCoinMiningFields.lastSyncedAt] as Timestamp?;
-      if (lastSynced != null) {
-        final oldEnd = lastEnd.toDate();
-        final oldSynced = lastSynced.toDate();
-        // Check if we have un-synced time at the end
-        if (oldSynced.isBefore(oldEnd)) {
-          final durationSeconds = oldEnd.difference(oldSynced).inSeconds;
-          if (durationSeconds > 0) {
-            final oldRate =
-                (data[FirestoreUserCoinMiningFields.hourlyRate] as num?)
-                    ?.toDouble() ??
-                0.0;
-            addedPoints = (durationSeconds / 3600.0) * oldRate;
-          }
-        }
-      }
-    }
+    final Map<String, dynamic> newState = Map<String, dynamic>.from(data);
+    newState[FirestoreUserCoinMiningFields.lastMiningStart] =
+        Timestamp.fromDate(now);
+    newState[FirestoreUserCoinMiningFields.lastMiningEnd] = end;
+    newState[FirestoreUserCoinMiningFields.lastSyncedAt] = Timestamp.fromDate(
+      now,
+    );
 
-    final Map<String, dynamic> newState = {
-      FirestoreUserCoinMiningFields.ownerId: coinOwnerId,
-      FirestoreUserCoinMiningFields.name: name,
-      FirestoreUserCoinMiningFields.symbol: symbol,
-      FirestoreUserCoinMiningFields.imageUrl: imageUrl,
-      FirestoreUserCoinMiningFields.description: description,
-      FirestoreUserCoinMiningFields.socialLinks: links,
-      FirestoreUserCoinMiningFields.hourlyRate: rate,
-      FirestoreUserCoinMiningFields.lastMiningStart: Timestamp.fromDate(now),
-      FirestoreUserCoinMiningFields.lastMiningEnd: end,
-      FirestoreUserCoinMiningFields.lastSyncedAt: Timestamp.fromDate(now),
-      FirestoreUserCoinMiningFields.totalPoints:
-          ((data[FirestoreUserCoinMiningFields.totalPoints] as num?)
-                  ?.toDouble() ??
-              0.0) +
-          addedPoints,
-    };
     await userRef.set({
       '${FirestoreUserFields.wallet}.coins.$coinOwnerId': newState,
       FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
@@ -681,6 +734,11 @@ class CoinService with WidgetsBindingObserver {
 
     // OPTIMIZATION: Merge local data instead of re-fetching
     await OfflineMiningEngine(FirestoreHelper.instance).reloadFromRemote(uid);
+    if (!useSqlBackend) {
+      unawaited(
+        _CoinMiningSessionManager.registerFromState(uid, coinOwnerId, newState),
+      );
+    }
     return newState;
   }
 
@@ -731,5 +789,277 @@ class CoinService with WidgetsBindingObserver {
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     });
+  }
+
+  static Future<void> _syncAllCoinEarningsFromWallet() async {
+    return;
+  }
+}
+
+class _CoinMiningSession {
+  final String coinOwnerId;
+  final DateTime start;
+  final DateTime end;
+  final DateTime lastSyncedAt;
+  final double hourlyRate;
+  final double baseTotalPoints;
+
+  _CoinMiningSession({
+    required this.coinOwnerId,
+    required this.start,
+    required this.end,
+    required this.lastSyncedAt,
+    required this.hourlyRate,
+    required this.baseTotalPoints,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'coinOwnerId': coinOwnerId,
+      'startMs': start.millisecondsSinceEpoch,
+      'endMs': end.millisecondsSinceEpoch,
+      'lastSyncedMs': lastSyncedAt.millisecondsSinceEpoch,
+      'hourlyRate': hourlyRate,
+      'baseTotalPoints': baseTotalPoints,
+    };
+  }
+
+  static _CoinMiningSession? fromJson(Map<String, dynamic> json) {
+    final coinOwnerId = json['coinOwnerId'] as String?;
+    final int? startMs = json['startMs'] as int?;
+    final int? endMs = json['endMs'] as int?;
+    final int? lastSyncedMs = json['lastSyncedMs'] as int?;
+    final double hourlyRate = (json['hourlyRate'] as num?)?.toDouble() ?? 0.0;
+    final double baseTotalPoints =
+        (json['baseTotalPoints'] as num?)?.toDouble() ?? 0.0;
+    if (coinOwnerId == null ||
+        startMs == null ||
+        endMs == null ||
+        lastSyncedMs == null ||
+        hourlyRate <= 0.0) {
+      return null;
+    }
+    return _CoinMiningSession(
+      coinOwnerId: coinOwnerId,
+      start: DateTime.fromMillisecondsSinceEpoch(startMs),
+      end: DateTime.fromMillisecondsSinceEpoch(endMs),
+      lastSyncedAt: DateTime.fromMillisecondsSinceEpoch(lastSyncedMs),
+      hourlyRate: hourlyRate,
+      baseTotalPoints: baseTotalPoints,
+    );
+  }
+}
+
+class _CoinMiningSessionManager {
+  static const _keyPrefix = 'coin_mining_sessions_v1_';
+  static SharedPreferences? _prefs;
+  static Map<String, _CoinMiningSession> _sessions = {};
+  static String? _loadedUid;
+  static Timer? _timer;
+
+  static Future<SharedPreferences> _ensurePrefs() async {
+    _prefs ??= await SharedPreferences.getInstance();
+    return _prefs!;
+  }
+
+  static Future<void> _load(String uid) async {
+    if (_loadedUid == uid && _sessions.isNotEmpty) {
+      return;
+    }
+    final prefs = await _ensurePrefs();
+    final raw = prefs.getString('$_keyPrefix$uid');
+    if (raw == null || raw.isEmpty) {
+      _sessions = {};
+      _loadedUid = uid;
+      return;
+    }
+    try {
+      final decoded = json.decode(raw) as Map<String, dynamic>;
+      final Map<String, _CoinMiningSession> map = {};
+      decoded.forEach((key, value) {
+        if (value is Map<String, dynamic>) {
+          final session = _CoinMiningSession.fromJson(value);
+          if (session != null) {
+            map[key] = session;
+          }
+        }
+      });
+      _sessions = map;
+    } catch (_) {
+      _sessions = {};
+    }
+    _loadedUid = uid;
+  }
+
+  static Future<void> _save(String uid) async {
+    final prefs = await _ensurePrefs();
+    if (_sessions.isEmpty) {
+      await prefs.remove('$_keyPrefix$uid');
+      return;
+    }
+    final Map<String, dynamic> out = {};
+    _sessions.forEach((key, value) {
+      out[key] = value.toJson();
+    });
+    await prefs.setString('$_keyPrefix$uid', json.encode(out));
+  }
+
+  static Future<void> initForCurrentUser() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await _load(uid);
+    await _processFinished(uid, DateTime.now());
+    _scheduleNext(uid);
+  }
+
+  static Future<void> registerFromState(
+    String uid,
+    String coinOwnerId,
+    Map<String, dynamic> state,
+  ) async {
+    final startTs =
+        state[FirestoreUserCoinMiningFields.lastMiningStart] as Timestamp?;
+    final endTs =
+        state[FirestoreUserCoinMiningFields.lastMiningEnd] as Timestamp?;
+    final syncedTs =
+        state[FirestoreUserCoinMiningFields.lastSyncedAt] as Timestamp?;
+    final double hourlyRate =
+        (state[FirestoreUserCoinMiningFields.hourlyRate] as num?)?.toDouble() ??
+        0.0;
+    final double baseTotal =
+        (state[FirestoreUserCoinMiningFields.totalPoints] as num?)
+            ?.toDouble() ??
+        0.0;
+    if (startTs == null ||
+        endTs == null ||
+        syncedTs == null ||
+        hourlyRate <= 0.0) {
+      return;
+    }
+    await _load(uid);
+    _sessions[coinOwnerId] = _CoinMiningSession(
+      coinOwnerId: coinOwnerId,
+      start: startTs.toDate(),
+      end: endTs.toDate(),
+      lastSyncedAt: syncedTs.toDate(),
+      hourlyRate: hourlyRate,
+      baseTotalPoints: baseTotal,
+    );
+    await _save(uid);
+    _scheduleNext(uid);
+  }
+
+  static Future<void> onAppResumed() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    await _load(uid);
+    await _processFinished(uid, DateTime.now());
+    _scheduleNext(uid);
+  }
+
+  static void _scheduleNext(String uid) {
+    _timer?.cancel();
+    if (_sessions.isEmpty) {
+      return;
+    }
+    final now = DateTime.now();
+    DateTime? earliestEnd;
+    for (final session in _sessions.values) {
+      if (session.end.isAfter(now)) {
+        if (earliestEnd == null || session.end.isBefore(earliestEnd)) {
+          earliestEnd = session.end;
+        }
+      }
+    }
+    if (earliestEnd == null) {
+      unawaited(_processFinished(uid, now));
+      return;
+    }
+    final delay = earliestEnd.difference(now);
+    _timer = Timer(delay.isNegative ? Duration.zero : delay, () async {
+      await _processFinished(uid, DateTime.now());
+      _scheduleNext(uid);
+    });
+  }
+
+  static Future<void> _processFinished(String uid, DateTime now) async {
+    if (_sessions.isEmpty) return;
+    final finished = <String, _CoinMiningSession>{};
+    _sessions.forEach((key, value) {
+      if (!now.isBefore(value.end)) {
+        finished[key] = value;
+      }
+    });
+    if (finished.isEmpty) return;
+
+    final Map<String, double> deltas = {};
+    finished.forEach((key, session) {
+      final end = session.end;
+      if (!end.isAfter(session.lastSyncedAt)) {
+        return;
+      }
+      final durationSeconds = end
+          .difference(session.lastSyncedAt)
+          .inSeconds
+          .toDouble();
+      if (durationSeconds <= 0) {
+        return;
+      }
+      final delta = (durationSeconds / 3600.0) * session.hourlyRate;
+      if (delta <= 0.0) {
+        return;
+      }
+      deltas[session.coinOwnerId] =
+          (deltas[session.coinOwnerId] ?? 0.0) + delta;
+    });
+
+    if (deltas.isEmpty) {
+      finished.keys.forEach(_sessions.remove);
+      await _save(uid);
+      return;
+    }
+
+    final userRef = FirestoreHelper.instance
+        .collection(FirestoreConstants.users)
+        .doc(uid);
+
+    await FirestoreHelper.instance.runTransaction((transaction) async {
+      final snapshot = await transaction.get(userRef);
+      final data = snapshot.data() ?? {};
+      final wallet =
+          (data[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
+      final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+
+      final Map<String, dynamic> updates = {};
+
+      deltas.forEach((ownerId, delta) {
+        final existingCoin =
+            (coins[ownerId] as Map<String, dynamic>?) ?? <String, dynamic>{};
+        final currentTotal =
+            (existingCoin[FirestoreUserCoinMiningFields.totalPoints] as num?)
+                ?.toDouble() ??
+            0.0;
+        final session = finished[ownerId];
+        final newTotal = currentTotal + delta;
+        existingCoin[FirestoreUserCoinMiningFields.totalPoints] = newTotal;
+        if (session != null) {
+          existingCoin[FirestoreUserCoinMiningFields.lastSyncedAt] =
+              Timestamp.fromDate(session.end);
+        }
+
+        updates['${FirestoreUserFields.wallet}.coins.$ownerId'] = existingCoin;
+      });
+
+      if (updates.isEmpty) {
+        return;
+      }
+
+      updates[FirestoreUserFields.updatedAt] = FieldValue.serverTimestamp();
+
+      transaction.set(userRef, updates, SetOptions(merge: true));
+    });
+
+    finished.keys.forEach(_sessions.remove);
+    await _save(uid);
   }
 }

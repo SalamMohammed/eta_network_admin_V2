@@ -2082,23 +2082,10 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
       final now = DateTime.now();
       if (!now.isBefore(end)) {
         _timer?.cancel();
-        _timer = null; // Ensure null is set
-        // Ensure final value is set correctly when timer ends naturally
+        _timer = null;
         final totalSessionSec = end.difference(start).inSeconds.toDouble();
         final fullEarned = totalSessionSec * (_rate / 3600.0);
         _display = _totalBase + fullEarned;
-
-        // Trigger sync to ensure points are added to DB at the exact end time
-        try {
-          await CoinService.syncCoinEarnings(
-            coinOwnerId: widget.coinOwnerId,
-            amount: fullEarned,
-            lastSyncedAt: end,
-          );
-        } catch (e) {
-          debugPrint('Auto-sync error: $e');
-        }
-
         if (mounted) setState(() {});
         return;
       }

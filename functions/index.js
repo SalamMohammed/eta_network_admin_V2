@@ -428,6 +428,38 @@ async function upsertSharedUserCoinPage(uid, coinData) {
   }
 }
 
+async function deleteSharedUserCoin(uid) {
+  const metaRef = db.collection(SHARED_COINS_COLLECTION).doc(SHARED_COINS_META_DOC);
+  const metaSnap = await metaRef.get();
+  if (!metaSnap.exists) {
+    return;
+  }
+  const metaData = metaSnap.data() || {};
+  const v = metaData[SHARED_COINS_META_FIELD_LAST_PAGE];
+  let lastPageIndex = 1;
+  if (typeof v === "number" && Number.isInteger(v) && v > 0) {
+    lastPageIndex = v;
+  }
+
+  for (let pageIndex = 1; pageIndex <= lastPageIndex; pageIndex++) {
+    const pageId = String(pageIndex).padStart(5, "0");
+    const pageRef = db.collection(SHARED_COINS_COLLECTION).doc(pageId);
+    const pageSnap = await pageRef.get();
+    if (!pageSnap.exists) continue;
+    const pageData = pageSnap.data() || {};
+    const coinsMap = pageData[SHARED_COINS_FIELD_COINS] || {};
+    if (!Object.prototype.hasOwnProperty.call(coinsMap, uid)) continue;
+
+    delete coinsMap[uid];
+    const newPageData = {
+      [SHARED_COINS_FIELD_PAGE_INDEX]: pageIndex,
+      [SHARED_COINS_FIELD_COINS]: coinsMap,
+      [SHARED_COINS_FIELD_COUNT]: Object.keys(coinsMap).length,
+    };
+    await pageRef.set(newPageData, { merge: false });
+  }
+}
+
 exports.onUserCoinWrite = onDocumentWritten(
   {
     document: `${USERS_COLLECTION}/{uid}/${USER_COINS_SUBCOLLECTION}/${USER_COINS_SUBCOLLECTION}`,
@@ -436,11 +468,17 @@ exports.onUserCoinWrite = onDocumentWritten(
   async (event) => {
     const uid = event.params.uid;
     const after = event.data.after;
-    if (!after || !after.exists) {
+    const before = event.data.before;
+
+    if (after && after.exists) {
+      const data = after.data() || {};
+      await upsertSharedUserCoinPage(uid, data);
       return;
     }
-    const data = after.data() || {};
-    await upsertSharedUserCoinPage(uid, data);
+
+    if (before && before.exists && (!after || !after.exists)) {
+      await deleteSharedUserCoin(uid);
+    }
   },
 );
 
