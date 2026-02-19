@@ -76,7 +76,7 @@ class OfflineMiningCache {
     Map<String, dynamic> userDoc,
   ) async {
     await init();
-    final dataJson = json.encode(userDoc);
+    final dataJson = json.encode(_toJsonSafe(userDoc));
     final checksum = _checksum(dataJson);
     final envelope = <String, dynamic>{
       'version': _version,
@@ -90,6 +90,27 @@ class OfflineMiningCache {
     if (!ok) {
       throw Exception('Failed to persist offline mining cache for $uid');
     }
+  }
+
+  static Map<String, dynamic> _toJsonSafe(Map<String, dynamic> data) {
+    final Map<String, dynamic> out = {};
+    data.forEach((key, value) {
+      out[key] = _toJsonSafeValue(value);
+    });
+    return out;
+  }
+
+  static dynamic _toJsonSafeValue(dynamic value) {
+    if (value is Timestamp) {
+      return value.millisecondsSinceEpoch;
+    }
+    if (value is Map) {
+      return _toJsonSafe(Map<String, dynamic>.from(value as Map));
+    }
+    if (value is List) {
+      return value.map(_toJsonSafeValue).toList();
+    }
+    return value;
   }
 
   static Future<void> clearUser(String uid) async {
@@ -1107,9 +1128,13 @@ class OfflineMiningEngine {
 
     if (lastStartRaw is Timestamp) {
       lastStart = lastStartRaw.toDate();
+    } else if (lastStartRaw is int) {
+      lastStart = DateTime.fromMillisecondsSinceEpoch(lastStartRaw);
     }
     if (lastEndRaw is Timestamp) {
       lastEnd = lastEndRaw.toDate();
+    } else if (lastEndRaw is int) {
+      lastEnd = DateTime.fromMillisecondsSinceEpoch(lastEndRaw);
     }
     if (hourlyRateRaw is num) {
       hourlyRate = hourlyRateRaw.toDouble();
@@ -1162,9 +1187,13 @@ class OfflineMiningEngine {
 
     if (startRaw is Timestamp) {
       start = startRaw.toDate();
+    } else if (startRaw is int) {
+      start = DateTime.fromMillisecondsSinceEpoch(startRaw);
     }
     if (endRaw is Timestamp) {
       end = endRaw.toDate();
+    } else if (endRaw is int) {
+      end = DateTime.fromMillisecondsSinceEpoch(endRaw);
     }
     if (rateRaw is num) {
       rate = rateRaw.toDouble();

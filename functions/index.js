@@ -70,6 +70,15 @@ const EARNINGS_REALTIME_DOC = 'realtime';
 const USER_COINS_SUBCOLLECTION = 'coins';
 const USER_COINS_GLOBAL_COLLECTION = 'user_coins';
 
+// Shared coins aggregation
+const SHARED_COINS_COLLECTION = 'shared_coins_pages';
+const SHARED_COINS_META_DOC = 'meta';
+const SHARED_COINS_META_FIELD_LAST_PAGE = 'lastPageIndex';
+const SHARED_COINS_FIELD_PAGE_INDEX = 'pageIndex';
+const SHARED_COINS_FIELD_COINS = 'coins';
+const SHARED_COINS_FIELD_COUNT = 'count';
+const SHARED_COINS_MAX_BYTES = 900000;
+
 // User coin mining fields
 const COIN_OWNER_ID = 'ownerId';
 const COIN_NAME = 'name';
@@ -374,6 +383,103 @@ exports.backfillMigrationUnifiedEarnings = onSchedule("0 3 * * *", async () => {
     }
   }
 });
+
+async function upsertSharedUserCoinPage(uid, coinData) {
+  const metaRef = db.collection(SHARED_COINS_COLLECTION).doc(SHARED_COINS_META_DOC);
+  const metaSnap = await metaRef.get();
+  let lastPageIndex = 1;
+  if (metaSnap.exists) {
+    const d = metaSnap.data() || {};
+    const v = d[SHARED_COINS_META_FIELD_LAST_PAGE];
+    if (typeof v === "number" && Number.isInteger(v) && v > 0) {
+      lastPageIndex = v;
+    }
+  }
+
+  let pageIndex = lastPageIndex;
+
+  while (true) {
+    const pageId = String(pageIndex).padStart(5, "0");
+    const pageRef = db.collection(SHARED_COINS_COLLECTION).doc(pageId);
+    const pageSnap = await pageRef.get();
+    const pageData = pageSnap.exists ? (pageSnap.data() || {}) : {};
+    const coinsMap = pageData[SHARED_COINS_FIELD_COINS] || {};
+    coinsMap[uid] = coinData;
+
+    const newPageData = {
+      [SHARED_COINS_FIELD_PAGE_INDEX]: pageIndex,
+      [SHARED_COINS_FIELD_COINS]: coinsMap,
+      [SHARED_COINS_FIELD_COUNT]: Object.keys(coinsMap).length,
+    };
+
+    const approxBytes = Buffer.byteLength(JSON.stringify(newPageData));
+    if (approxBytes <= SHARED_COINS_MAX_BYTES || pageIndex !== lastPageIndex) {
+      await pageRef.set(newPageData, { merge: false });
+      if (pageIndex !== lastPageIndex) {
+        await metaRef.set(
+          { [SHARED_COINS_META_FIELD_LAST_PAGE]: pageIndex },
+          { merge: true },
+        );
+      }
+      break;
+    }
+
+    pageIndex += 1;
+  }
+}
+
+exports.onUserCoinWrite = onDocumentWritten(
+  {
+    document: `${USERS_COLLECTION}/{uid}/${USER_COINS_SUBCOLLECTION}/${USER_COINS_SUBCOLLECTION}`,
+    region: REGION,
+  },
+  async (event) => {
+    const uid = event.params.uid;
+    const after = event.data.after;
+    if (!after || !after.exists) {
+      return;
+    }
+    const data = after.data() || {};
+    await upsertSharedUserCoinPage(uid, data);
+  },
+);
+
+exports.migrateUserCoinsToUserSubdoc = onSchedule(
+  {
+    schedule: "0 2 * * *",
+    region: REGION,
+  },
+  async () => {
+    const pageSize = 200;
+    const snap = await db
+      .collection(USER_COINS_GLOBAL_COLLECTION)
+      .limit(pageSize)
+      .get();
+
+    if (snap.empty) {
+      console.log("migrateUserCoinsToUserSubdoc: no user_coins docs found");
+      return;
+    }
+
+    const batch = db.batch();
+    for (const doc of snap.docs) {
+      const uid = doc.id;
+      const data = doc.data() || {};
+      const userCoinRef = db
+        .collection(USERS_COLLECTION)
+        .doc(uid)
+        .collection(USER_COINS_SUBCOLLECTION)
+        .doc(USER_COINS_SUBCOLLECTION);
+      batch.set(userCoinRef, data, { merge: false });
+    }
+
+    await batch.commit();
+    console.log(
+      "migrateUserCoinsToUserSubdoc: migrated batch",
+      snap.size,
+    );
+  },
+);
 
 exports.migrateReferralStatsAndReferrals = onSchedule("0 4 * * *", async () => {
   const pageSize = 500;

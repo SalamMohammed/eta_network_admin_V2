@@ -818,9 +818,6 @@ class _LiveMinedDisplayState extends State<LiveMinedDisplay>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    if (widget.initialData != null) {
-      _processData(widget.initialData!);
-    }
   }
 
   @override
@@ -862,8 +859,23 @@ class _LiveMinedDisplayState extends State<LiveMinedDisplay>
     return 0.0;
   }
 
+  double _extractTotal(Map<String, dynamic> d) {
+    if (d.containsKey(FirestoreUserCoinMiningFields.totalPoints)) {
+      return _parseDouble(d[FirestoreUserCoinMiningFields.totalPoints]);
+    }
+    final wallet =
+        (d[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
+    final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+    final coin = coins[widget.coinOwnerId];
+    if (coin is Map<String, dynamic>) {
+      final v = coin[FirestoreUserCoinMiningFields.totalPoints];
+      return _parseDouble(v);
+    }
+    return 0.0;
+  }
+
   void _processData(Map<String, dynamic> d) {
-    final total = _parseDouble(d[FirestoreUserCoinMiningFields.totalPoints]);
+    final total = _extractTotal(d);
     final end = _parseTimestamp(d[FirestoreUserCoinMiningFields.lastMiningEnd]);
     final rate = _parseDouble(d[FirestoreUserCoinMiningFields.hourlyRate]);
     final synced = _parseTimestamp(
@@ -961,20 +973,26 @@ class _LiveMinedDisplayState extends State<LiveMinedDisplay>
         stream = Stream.value(null);
       }
     } else {
-      // Always watch the mining record in users/{uid}/coins/{coinOwnerId}
-      // This ensures we get the mining stats (points, active session) even for the owner.
       stream = FirestoreHelper.instance
           .collection(FirestoreConstants.users)
           .doc(widget.uid)
-          .collection(FirestoreUserSubCollections.coins)
-          .doc(widget.coinOwnerId)
           .snapshots()
-          .map((doc) => doc.data());
+          .map((snap) {
+            final data = snap.data() ?? {};
+            final wallet =
+                (data[FirestoreUserFields.wallet] as Map<String, dynamic>?) ??
+                {};
+            final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+            final coin = coins[widget.coinOwnerId];
+            if (coin is Map<String, dynamic>) {
+              return Map<String, dynamic>.from(coin);
+            }
+            return null;
+          });
     }
 
     return StreamBuilder<Map<String, dynamic>?>(
       stream: stream,
-      initialData: widget.initialData,
       builder: (context, snap) {
         final d = snap.data;
         if (d != null) {

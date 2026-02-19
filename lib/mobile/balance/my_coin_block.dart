@@ -1383,7 +1383,7 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
   Timestamp? _start;
   double _totalBase = 0.0;
   Map<String, dynamic>? _localOverrideData;
-  Stream<DocumentSnapshot<Map<String, dynamic>>>? _miningStream;
+  Stream<Map<String, dynamic>?>? _miningStream;
 
   @override
   void initState() {
@@ -1417,9 +1417,18 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
     _miningStream = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(uid)
-        .collection(FirestoreUserSubCollections.coins)
-        .doc(widget.coinOwnerId)
-        .snapshots();
+        .snapshots()
+        .map((snap) {
+          final data = snap.data() ?? {};
+          final wallet =
+              (data[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
+          final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+          final coin = coins[widget.coinOwnerId];
+          if (coin is Map<String, dynamic>) {
+            return Map<String, dynamic>.from(coin);
+          }
+          return null;
+        });
   }
 
   bool _isSameState(Map<String, dynamic>? a, Map<String, dynamic>? b) {
@@ -1479,10 +1488,10 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
       return const SizedBox.shrink();
     }
 
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+    return StreamBuilder<Map<String, dynamic>?>(
       stream: _miningStream,
       builder: (context, snap) {
-        final d = snap.data?.data();
+        final d = snap.data;
         if (d != null) {
           _processData(d);
         }
@@ -1511,8 +1520,23 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
     return 0.0;
   }
 
+  double _extractTotal(Map<String, dynamic> d) {
+    if (d.containsKey(FirestoreUserCoinMiningFields.totalPoints)) {
+      return _parseDouble(d[FirestoreUserCoinMiningFields.totalPoints]);
+    }
+    final wallet =
+        (d[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
+    final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+    final coin = coins[widget.coinOwnerId];
+    if (coin is Map<String, dynamic>) {
+      final v = coin[FirestoreUserCoinMiningFields.totalPoints];
+      return _parseDouble(v);
+    }
+    return 0.0;
+  }
+
   void _processData(Map<String, dynamic> d) {
-    final total = _parseDouble(d[FirestoreUserCoinMiningFields.totalPoints]);
+    final total = _extractTotal(d);
     final end = _parseTimestamp(d[FirestoreUserCoinMiningFields.lastMiningEnd]);
     final rate = _parseDouble(d[FirestoreUserCoinMiningFields.hourlyRate]);
     final synced = _parseTimestamp(

@@ -9,6 +9,7 @@ class FirestoreConstants {
   static const String profiles = 'profiles';
   static const String settings = 'settings';
   static const String userCoins = 'user_coins';
+  static const String sharedCoinsPages = 'shared_coins_pages';
   static const String managers = 'managers';
   static const String earnings = 'earnings';
 }
