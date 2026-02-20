@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/mining_state_service.dart';
+import '../../services/user_service.dart';
 import 'my_coin_block.dart';
 
 class BalancePage extends StatefulWidget {
@@ -20,6 +22,10 @@ class _BalancePageState extends State<BalancePage> {
     super.initState();
     _miningService.addListener(_handleServiceUpdate);
     // MiningService is auto-initialized by Auth listener
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      unawaited(UserService().getUser(uid));
+    }
   }
 
   @override

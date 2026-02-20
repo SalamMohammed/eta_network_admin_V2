@@ -217,92 +217,114 @@ class CoinService with WidgetsBindingObserver {
     }).toList();
   }
 
+  static Future<List<Map<String, dynamic>>> _loadLiveCoinsRaw() async {
+    final now = DateTime.now();
+    if (_cachedLiveCoins != null &&
+        _liveCoinsFetchTime != null &&
+        now.difference(_liveCoinsFetchTime!) < const Duration(hours: 1)) {
+      return _cachedLiveCoins!;
+    }
+
+    final snap = await FirestoreHelper.instance
+        .collection(FirestoreConstants.sharedCoinsPages)
+        .get();
+
+    final List<Map<String, dynamic>> docs = [];
+
+    for (final doc in snap.docs) {
+      final data = doc.data();
+      final coins =
+          (data['coins'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+      coins.forEach((ownerId, value) {
+        if (value is Map<String, dynamic>) {
+          final m = Map<String, dynamic>.from(value);
+          m[FirestoreUserCoinFields.ownerId] =
+              m[FirestoreUserCoinFields.ownerId] ?? ownerId;
+          docs.add(m);
+        }
+      });
+    }
+
+    docs.removeWhere((d) {
+      final v = d[FirestoreUserCoinFields.isActive];
+      if (v is bool) return !v;
+      if (v is int) return v == 0;
+      if (v is String) {
+        final s = v.toLowerCase();
+        return s == '0' || s == 'false';
+      }
+      return false;
+    });
+
+    _cachedLiveCoins = docs;
+    _liveCoinsFetchTime = DateTime.now();
+
+    return docs;
+  }
+
   static Stream<List<Map<String, dynamic>>> watchLiveCoins({
     String sort = 'popular',
   }) {
-    return FirestoreHelper.instance
-        .collection(FirestoreConstants.sharedCoinsPages)
-        .snapshots()
-        .map((snap) {
-          final List<Map<String, dynamic>> docs = [];
+    final controller = StreamController<List<Map<String, dynamic>>>();
 
-          for (final doc in snap.docs) {
-            final data = doc.data();
-            final coins =
-                (data['coins'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-            coins.forEach((ownerId, value) {
-              if (value is Map<String, dynamic>) {
-                final m = Map<String, dynamic>.from(value);
-                m[FirestoreUserCoinFields.ownerId] =
-                    m[FirestoreUserCoinFields.ownerId] ?? ownerId;
-                docs.add(m);
-              }
-            });
-          }
+    () async {
+      try {
+        final raw = await _loadLiveCoinsRaw();
+        final docs = raw.map((e) => Map<String, dynamic>.from(e)).toList();
 
-          docs.removeWhere((d) {
-            final v = d[FirestoreUserCoinFields.isActive];
-            if (v is bool) return !v;
-            if (v is int) return v == 0;
-            if (v is String) {
-              final s = v.toLowerCase();
-              return s == '0' || s == 'false';
-            }
-            return false;
-          });
+        int getMinersCount(Map<String, dynamic> d) {
+          final v = d[FirestoreUserCoinFields.minersCount];
+          if (v is int) return v;
+          if (v is String) return int.tryParse(v) ?? 0;
+          return 0;
+        }
 
-          // Helper to parse minersCount safely
-          int getMinersCount(Map<String, dynamic> d) {
-            final v = d[FirestoreUserCoinFields.minersCount];
-            if (v is int) return v;
-            if (v is String) return int.tryParse(v) ?? 0;
-            return 0;
-          }
+        DateTime getCreatedAt(Map<String, dynamic> d) {
+          final v = d[FirestoreUserCoinFields.createdAt];
+          if (v is Timestamp) return v.toDate();
+          if (v is String) return DateTime.tryParse(v) ?? DateTime(1970);
+          return DateTime(1970);
+        }
 
-          // Helper to parse createdAt safely
-          DateTime getCreatedAt(Map<String, dynamic> d) {
-            final v = d[FirestoreUserCoinFields.createdAt];
-            if (v is Timestamp) return v.toDate();
-            if (v is String) return DateTime.tryParse(v) ?? DateTime(1970);
-            return DateTime(1970);
-          }
+        String getName(Map<String, dynamic> d) {
+          return (d[FirestoreUserCoinFields.name] as String?)?.toLowerCase() ??
+              '';
+        }
 
-          // Helper to get name
-          String getName(Map<String, dynamic> d) {
-            return (d[FirestoreUserCoinFields.name] as String?)
-                    ?.toLowerCase() ??
-                '';
-          }
+        switch (sort) {
+          case 'popular':
+            docs.sort((a, b) => getMinersCount(b).compareTo(getMinersCount(a)));
+            break;
+          case 'name_az':
+            docs.sort((a, b) => getName(a).compareTo(getName(b)));
+            break;
+          case 'name_za':
+            docs.sort((a, b) => getName(b).compareTo(getName(a)));
+            break;
+          case 'old_new':
+            docs.sort((a, b) => getCreatedAt(a).compareTo(getCreatedAt(b)));
+            break;
+          case 'new_old':
+          case 'newest':
+            docs.sort((a, b) => getCreatedAt(b).compareTo(getCreatedAt(a)));
+            break;
+          default:
+            docs.sort((a, b) => getMinersCount(b).compareTo(getMinersCount(a)));
+        }
 
-          // Sort in memory
-          switch (sort) {
-            case 'popular':
-              docs.sort(
-                (a, b) => getMinersCount(b).compareTo(getMinersCount(a)),
-              );
-              break;
-            case 'name_az':
-              docs.sort((a, b) => getName(a).compareTo(getName(b)));
-              break;
-            case 'name_za':
-              docs.sort((a, b) => getName(b).compareTo(getName(a)));
-              break;
-            case 'old_new':
-              docs.sort((a, b) => getCreatedAt(a).compareTo(getCreatedAt(b)));
-              break;
-            case 'new_old':
-            case 'newest':
-              docs.sort((a, b) => getCreatedAt(b).compareTo(getCreatedAt(a)));
-              break;
-            default:
-              docs.sort(
-                (a, b) => getMinersCount(b).compareTo(getMinersCount(a)),
-              );
-          }
+        controller.add(docs.take(50).toList());
+      } catch (e, st) {
+        controller.addError(e, st);
+        // ignore: avoid_print
+        print(e);
+        // ignore: avoid_print
+        print(st);
+      } finally {
+        await controller.close();
+      }
+    }();
 
-          // Return top 50 to match typical page size
-          return docs.take(50).toList();
-        });
+    return controller.stream;
   }
 
   static Future<Map<String, dynamic>> getUserCoinConfig() async {

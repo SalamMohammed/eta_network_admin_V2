@@ -86,7 +86,6 @@ class _MobileHomePageState extends State<MobileHomePage>
       // Share the stream to avoid double polling
       final myCoinsStream = CoinService.watchMyCoins(uid);
       _minedCoinsStream = myCoinsStream;
-      _liveCoinsStream = CoinService.watchLiveCoins(sort: _liveSort);
 
       // Cache coins for Manager (Zero-Read Polling)
       _managerCoinsSub = myCoinsStream.listen((coins) {

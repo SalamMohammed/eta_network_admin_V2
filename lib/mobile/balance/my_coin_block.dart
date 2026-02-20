@@ -1376,6 +1376,8 @@ enum CoinMiningControlsVariant { compact, detailed, myCoinCard }
 
 class _CoinMiningControlsState extends State<CoinMiningControls>
     with WidgetsBindingObserver {
+  static final Set<_CoinMiningControlsState> _instances = {};
+
   Timer? _timer;
   double _display = 0.0;
   Timestamp? _end;
@@ -1389,6 +1391,7 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _instances.add(this);
     _initStream();
   }
 
@@ -1473,6 +1476,7 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _instances.remove(this);
     super.dispose();
   }
 
@@ -1596,6 +1600,13 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
         _timer = null;
       }
     }
+  }
+
+  void _applySharedOverride(Map<String, dynamic> data) {
+    if (!mounted) return;
+    setState(() {
+      _localOverrideData = data;
+    });
   }
 
   Widget _buildUI() {
@@ -1730,6 +1741,15 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                               _localOverrideData = res;
                             }
                           });
+                          if (res.isNotEmpty) {
+                            for (final inst in _instances) {
+                              if (identical(inst, this)) continue;
+                              if (inst.widget.coinOwnerId ==
+                                  widget.coinOwnerId) {
+                                inst._applySharedOverride(res);
+                              }
+                            }
+                          }
                         }
                       } catch (e) {
                         if (mounted) {
@@ -2038,6 +2058,12 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                           setState(() {
                             _localOverrideData = result;
                           });
+                          for (final inst in _instances) {
+                            if (identical(inst, this)) continue;
+                            if (inst.widget.coinOwnerId == widget.coinOwnerId) {
+                              inst._applySharedOverride(result);
+                            }
+                          }
                         } else {
                           setState(() {});
                         }
