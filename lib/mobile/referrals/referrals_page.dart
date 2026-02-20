@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../../shared/firestore_constants.dart';
 import '../../shared/constants.dart';
 import '../../utils/firestore_helper.dart';
@@ -260,35 +261,12 @@ class _ReferralsPageState extends State<ReferralsPage> {
       return;
     }
 
-    // PHASE 1: LOAD REFERRAL CODE (CRITICAL)
     try {
       final prefs = await SharedPreferences.getInstance();
       final cacheKey = 'referral_code_$uid';
       String? cachedCode = prefs.getString(cacheKey);
-
-      // Try to load from Firestore (Source of Truth)
-      // We do this separately so that if stats/team queries fail,
-      // the user still gets their code.
-      final userDoc = await FirestoreHelper.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .get();
-
       String? code;
-      if (userDoc.exists) {
-        final data = userDoc.data();
-        if (data != null &&
-            data.containsKey(FirestoreUserFields.referralCode)) {
-          code = data[FirestoreUserFields.referralCode]?.toString();
-        }
-      }
-
-      // Fallback to cache
-      if (code == null || code.isEmpty) {
-        code = cachedCode;
-      }
-
-      // Generate if missing
+      code = cachedCode;
       if (code == null || code.isEmpty) {
         code = _generateReferralCode();
         await FirestoreHelper.instance
@@ -299,7 +277,6 @@ class _ReferralsPageState extends State<ReferralsPage> {
             }, SetOptions(merge: true));
       }
 
-      // Update Cache
       if (code.isNotEmpty) {
         await prefs.setString(cacheKey, code);
       }
@@ -315,8 +292,54 @@ class _ReferralsPageState extends State<ReferralsPage> {
       // If critical failure, we might stop here or try to show cached
     }
 
-    // PHASE 2: LOAD STATS & TEAM (SECONDARY)
     try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'referrals_page_cache_$uid';
+      final cacheTsKey = 'referrals_page_cache_ts_$uid';
+      final ts = prefs.getInt(cacheTsKey);
+      if (ts != null) {
+        final cachedAt = DateTime.fromMillisecondsSinceEpoch(ts);
+        if (DateTime.now().difference(cachedAt) <
+            const Duration(hours: 1)) {
+          final jsonStr = prefs.getString(cacheKey);
+          if (jsonStr != null && jsonStr.isNotEmpty) {
+            final decoded = jsonDecode(jsonStr);
+            if (decoded is Map<String, dynamic>) {
+              final int cachedTotal =
+                  (decoded['totalInvited'] as num?)?.toInt() ?? 0;
+              final int cachedActive =
+                  (decoded['activeInvited'] as num?)?.toInt() ?? 0;
+              final List<_ReferralItem> cachedItems = [];
+              final itemsRaw = decoded['referrals'];
+              if (itemsRaw is List) {
+                for (final item in itemsRaw) {
+                  if (item is Map<String, dynamic>) {
+                    final username = item['username'] as String? ?? 'Unknown';
+                    final status = item['status'] as String? ?? 'Not Started';
+                    final joined = item['joined'] as String? ?? '';
+                    cachedItems.add(
+                      _ReferralItem(
+                        username: username,
+                        status: status,
+                        joined: joined,
+                      ),
+                    );
+                  }
+                }
+              }
+              if (mounted) {
+                setState(() {
+                  _totalInvited = cachedTotal;
+                  _activeInvited = cachedActive;
+                  _referrals = cachedItems;
+                  _loading = false;
+                });
+              }
+              return;
+            }
+          }
+        }
+      }
       final sharedDocFuture = FirestoreHelper.instance
           .collection(FirestoreConstants.referrals)
           .doc(uid)
@@ -439,6 +462,22 @@ class _ReferralsPageState extends State<ReferralsPage> {
           _loading = false;
         });
       }
+      final cacheData = {
+        'totalInvited': totalInvited,
+        'activeInvited': activeInvited,
+        'referrals': finalOrderedItems
+            .map((e) => {
+                  'username': e.username,
+                  'status': e.status,
+                  'joined': e.joined,
+                })
+            .toList(),
+      };
+      await prefs.setString(cacheKey, jsonEncode(cacheData));
+      await prefs.setInt(
+        cacheTsKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
     } catch (e) {
       debugPrint('Error loading referral stats: $e');
       if (mounted) {

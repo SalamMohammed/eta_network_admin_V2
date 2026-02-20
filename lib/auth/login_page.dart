@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../shared/theme/colors.dart';
 import '../shared/firestore_constants.dart';
 import '../utils/firestore_helper.dart';
+import '../services/user_service.dart';
 import 'signup_page.dart';
 import '../entry/selector_page.dart';
 import '../firebase_options.dart';
@@ -65,8 +66,8 @@ class _LoginPageState extends State<LoginPage> {
       'ensureUserDocExists start',
       extra: {'uid': user.uid, 'path': ref.path},
     );
-    final snap = await ref.get();
-    if (snap.exists) {
+    final snap = await UserService().getUser(user.uid, forceRefresh: true);
+    if (snap != null && snap.exists) {
       final data = snap.data() ?? {};
       final existingEmail = data[FirestoreUserFields.email] as String?;
       final existingUpdatedAt =

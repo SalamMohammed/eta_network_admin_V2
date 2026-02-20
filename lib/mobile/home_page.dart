@@ -1605,7 +1605,10 @@ class _MobileHomePageState extends State<MobileHomePage>
                       ? null
                       : () async {
                           try {
-                            await CoinService.addCoinForUser(ownerId);
+                            await CoinService.addCoinForUser(
+                              ownerId,
+                              coinData: data,
+                            );
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(

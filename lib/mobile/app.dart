@@ -21,6 +21,7 @@ class MobileAppScaffold extends StatefulWidget {
 class _MobileAppScaffoldState extends State<MobileAppScaffold> {
   // Tracks which tab is currently selected (0 = Home).
   int index = 0;
+  bool _referralsInitialized = false;
   bool _profileInitialized = false;
 
   @override
@@ -31,7 +32,7 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
     final pages = [
       const MobileHomePage(),
       const BalancePage(),
-      const ReferralsPage(),
+      _referralsInitialized ? const ReferralsPage() : const SizedBox.shrink(),
       _profileInitialized ? const ProfilePage() : const SizedBox.shrink(),
     ];
 
@@ -63,6 +64,9 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
             selectedIndex: index,
             onDestinationSelected: (i) => setState(() {
               index = i;
+              if (i == 2 && !_referralsInitialized) {
+                _referralsInitialized = true;
+              }
               if (i == 3 && !_profileInitialized) {
                 _profileInitialized = true;
               }
