@@ -1,48 +1,136 @@
 {
   "project_info": {
-    "project_number": "919151871318",
-    "project_id": "eta-network-test",
-    "storage_bucket": "eta-network-test.firebasestorage.app"
+    "project_number": "899853959610",
+    "project_id": "eta-network-31964",
+    "storage_bucket": "eta-network-31964.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:919151871318:android:e0ecb8bbdb9517437c82f7",
+        "mobilesdk_app_id": "1:899853959610:android:3e70022c18d0a8dbb31d83",
         "android_client_info": {
-          "package_name": "net.etanetwork.app.test"
+          "package_name": "com.eta.network"
         }
       },
       "oauth_client": [
         {
-          "client_id": "919151871318-66bhmtrhrt1h9eevpmbhsot7l6eilarg.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "net.etanetwork.app.test",
-            "certificate_hash": "e227978c8abf822d7b0f98c41465ba9b3eeac570"
-          }
-        },
-        {
-          "client_id": "919151871318-no402cjovk5gg64ckbd6l5mkk5bq5e26.apps.googleusercontent.com",
+          "client_id": "899853959610-th8ebstq66aeo174cq6r2gv0bcu5pq1b.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyDFK5sqxxo34Tgbm04D7AXw8y6atxg6gRo"
+          "current_key": "AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "919151871318-no402cjovk5gg64ckbd6l5mkk5bq5e26.apps.googleusercontent.com",
+              "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
               "client_type": 3
             },
             {
-              "client_id": "919151871318-72bdhl0mlghv4irsvcte1ddfsp7e271g.apps.googleusercontent.com",
+              "client_id": "899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com",
               "client_type": 2,
               "ios_info": {
-                "bundle_id": "net.etanetwork.app.test"
+                "bundle_id": "net.ApexSoft.EtaNetwork"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:899853959610:android:c96465f4edc69c11b31d83",
+        "android_client_info": {
+          "package_name": "net.etanetwork.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "899853959610-g95l5a8um2o1t3tsschem11l6n39q5nn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "net.etanetwork.app",
+            "certificate_hash": "16ee3d1ba0539a5537dcd72ce0a807d2188f5fc3"
+          }
+        },
+        {
+          "client_id": "899853959610-ka0rhfld4t1r5f553ihbk5igihrpucoc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "net.etanetwork.app",
+            "certificate_hash": "e227978c8abf822d7b0f98c41465ba9b3eeac570"
+          }
+        },
+        {
+          "client_id": "899853959610-sr33e4nqedob81pbv6ajd1cdg6kv9li2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "net.etanetwork.app",
+            "certificate_hash": "60146a66709243b6f655f68faa1f85dfc88c4880"
+          }
+        },
+        {
+          "client_id": "899853959610-th8ebstq66aeo174cq6r2gv0bcu5pq1b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "net.ApexSoft.EtaNetwork"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:899853959610:android:637258b6fecee554b31d83",
+        "android_client_info": {
+          "package_name": "net.etanetwork.app.test"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "899853959610-th8ebstq66aeo174cq6r2gv0bcu5pq1b.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA8Uj54UhqO1DBuEPNWkwLAat12Mp13qZc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "899853959610-o4nsg523ppj8uojs0n6aig5hud80t4sg.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "899853959610-0jfkmj1ao4bgrjj95pqapal9r9qki5l9.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "net.ApexSoft.EtaNetwork"
               }
             }
           ]

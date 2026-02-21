@@ -615,6 +615,26 @@ class _AppConfigPageState extends State<AppConfigPage> {
                       ),
                       child: const Text('Migrate SQL JSON'),
                     ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () async {
+                        await MigrationService.importLegacyFirestoreJson();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Legacy Firestore JSON import finished. Check debug console.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.blueGrey,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Import Legacy Firestore JSON'),
+                    ),
                   ],
                 ),
               ],

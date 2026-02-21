@@ -8,6 +8,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../auth/auth_gate.dart';
 import '../services/auth_verification_service.dart';
 import '../services/mining_state_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // The main scaffold for the logged-in mobile app.
 // It handles navigation between the main tabs (Home, Balance, Referrals, Profile).
@@ -42,15 +43,7 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
       builder: (context, snapshot) {
         final u = snapshot.data;
 
-        /*
-        EMAIL VERIFICATION DIALOG - TEMPORARILY DISABLED
-        Reason: Requested to disable email verification enforcement.
-        Reactivate when: Email verification is required again.
-        
-        // Check if the user exists but hasn't verified their email yet.
         final unverified = u != null && !(u.emailVerified);
-        */
-        // END EMAIL VERIFICATION DIALOG
 
         // The main layout with the content body and bottom navigation bar.
         final scaffold = Scaffold(
@@ -93,26 +86,15 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
           floatingActionButton: null,
         );
 
-        /*
-        EMAIL VERIFICATION DIALOG - TEMPORARILY DISABLED
-        Reason: Requested to disable email verification enforcement.
-        Reactivate when: Email verification is required again.
-
-        // If the user is verified, just show the main app scaffold.
         if (!unverified) return scaffold;
 
-        // If NOT verified, show the app scaffold covered by a blocking overlay.
-        // This forces the user to verify their email before using the app.
         return Stack(
           children: [
-            scaffold, // The app is visible underneath but not interactable.
-            
-            // Dark overlay.
+            scaffold,
             Material(
               color: Colors.black.withValues(alpha: 0.85),
               child: Center(
                 child: Container(
-                  // The verification prompt card.
                   width: MediaQuery.of(context).size.width * 0.85,
                   height: MediaQuery.of(context).size.height * 0.75,
                   decoration: BoxDecoration(
@@ -134,7 +116,6 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Icon.
                       Container(
                         padding: const EdgeInsets.all(20),
                         decoration: BoxDecoration(
@@ -148,8 +129,6 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                         ),
                       ),
                       const SizedBox(height: 32),
-                      
-                      // Title.
                       const Text(
                         'Verify Your Email',
                         style: TextStyle(
@@ -160,8 +139,6 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
-                      
-                      // Explanation text.
                       const Text(
                         'We have sent a verification link to your email address. Please verify your account to unlock all features.',
                         style: TextStyle(
@@ -172,8 +149,6 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                         textAlign: TextAlign.center,
                       ),
                       const Spacer(),
-                      
-                      // Button to resend the verification email.
                       SizedBox(
                         width: double.infinity,
                         height: 50,
@@ -201,8 +176,6 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      
-                      // Button to check if verification is done.
                       SizedBox(
                         width: double.infinity,
                         height: 50,
@@ -216,7 +189,6 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                                   content: Text('Email verified successfully!'),
                                 ),
                               );
-                              // Once verified, the StreamBuilder will rebuild and remove this overlay.
                             } else if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
@@ -240,14 +212,11 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      
-                      // Logout button.
                       SizedBox(
                         width: double.infinity,
                         height: 50,
                         child: OutlinedButton(
                           onPressed: () async {
-                            // Clear mining state and sign out.
                             MiningStateService().reset();
                             try {
                               final prefs = await SharedPreferences.getInstance();
@@ -259,8 +228,6 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                               await GoogleSignIn().signOut();
                             } catch (_) {}
                             await FirebaseAuth.instance.signOut();
-                            
-                            // Navigate back to the login/auth screen.
                             if (context.mounted) {
                               Navigator.pushAndRemoveUntil(
                                 context,
@@ -296,10 +263,6 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
             ),
           ],
         );
-        */
-        // END EMAIL VERIFICATION DIALOG
-
-        return scaffold;
       },
     );
   }

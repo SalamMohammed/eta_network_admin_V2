@@ -2308,11 +2308,6 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     final doc = _findDocById(id);
     if (doc == null) return;
 
-    /*
-    EMAIL VERIFICATION DIALOG - TEMPORARILY DISABLED
-    Reason: Requested to disable email verification enforcement.
-    Reactivate when: Email verification is required again.
-
     final u = FirebaseAuth.instance.currentUser;
     if (u != null && !(u.emailVerified)) {
       final proceed = await showDialog<bool>(
@@ -2346,8 +2341,6 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
       );
       if (proceed != true) return;
     }
-    */
-    // END EMAIL VERIFICATION DIALOG
 
     final data = doc.data();
     final storeProductId =
@@ -2655,11 +2648,6 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     required String targetManagerId,
     required String targetProductId,
   }) async {
-    /*
-    EMAIL VERIFICATION DIALOG - TEMPORARILY DISABLED
-    Reason: Requested to disable email verification enforcement.
-    Reactivate when: Email verification is required again.
-
     final u = FirebaseAuth.instance.currentUser;
     if (u != null && !(u.emailVerified)) {
       final proceed = await showDialog<bool>(
@@ -2693,8 +2681,6 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
       );
       if (proceed != true) return;
     }
-    */
-    // END EMAIL VERIFICATION DIALOG
 
     final offs = offerings;
     if (offs == null) {

@@ -9,7 +9,7 @@ function makeDoc(id, data) {
 }
 
 function run() {
-  // aggregates totals from user and realtime without coins
+  // prefers realtime totalPoints over user totalPoints when present
   {
     const uid = "user1";
     const userData = {
@@ -31,9 +31,9 @@ function run() {
       globalCoinsDocs: [],
     });
 
-    assert.strictEqual(plan.finalTotalPoints, 150);
-    assert.strictEqual(plan.newUserDoc.totalPoints, 150);
-    assert.strictEqual(plan.newRealtimeDoc.totalPoints, 150);
+    assert.strictEqual(plan.finalTotalPoints, 50);
+    assert.strictEqual(plan.newUserDoc.totalPoints, 50);
+    assert.strictEqual(plan.newRealtimeDoc.totalPoints, 50);
 
     const mining = plan.newUserDoc.mining;
     assert.ok(mining);
@@ -59,7 +59,7 @@ function run() {
     assert.strictEqual(plan.newRealtimeDoc.totalPoints, 0);
   }
 
-  // merges coin totals from multiple sources per coin id
+  // merges coin totals from multiple sources per coin id into wallet.coins.uid fields
   {
     const uid = "user3";
     const userData = {};
@@ -96,7 +96,10 @@ function run() {
       globalCoinsDocs,
     });
 
-    const coinsUser = plan.newUserDoc.wallet.coins;
+    const coinsUser = {
+      btc: plan.newUserDoc['wallet.coins.btc'],
+      eth: plan.newUserDoc['wallet.coins.eth'],
+    };
     const coinsRealtime = plan.newRealtimeDoc.coins;
 
     assert.strictEqual(coinsUser.btc.totalPoints, 15);

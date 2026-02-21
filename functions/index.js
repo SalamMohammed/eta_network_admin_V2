@@ -60,6 +60,15 @@ const USER_LAST_MINING_START = 'lastMiningStart';
 const USER_LAST_MINING_END = 'lastMiningEnd';
 const USER_LAST_SYNCED_AT = 'lastSyncedAt';
 const USER_MIGRATION_FLAG = 'migrationUnifiedEarnings';
+const USER_BONUS_24_APPLIED = 'bonus24Applied';
+const USER_RATE_BASE = 'rateBase';
+const USER_RATE_STREAK = 'rateStreak';
+const USER_RATE_RANK = 'rateRank';
+const USER_RATE_REFERRAL = 'rateReferral';
+const USER_RATE_MANAGER = 'rateManager';
+const USER_RATE_ADS = 'rateAds';
+const USER_MANAGER_BONUS_PER_HOUR = 'managerBonusPerHour';
+const USER_MANAGED_COIN_SELECTIONS = 'managedCoinSelections';
 
 const USER_MINING_MAP = 'mining';
 const USER_WALLET_MAP = 'wallet';
@@ -200,83 +209,196 @@ function toNumber(value, defaultValue = 0) {
 }
 
 function buildUserEarningsMigrationPlan({ uid, userData, realtimeData, subCoinsDocs, globalCoinsDocs }) {
-  const now = admin.firestore.Timestamp.now();
-
   const miningMap = (userData && userData[USER_MINING_MAP]) || {};
   const walletMap = (userData && userData[USER_WALLET_MAP]) || {};
 
-  const rootTotal = toNumber(userData && userData[USER_TOTAL_POINTS]);
-  const realtimeTotal = toNumber(realtimeData && realtimeData[USER_TOTAL_POINTS]);
+  const pickFromRealtimeOrUser = (field) => {
+    if (realtimeData && Object.prototype.hasOwnProperty.call(realtimeData, field)) {
+      return realtimeData[field];
+    }
+    if (userData && Object.prototype.hasOwnProperty.call(userData, field)) {
+      return userData[field];
+    }
+    return undefined;
+  };
 
-  const finalTotalPoints = rootTotal + realtimeTotal;
+  const hasRealtimeTotal =
+    realtimeData && Object.prototype.hasOwnProperty.call(realtimeData, USER_TOTAL_POINTS);
+  const finalTotalPoints = hasRealtimeTotal
+    ? toNumber(realtimeData[USER_TOTAL_POINTS])
+    : toNumber(userData && userData[USER_TOTAL_POINTS]);
+
+  const pickRateField = (field) => {
+    if (realtimeData && Object.prototype.hasOwnProperty.call(realtimeData, field)) {
+      return realtimeData[field];
+    }
+    if (userData && Object.prototype.hasOwnProperty.call(userData, field)) {
+      return userData[field];
+    }
+    if (miningMap && Object.prototype.hasOwnProperty.call(miningMap, field)) {
+      return miningMap[field];
+    }
+    return undefined;
+  };
 
   const coinsMap = {};
+
+  const mergeCoinData = (existing, incoming) => {
+    if (!existing || typeof existing !== "object") {
+      return { ...incoming };
+    }
+    const merged = { ...existing, ...incoming };
+    const existingTotal = toNumber(existing[COIN_TOTAL_POINTS], 0);
+    const incomingTotal = toNumber(incoming[COIN_TOTAL_POINTS], 0);
+    const sumTotal = existingTotal + incomingTotal;
+    if (sumTotal !== 0) {
+      merged[COIN_TOTAL_POINTS] = sumTotal;
+    }
+    return merged;
+  };
 
   const collectCoins = (docs) => {
     if (!docs || !Array.isArray(docs)) return;
     for (const doc of docs) {
       const id = doc.id;
+      if (!id) continue;
       const data = doc.data || {};
-      const coin = {
-        [COIN_OWNER_ID]: data[COIN_OWNER_ID] || uid,
-        [COIN_NAME]: data[COIN_NAME] || null,
-        [COIN_SYMBOL]: data[COIN_SYMBOL] || null,
-        [COIN_IMAGE_URL]: data[COIN_IMAGE_URL] || null,
-        [COIN_DESCRIPTION]: data[COIN_DESCRIPTION] || null,
-        [COIN_HOURLY_RATE]: toNumber(data[COIN_HOURLY_RATE]),
-        [COIN_TOTAL_POINTS]: toNumber(data[COIN_TOTAL_POINTS]),
-        [COIN_LAST_MINING_START]: data[COIN_LAST_MINING_START] || null,
-        [COIN_LAST_MINING_END]: data[COIN_LAST_MINING_END] || null,
-        [COIN_LAST_SYNCED_AT]: data[COIN_LAST_SYNCED_AT] || null,
-        [COIN_SOCIAL_LINKS]: Array.isArray(data[COIN_SOCIAL_LINKS]) ? data[COIN_SOCIAL_LINKS] : [],
-      };
-      if (!coinsMap[id]) {
-        coinsMap[id] = coin;
-      } else {
-        const existing = coinsMap[id];
-        existing[COIN_TOTAL_POINTS] = toNumber(existing[COIN_TOTAL_POINTS]) + toNumber(coin[COIN_TOTAL_POINTS]);
-        existing[COIN_HOURLY_RATE] = Math.max(
-          toNumber(existing[COIN_HOURLY_RATE]),
-          toNumber(coin[COIN_HOURLY_RATE]),
-        );
-      }
+      const existing = coinsMap[id] || {};
+      coinsMap[id] = mergeCoinData(existing, data);
     }
   };
 
   collectCoins(subCoinsDocs);
   collectCoins(globalCoinsDocs);
 
+  const miningFromRealtime = {};
+  if (realtimeData && typeof realtimeData === "object") {
+    if (Object.prototype.hasOwnProperty.call(realtimeData, USER_LAST_MINING_START)) {
+      miningFromRealtime[USER_LAST_MINING_START] = realtimeData[USER_LAST_MINING_START];
+    }
+    if (Object.prototype.hasOwnProperty.call(realtimeData, USER_LAST_MINING_END)) {
+      miningFromRealtime[USER_LAST_MINING_END] = realtimeData[USER_LAST_MINING_END];
+    }
+    if (Object.prototype.hasOwnProperty.call(realtimeData, USER_LAST_SYNCED_AT)) {
+      miningFromRealtime[USER_LAST_SYNCED_AT] = realtimeData[USER_LAST_SYNCED_AT];
+    }
+    if (Object.prototype.hasOwnProperty.call(realtimeData, USER_HOURLY_RATE)) {
+      miningFromRealtime[USER_HOURLY_RATE] = realtimeData[USER_HOURLY_RATE];
+    }
+  }
+
   const newMiningMap = {
     ...miningMap,
-    [USER_LAST_MINING_START]: now,
-    [USER_LAST_MINING_END]: null,
-    [USER_LAST_SYNCED_AT]: now,
-    [USER_HOURLY_RATE]: toNumber(
-      miningMap[USER_HOURLY_RATE] ||
-        realtimeData && realtimeData[USER_HOURLY_RATE] ||
-        userData && userData[USER_HOURLY_RATE],
-    ),
+    ...miningFromRealtime,
   };
 
-  const newWalletMap = {
-    ...walletMap,
-    coins: coinsMap,
+  const rateFieldsInMining = [
+    USER_RATE_BASE,
+    USER_RATE_STREAK,
+    USER_RATE_RANK,
+    USER_RATE_REFERRAL,
+    USER_RATE_MANAGER,
+    USER_RATE_ADS,
+    USER_MANAGER_BONUS_PER_HOUR,
+  ];
+
+  rateFieldsInMining.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(newMiningMap, field)) {
+      delete newMiningMap[field];
+    }
+  });
+
+  const existingWalletCoins =
+    walletMap && typeof walletMap === "object" && walletMap.coins && typeof walletMap.coins === "object"
+      ? walletMap.coins
+      : {};
+
+  const mergedCoins = {
+    ...existingWalletCoins,
+    ...coinsMap,
   };
 
   const newUserDoc = {
     [USER_TOTAL_POINTS]: finalTotalPoints,
     [USER_MIGRATION_FLAG]: true,
     [USER_MINING_MAP]: newMiningMap,
-    [USER_WALLET_MAP]: newWalletMap,
   };
+
+  const walletWithoutCoins =
+    walletMap && typeof walletMap === "object"
+      ? Object.fromEntries(Object.entries(walletMap).filter(([key]) => key !== "coins"))
+      : {};
+
+  if (Object.keys(walletWithoutCoins).length > 0) {
+    newUserDoc[USER_WALLET_MAP] = walletWithoutCoins;
+  }
+
+  Object.entries(mergedCoins).forEach(([coinId, coinData]) => {
+    if (!coinId) {
+      return;
+    }
+    newUserDoc[`${USER_WALLET_MAP}.coins.${coinId}`] = coinData;
+  });
+
+  const hourlyRateValue = newMiningMap[USER_HOURLY_RATE];
+  if (hourlyRateValue !== undefined) {
+    newUserDoc[USER_HOURLY_RATE] = hourlyRateValue;
+  }
+  const lastStartValue = newMiningMap[USER_LAST_MINING_START];
+  if (lastStartValue !== undefined) {
+    newUserDoc[USER_LAST_MINING_START] = lastStartValue;
+  }
+  const lastEndValue = newMiningMap[USER_LAST_MINING_END];
+  if (lastEndValue !== undefined) {
+    newUserDoc[USER_LAST_MINING_END] = lastEndValue;
+  }
+  const lastSyncedValue = newMiningMap[USER_LAST_SYNCED_AT];
+  if (lastSyncedValue !== undefined) {
+    newUserDoc[USER_LAST_SYNCED_AT] = lastSyncedValue;
+  }
+
+  const rateBase = pickRateField(USER_RATE_BASE);
+  if (rateBase !== undefined) {
+    newUserDoc[USER_RATE_BASE] = rateBase;
+  }
+  const rateStreak = pickRateField(USER_RATE_STREAK);
+  if (rateStreak !== undefined) {
+    newUserDoc[USER_RATE_STREAK] = rateStreak;
+  }
+  const rateRank = pickRateField(USER_RATE_RANK);
+  if (rateRank !== undefined) {
+    newUserDoc[USER_RATE_RANK] = rateRank;
+  }
+  const rateReferral = pickRateField(USER_RATE_REFERRAL);
+  if (rateReferral !== undefined) {
+    newUserDoc[USER_RATE_REFERRAL] = rateReferral;
+  }
+  const rateManager = pickRateField(USER_RATE_MANAGER);
+  if (rateManager !== undefined) {
+    newUserDoc[USER_RATE_MANAGER] = rateManager;
+  }
+
+  const userHasRootRateAds =
+    userData && Object.prototype.hasOwnProperty.call(userData, USER_RATE_ADS);
+  if (!userHasRootRateAds) {
+    const rateAds = pickRateField(USER_RATE_ADS);
+    if (rateAds !== undefined) {
+      newUserDoc[USER_RATE_ADS] = rateAds;
+    }
+  }
+
+  const managerBonusPerHour = pickRateField(USER_MANAGER_BONUS_PER_HOUR);
+  if (managerBonusPerHour !== undefined) {
+    newUserDoc[USER_MANAGER_BONUS_PER_HOUR] = managerBonusPerHour;
+  }
+  const managedCoinSelections = pickFromRealtimeOrUser(USER_MANAGED_COIN_SELECTIONS);
+  if (managedCoinSelections !== undefined) {
+    newUserDoc[USER_MANAGED_COIN_SELECTIONS] = managedCoinSelections;
+  }
 
   const newRealtimeDoc = {
     ...realtimeData,
     [USER_TOTAL_POINTS]: finalTotalPoints,
-    [USER_LAST_MINING_START]: now,
-    [USER_LAST_MINING_END]: null,
-    [USER_LAST_SYNCED_AT]: now,
-    [USER_HOURLY_RATE]: newMiningMap[USER_HOURLY_RATE],
     coins: coinsMap,
   };
 
@@ -817,6 +939,131 @@ exports.cleanupMigratedEarningsEarningsDocs = onSchedule("0 4 * * *", async () =
     deleted,
     missing,
   }));
+});
+
+async function applyBonus24ToUser(uid) {
+  const userRef = db.collection(USERS_COLLECTION).doc(uid);
+  const nowTs = admin.firestore.Timestamp.now();
+
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    if (!snap.exists) {
+      return { ok: false, reason: "user_missing" };
+    }
+    const data = snap.data() || {};
+
+    if (data[USER_BONUS_24_APPLIED] === true) {
+      return { ok: true, skipped: "already_applied" };
+    }
+
+    const lastStart = data[USER_LAST_MINING_START];
+    const lastEnd = data[USER_LAST_MINING_END];
+
+    let miningActive = false;
+    if (lastStart && typeof lastStart.toDate === "function") {
+      const startDate = lastStart.toDate();
+      const nowDate = nowTs.toDate();
+      if (!lastEnd || typeof lastEnd.toDate !== "function") {
+        if (nowDate >= startDate) {
+          miningActive = true;
+        }
+      } else {
+        const endDate = lastEnd.toDate();
+        if (nowDate >= startDate && nowDate <= endDate) {
+          miningActive = true;
+        }
+      }
+    }
+
+    if (miningActive) {
+      return { ok: true, skipped: "mining_active" };
+    }
+
+    const currentTotal = toNumber(data[USER_TOTAL_POINTS]);
+    const newTotal = currentTotal + 48;
+
+    tx.set(
+      userRef,
+      {
+        [USER_TOTAL_POINTS]: newTotal,
+        [USER_BONUS_24_APPLIED]: true,
+      },
+      { merge: true },
+    );
+
+    return {
+      ok: true,
+      granted: true,
+      previousTotal: currentTotal,
+      newTotal,
+    };
+  });
+
+  return result;
+}
+
+exports.applyOneTimeBonus24 = onSchedule("0 5 * * *", async () => {
+  const pageSize = 200;
+  let processed = 0;
+  let granted = 0;
+  let skippedAlready = 0;
+  let skippedMining = 0;
+  let errors = 0;
+  let lastDoc = null;
+
+  for (;;) {
+    let query = db
+      .collection(USERS_COLLECTION)
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .limit(pageSize);
+    if (lastDoc) {
+      query = query.startAfter(lastDoc);
+    }
+
+    const snap = await query.get();
+    if (snap.empty) {
+      break;
+    }
+    lastDoc = snap.docs[snap.docs.length - 1];
+    processed += snap.size;
+
+    for (const doc of snap.docs) {
+      const uid = doc.id;
+      try {
+        const res = await applyBonus24ToUser(uid);
+        if (!res || res.ok !== true) {
+          errors += 1;
+          console.error(
+            "applyOneTimeBonus24 error state",
+            uid,
+            JSON.stringify(res || {}),
+          );
+          continue;
+        }
+        if (res.granted) {
+          granted += 1;
+        } else if (res.skipped === "already_applied") {
+          skippedAlready += 1;
+        } else if (res.skipped === "mining_active") {
+          skippedMining += 1;
+        }
+      } catch (e) {
+        errors += 1;
+        console.error("applyOneTimeBonus24 error", uid, e);
+      }
+    }
+  }
+
+  console.log(
+    JSON.stringify({
+      op: "applyOneTimeBonus24Summary",
+      processed,
+      granted,
+      skippedAlready,
+      skippedMining,
+      errors,
+    }),
+  );
 });
 
 exports.handleRevenueCatWebhook = onRequest(async (req, res) => {

@@ -17,7 +17,6 @@ import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
 import 'legal_content_page.dart';
-import 'package:eta_network_admin/mobile/profile/firestore_logs_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -135,17 +134,6 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
         title: const Text('Profile'),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.monitor_heart_outlined),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const FirestoreLogsPage()),
-              );
-            },
-          ),
-        ],
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -573,23 +561,6 @@ class _ProfilePageState extends State<ProfilePage> {
                           child: Container(
                             height: 1,
                             color: Colors.white.withValues(alpha: 0.06),
-                          ),
-                        ),
-                        _settingsTile(
-                          scale: s,
-                          icon: Icons.monitor_heart_outlined,
-                          title: 'Firestore Monitor',
-                          subtitle: null,
-                          trailing: Icon(
-                            Icons.chevron_right_rounded,
-                            color: Colors.white54,
-                            size: s(24),
-                          ),
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const FirestoreLogsPage(),
-                            ),
                           ),
                         ),
                       ],

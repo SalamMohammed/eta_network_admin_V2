@@ -42,7 +42,7 @@ class FirestoreMonitorService extends ChangeNotifier {
   int get writeCount => _writeCount;
   int get deleteCount => _deleteCount;
 
-  bool _enabled = true;
+  bool _enabled = false;
   bool get enabled => _enabled;
   set enabled(bool value) {
     _enabled = value;
