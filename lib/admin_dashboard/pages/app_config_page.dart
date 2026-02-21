@@ -285,7 +285,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.master)
-        .update({'${FirestoreAppConfigDocs.general}': data});
+        .set({'${FirestoreAppConfigDocs.general}': data}, SetOptions(merge: true));
   }
 
   Future<void> _saveUserCoinConfig() async {
@@ -310,7 +310,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.master)
-        .update({'${FirestoreAppConfigDocs.userCoin}': data});
+        .set({'${FirestoreAppConfigDocs.userCoin}': data}, SetOptions(merge: true));
   }
 
   Future<void> _saveReferrals() async {
@@ -346,7 +346,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.master)
-        .update({'${FirestoreAppConfigDocs.referrals}': data});
+        .set({'${FirestoreAppConfigDocs.referrals}': data}, SetOptions(merge: true));
   }
 
   Future<void> _saveStreak() async {
@@ -365,7 +365,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.master)
-        .update({'${FirestoreAppConfigDocs.streak}': data});
+        .set({'${FirestoreAppConfigDocs.streak}': data}, SetOptions(merge: true));
   }
 
   Future<void> _saveStreakTable() async {
@@ -392,7 +392,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.master)
-        .update({'${FirestoreAppConfigDocs.streak}': streakDoc.data()});
+        .set({'${FirestoreAppConfigDocs.streak}': streakDoc.data()}, SetOptions(merge: true));
   }
 
   Future<void> _saveRanks() async {
@@ -420,7 +420,7 @@ class _AppConfigPageState extends State<AppConfigPage> {
     await FirestoreHelper.instance
         .collection(FirestoreConstants.appConfig)
         .doc(FirestoreAppConfigDocs.master)
-        .update({'${FirestoreAppConfigDocs.ranks}': data});
+        .set({'${FirestoreAppConfigDocs.ranks}': data}, SetOptions(merge: true));
   }
 
   void _addStreakRow() {
@@ -634,6 +634,26 @@ class _AppConfigPageState extends State<AppConfigPage> {
                         foregroundColor: Colors.white,
                       ),
                       child: const Text('Import Legacy Firestore JSON'),
+                    ),
+                    const SizedBox(width: 12),
+                    ElevatedButton(
+                      onPressed: () async {
+                        await MigrationService.importUserCoinsExtractedJson();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'user_coins extracted JSON import finished. Check debug console.',
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Import user_coins JSON'),
                     ),
                   ],
                 ),

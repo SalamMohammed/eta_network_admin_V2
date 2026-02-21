@@ -604,6 +604,73 @@ exports.onUserCoinWrite = onDocumentWritten(
   },
 );
 
+exports.backfillSharedUserCoins = onSchedule(
+  {
+    schedule: "0 1 * * *",
+    region: REGION,
+  },
+  async () => {
+    const pageSize = 200;
+    let lastUserDoc = null;
+    let processedUsers = 0;
+    let updatedCoins = 0;
+
+    for (;;) {
+      let query = db
+        .collection(USERS_COLLECTION)
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(pageSize);
+
+      if (lastUserDoc) {
+        query = query.startAfter(lastUserDoc);
+      }
+
+      const userSnap = await query.get();
+      if (userSnap.empty) {
+        break;
+      }
+
+      lastUserDoc = userSnap.docs[userSnap.docs.length - 1];
+      processedUsers += userSnap.size;
+
+      const coinDocSnaps = await Promise.all(
+        userSnap.docs.map((d) =>
+          d.ref
+            .collection(USER_COINS_SUBCOLLECTION)
+            .doc(USER_COINS_SUBCOLLECTION)
+            .get(),
+        ),
+      );
+
+      for (let i = 0; i < userSnap.docs.length; i++) {
+        const uid = userSnap.docs[i].id;
+        const coinDoc = coinDocSnaps[i];
+        if (!coinDoc.exists) {
+          continue;
+        }
+        const data = coinDoc.data() || {};
+        if (
+          !Object.prototype.hasOwnProperty.call(data, COIN_OWNER_ID) ||
+          typeof data[COIN_OWNER_ID] !== "string" ||
+          data[COIN_OWNER_ID].trim() === ""
+        ) {
+          data[COIN_OWNER_ID] = uid;
+        }
+        await upsertSharedUserCoinPage(uid, data);
+        updatedCoins += 1;
+      }
+    }
+
+    console.log(
+      JSON.stringify({
+        op: "backfillSharedUserCoins",
+        processedUsers,
+        updatedCoins,
+      }),
+    );
+  },
+);
+
 exports.migrateUserCoinsToUserSubdoc = onSchedule(
   {
     schedule: "0 2 * * *",
@@ -611,32 +678,64 @@ exports.migrateUserCoinsToUserSubdoc = onSchedule(
   },
   async () => {
     const pageSize = 200;
-    const snap = await db
-      .collection(USER_COINS_GLOBAL_COLLECTION)
-      .limit(pageSize)
-      .get();
+    let totalMigrated = 0;
+    let lastDoc = null;
 
-    if (snap.empty) {
-      console.log("migrateUserCoinsToUserSubdoc: no user_coins docs found");
-      return;
+    for (;;) {
+      let query = db
+        .collection(USER_COINS_GLOBAL_COLLECTION)
+        .orderBy(admin.firestore.FieldPath.documentId())
+        .limit(pageSize);
+
+      if (lastDoc) {
+        query = query.startAfter(lastDoc);
+      }
+
+      const snap = await query.get();
+
+      if (snap.empty) {
+        break;
+      }
+
+      lastDoc = snap.docs[snap.docs.length - 1];
+
+      const batch = db.batch();
+      let migratedInBatch = 0;
+
+      for (const doc of snap.docs) {
+        const data = doc.data() || {};
+        let uid = doc.id;
+        if (
+          Object.prototype.hasOwnProperty.call(data, COIN_OWNER_ID) &&
+          typeof data[COIN_OWNER_ID] === "string" &&
+          data[COIN_OWNER_ID].trim() !== ""
+        ) {
+          uid = data[COIN_OWNER_ID].trim();
+        }
+
+        const userSnap = await db.collection(USERS_COLLECTION).doc(uid).get();
+        if (!userSnap.exists) {
+          continue;
+        }
+
+        const userCoinRef = db
+          .collection(USERS_COLLECTION)
+          .doc(uid)
+          .collection(USER_COINS_SUBCOLLECTION)
+          .doc(USER_COINS_SUBCOLLECTION);
+        batch.set(userCoinRef, data, { merge: false });
+        migratedInBatch += 1;
+      }
+
+      if (migratedInBatch > 0) {
+        await batch.commit();
+        totalMigrated += migratedInBatch;
+      }
     }
 
-    const batch = db.batch();
-    for (const doc of snap.docs) {
-      const uid = doc.id;
-      const data = doc.data() || {};
-      const userCoinRef = db
-        .collection(USERS_COLLECTION)
-        .doc(uid)
-        .collection(USER_COINS_SUBCOLLECTION)
-        .doc(USER_COINS_SUBCOLLECTION);
-      batch.set(userCoinRef, data, { merge: false });
-    }
-
-    await batch.commit();
     console.log(
-      "migrateUserCoinsToUserSubdoc: migrated batch",
-      snap.size,
+      "migrateUserCoinsToUserSubdoc: migrated total",
+      totalMigrated,
     );
   },
 );
@@ -795,14 +894,6 @@ async function migrateUserEarningsCore(uid) {
 
       tx.set(userRef, plan.newUserDoc, { merge: true });
       tx.set(realtimeRef, plan.newRealtimeDoc, { merge: true });
-
-      for (const doc of subCoinsSnap.docs) {
-        tx.delete(doc.ref);
-      }
-
-      for (const doc of globalCoinsSnap.docs) {
-        tx.delete(doc.ref);
-      }
 
       return {
         alreadyMigrated: false,

@@ -8,7 +8,6 @@ import '../shared/firestore_constants.dart';
 import '../utils/firestore_helper.dart';
 import '../services/user_service.dart';
 import 'signup_page.dart';
-import '../entry/selector_page.dart';
 import '../firebase_options.dart';
 import 'forgot_password_page.dart';
 
@@ -250,12 +249,6 @@ class _LoginPageState extends State<LoginPage> {
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
-      if (mounted && widget.goToSelectorAfterAuth) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const SelectorPage()),
-        );
-      }
     } on FirebaseAuthException catch (e) {
       setState(() {
         _error = _friendlyAuthError(e);
@@ -311,13 +304,6 @@ class _LoginPageState extends State<LoginPage> {
       final user = cred.user;
       if (user != null) {
         await _ensureUserDocExists(user);
-      }
-
-      if (mounted && widget.goToSelectorAfterAuth) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const SelectorPage()),
-        );
       }
     } on FirebaseAuthException catch (e) {
       setState(() {

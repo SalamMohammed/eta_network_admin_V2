@@ -162,9 +162,7 @@ class MigrationService {
         final file = result.files.first;
         final bytes = file.bytes;
         if (bytes == null) {
-          debugPrint(
-            '[MigrationService] Selected file has no bytes (web).',
-          );
+          debugPrint('[MigrationService] Selected file has no bytes (web).');
           return;
         }
         jsonContent = utf8.decode(bytes);
@@ -212,6 +210,97 @@ class MigrationService {
     } catch (e, stack) {
       debugPrint(
         '[MigrationService] Error during Firestore JSON import: $e\n$stack',
+      );
+    }
+  }
+
+  static Future<void> importUserCoinsExtractedJson() async {
+    debugPrint(
+      '[MigrationService] Starting user_coins extracted JSON import...',
+    );
+    try {
+      String? jsonContent;
+
+      if (kIsWeb) {
+        final result = await FilePicker.platform.pickFiles(
+          dialogTitle: 'Select user_coins_extracted.json',
+          type: FileType.custom,
+          allowedExtensions: ['json'],
+          withData: true,
+        );
+        if (result == null || result.files.isEmpty) {
+          debugPrint(
+            '[MigrationService] No file selected for user_coins extracted import (web).',
+          );
+          return;
+        }
+        final file = result.files.first;
+        final bytes = file.bytes;
+        if (bytes == null) {
+          debugPrint('[MigrationService] Selected file has no bytes (web).');
+          return;
+        }
+        jsonContent = utf8.decode(bytes);
+      } else {
+        final result = await FilePicker.platform.pickFiles(
+          dialogTitle: 'Select user_coins_extracted.json',
+          type: FileType.custom,
+          allowedExtensions: ['json'],
+        );
+        if (result == null || result.files.isEmpty) {
+          debugPrint(
+            '[MigrationService] No file selected for user_coins extracted import (desktop/mobile).',
+          );
+          return;
+        }
+        final path = result.files.first.path;
+        if (path == null) {
+          debugPrint(
+            '[MigrationService] Selected file has no path (desktop/mobile).',
+          );
+          return;
+        }
+        jsonContent = await File(path).readAsString();
+      }
+
+      if (jsonContent == null || jsonContent.isEmpty) {
+        debugPrint(
+          '[MigrationService] user_coins extracted JSON content is empty.',
+        );
+        return;
+      }
+
+      final dynamic decoded = jsonDecode(jsonContent);
+      if (decoded is! Map<String, dynamic>) {
+        debugPrint(
+          '[MigrationService] Expected a JSON object keyed by ownerId.',
+        );
+        return;
+      }
+
+      final List<Map<String, dynamic>> rows = [];
+      decoded.forEach((key, value) {
+        if (value is Map<String, dynamic>) {
+          final row = Map<String, dynamic>.from(value);
+          row['ownerId'] = key;
+          rows.add(row);
+        }
+      });
+
+      if (rows.isEmpty) {
+        debugPrint(
+          '[MigrationService] Parsed 0 user_coins rows from extracted JSON.',
+        );
+        return;
+      }
+
+      await _migrateUserCoins(rows);
+      debugPrint(
+        '[MigrationService] user_coins extracted JSON import completed. Imported ${rows.length} coins.',
+      );
+    } catch (e, stack) {
+      debugPrint(
+        '[MigrationService] Error during user_coins extracted JSON import: $e\n$stack',
       );
     }
   }
@@ -326,17 +415,13 @@ class MigrationService {
     return [];
   }
 
-  static List<Map<String, dynamic>> _parseFirestoreExport(
-    String jsonContent,
-  ) {
+  static List<Map<String, dynamic>> _parseFirestoreExport(String jsonContent) {
     final List<Map<String, dynamic>> result = [];
     dynamic decoded;
     try {
       decoded = jsonDecode(jsonContent);
     } catch (e) {
-      debugPrint(
-        '[MigrationService] Firestore import JSON decode error: $e',
-      );
+      debugPrint('[MigrationService] Firestore import JSON decode error: $e');
       return result;
     }
 
@@ -377,10 +462,7 @@ class MigrationService {
     final dynamic pathValue = raw['path'];
     final dynamic dataValue = raw['data'];
     if (pathValue is String && dataValue is Map<String, dynamic>) {
-      return {
-        'path': pathValue,
-        'data': dataValue,
-      };
+      return {'path': pathValue, 'data': dataValue};
     }
 
     if (raw.containsKey('name') && raw['fields'] is Map<String, dynamic>) {
@@ -394,10 +476,7 @@ class MigrationService {
       fields.forEach((key, value) {
         data[key] = _fromFirestoreValue(value);
       });
-      return {
-        'path': path,
-        'data': data,
-      };
+      return {'path': path, 'data': data};
     }
 
     debugPrint(
@@ -478,9 +557,7 @@ class MigrationService {
       final path = r['path'] as String?;
       final data = r['data'] as Map<String, dynamic>?;
       if (path == null || path.isEmpty || data == null) {
-        debugPrint(
-          '[MigrationService] Skipping invalid import document: $r',
-        );
+        debugPrint('[MigrationService] Skipping invalid import document: $r');
         return;
       }
       final docRef = FirestoreHelper.instance.doc(path);

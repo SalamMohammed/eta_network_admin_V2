@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:shared_preferences/shared_preferences.dart';
-import '../entry/selector_page.dart';
 import 'login_page.dart';
 import '../shared/constants.dart';
 import '../mobile/app.dart';
@@ -16,29 +15,12 @@ class AuthGate extends StatelessWidget {
     if (kIsWeb) {}
     switch (AppEntryConfig.mode) {
       case AppEntryMode.selector:
-        return _buildSelectorMode(context);
+        return _buildMobileMode(context);
       case AppEntryMode.mobile:
         return _buildMobileMode(context);
       case AppEntryMode.admin:
         return _buildAdminMode(context);
     }
-  }
-
-  Widget _buildSelectorMode(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snapshot.hasData) {
-          return const SelectorPage();
-        }
-        return const LoginPage();
-      },
-    );
   }
 
   Widget _buildMobileMode(BuildContext context) {

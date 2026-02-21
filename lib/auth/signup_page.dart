@@ -8,7 +8,6 @@ import '../shared/theme/colors.dart';
 import '../shared/firestore_constants.dart';
 import '../utils/firestore_helper.dart';
 import 'login_page.dart';
-import '../entry/selector_page.dart';
 import '../services/referral_engine.dart';
 import '../services/auth_verification_service.dart';
 import '../services/install_referrer_service.dart';
@@ -163,23 +162,13 @@ class _SignupPageState extends State<SignupPage> {
         inviteeUsername: username,
       );
 
-      /*
-      // EMAIL VERIFICATION - TEMPORARILY DISABLED
       await AuthVerificationService.sendVerificationEmail();
-      */
 
       if (mounted) {
-        if (widget.goToSelectorAfterAuth) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const SelectorPage()),
-          );
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const AuthGate()),
-          );
-        }
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AuthGate()),
+        );
       }
     } on FirebaseAuthException catch (e) {
       setState(() {
