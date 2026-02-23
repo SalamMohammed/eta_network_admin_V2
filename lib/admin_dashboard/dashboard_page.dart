@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'widgets/sidebar.dart';
-import 'widgets/header.dart';
-import 'pages/overview_page.dart';
-import 'pages/users_page.dart';
-import 'pages/user_detail_page.dart';
-import 'pages/app_config_page.dart';
-import 'pages/referrals_ranks_page.dart';
-import 'pages/notifications_page.dart';
-import 'pages/ads_monetization_page.dart';
-import 'pages/settings_legal_page.dart';
-import 'pages/manager_page.dart';
+ import 'widgets/header.dart';
+ import 'pages/overview_page.dart';
+ import 'pages/users_page.dart';
+ import 'pages/user_detail_page.dart';
+ import 'pages/app_config_page.dart';
+ import 'pages/referrals_ranks_page.dart';
+ import 'pages/notifications_page.dart';
+ import 'pages/ads_monetization_page.dart';
+ import 'pages/settings_legal_page.dart';
+ import 'pages/manager_page.dart';
+ import 'pages/data_search_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -117,6 +118,8 @@ class _DashboardPageState extends State<DashboardPage> {
         return const SettingsLegalPage();
       case 8:
         return const ManagerPage();
+      case 9:
+        return const DataSearchPage();
       default:
         return const OverviewPage();
     }

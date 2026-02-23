@@ -960,9 +960,13 @@ class _MobileHomePageState extends State<MobileHomePage>
                   } catch (e) {
                     if (!context.mounted) return;
                     debugPrint('Start failed: $e');
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('Start failed: $e')));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Unable to start mining. Please check your internet connection and try again.',
+                        ),
+                      ),
+                    );
                   } finally {
                     _startMiningInProgress = false;
                   }

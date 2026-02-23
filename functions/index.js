@@ -10,7 +10,7 @@ const db = admin.firestore();
 const tasksClient = new CloudTasksClient();
 
 // Set global options (e.g., region)
-setGlobalOptions({ region: "us-central1", invoker: "public" });
+setGlobalOptions({ region: "us-central1", invoker: "public", timeoutSeconds: 540 });
 const REGION = "us-central1";
 const TASKS_LOCATION = REGION;
 const MINING_END_QUEUE = "mining-end-notifications";
@@ -1099,6 +1099,7 @@ exports.applyOneTimeBonus24 = onSchedule("0 5 * * *", async () => {
   let granted = 0;
   let skippedAlready = 0;
   let skippedMining = 0;
+  let skippedMissing = 0;
   let errors = 0;
   let lastDoc = null;
 
@@ -1118,29 +1119,53 @@ exports.applyOneTimeBonus24 = onSchedule("0 5 * * *", async () => {
     lastDoc = snap.docs[snap.docs.length - 1];
     processed += snap.size;
 
-    for (const doc of snap.docs) {
-      const uid = doc.id;
-      try {
-        const res = await applyBonus24ToUser(uid);
-        if (!res || res.ok !== true) {
-          errors += 1;
-          console.error(
-            "applyOneTimeBonus24 error state",
-            uid,
-            JSON.stringify(res || {}),
-          );
+    const results = await Promise.all(
+      snap.docs.map(async (doc) => {
+        const uid = doc.id;
+        try {
+          const res = await applyBonus24ToUser(uid);
+          return { uid, res };
+        } catch (e) {
+          console.error("applyOneTimeBonus24 error", uid, e);
+          return { uid, error: e };
+        }
+      }),
+    );
+
+    for (const { uid, res, error } of results) {
+      if (error) {
+        errors += 1;
+        continue;
+      }
+      if (!res) {
+        errors += 1;
+        console.error(
+          "applyOneTimeBonus24 error state",
+          uid,
+          JSON.stringify({ reason: "no_result" }),
+        );
+        continue;
+      }
+      if (res.ok !== true) {
+        if (res.reason === "user_missing") {
+          skippedMissing += 1;
+          console.log("applyOneTimeBonus24 skipped missing user", uid);
           continue;
         }
-        if (res.granted) {
-          granted += 1;
-        } else if (res.skipped === "already_applied") {
-          skippedAlready += 1;
-        } else if (res.skipped === "mining_active") {
-          skippedMining += 1;
-        }
-      } catch (e) {
         errors += 1;
-        console.error("applyOneTimeBonus24 error", uid, e);
+        console.error(
+          "applyOneTimeBonus24 error state",
+          uid,
+          JSON.stringify(res),
+        );
+        continue;
+      }
+      if (res.granted) {
+        granted += 1;
+      } else if (res.skipped === "already_applied") {
+        skippedAlready += 1;
+      } else if (res.skipped === "mining_active") {
+        skippedMining += 1;
       }
     }
   }
@@ -1150,8 +1175,9 @@ exports.applyOneTimeBonus24 = onSchedule("0 5 * * *", async () => {
       op: "applyOneTimeBonus24Summary",
       processed,
       granted,
-      skippedAlready,
-      skippedMining,
+      skippedAlready, // bonus24Applied true
+      skippedMining, // mining still active
+      skippedMissing, // user doc missing
       errors,
     }),
   );

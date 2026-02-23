@@ -33,6 +33,7 @@ class _ProfilePageState extends State<ProfilePage> {
   String? invitedBy;
   int streakDays = 0;
   int referralCount = 0;
+  int totalInvited = 0;
   int totalSessions = 0;
   String? thumbnailUrl;
   final _referralCtrl = TextEditingController();
@@ -87,6 +88,8 @@ class _ProfilePageState extends State<ProfilePage> {
             (userData[FirestoreUserFields.thumbnailUrl] as String?) ?? '';
         totalSessions =
             (userData[FirestoreUserFields.totalSessions] as num?)?.toInt() ?? 0;
+        totalInvited =
+            (userData[FirestoreUserFields.totalInvited] as num?)?.toInt() ?? 0;
       });
     }
 
@@ -309,7 +312,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       Expanded(
                         child: _statCard(
                           icon: Icons.groups_rounded,
-                          value: '$referralCount',
+                          value: '$totalInvited',
                           label: 'REFERRALS',
                           scale: s,
                           cardBg: cardBg,

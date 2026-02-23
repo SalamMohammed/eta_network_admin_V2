@@ -516,11 +516,11 @@ class MiningBatchCommitEngine {
       indent: 1,
     );
 
-    double rateReferral = baseRate * tierPercent;
+    double rateReferral = baseRate * tierPercent * effectiveInvites;
     _logReferral(
       opId,
       uid,
-      'formula (tier): rateReferral = baseRate($baseRate ETA/hr) × tierPercent($tierPercent)',
+      'formula (tier): rateReferral = baseRate($baseRate ETA/hr) × tierPercent($tierPercent) × effectiveInvites($effectiveInvites)',
       indent: 1,
     );
 

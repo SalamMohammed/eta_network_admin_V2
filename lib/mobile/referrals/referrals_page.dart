@@ -299,8 +299,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
       final ts = prefs.getInt(cacheTsKey);
       if (ts != null) {
         final cachedAt = DateTime.fromMillisecondsSinceEpoch(ts);
-        if (DateTime.now().difference(cachedAt) <
-            const Duration(hours: 1)) {
+        if (DateTime.now().difference(cachedAt) < const Duration(hours: 1)) {
           final jsonStr = prefs.getString(cacheKey);
           if (jsonStr != null && jsonStr.isNotEmpty) {
             final decoded = jsonDecode(jsonStr);
@@ -466,18 +465,17 @@ class _ReferralsPageState extends State<ReferralsPage> {
         'totalInvited': totalInvited,
         'activeInvited': activeInvited,
         'referrals': finalOrderedItems
-            .map((e) => {
-                  'username': e.username,
-                  'status': e.status,
-                  'joined': e.joined,
-                })
+            .map(
+              (e) => {
+                'username': e.username,
+                'status': e.status,
+                'joined': e.joined,
+              },
+            )
             .toList(),
       };
       await prefs.setString(cacheKey, jsonEncode(cacheData));
-      await prefs.setInt(
-        cacheTsKey,
-        DateTime.now().millisecondsSinceEpoch,
-      );
+      await prefs.setInt(cacheTsKey, DateTime.now().millisecondsSinceEpoch);
     } catch (e) {
       debugPrint('Error loading referral stats: $e');
       if (mounted) {
@@ -634,7 +632,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
                         FractionallySizedBox(
                           widthFactor: 0.95,
                           child: Text(
-                            'Share your unique code with friends to boost your mining rate by 10%.',
+                            'Share your unique code with friends to boost your mining rate.',
                             maxLines: 2,
                             overflow: TextOverflow.clip,
                             textAlign: TextAlign.center,
