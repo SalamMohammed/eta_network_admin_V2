@@ -22,12 +22,27 @@ class ConfigService {
   static const String _prefsKeyReferralsTs = 'app_config_referrals_ts';
   static const String _prefsKeyUserCoin = 'app_config_user_coin_cache';
   static const String _prefsKeyUserCoinTs = 'app_config_user_coin_ts';
+  static const String _prefsKeyAds = 'app_config_ads_cache';
+  static const String _prefsKeyAdsTs = 'app_config_ads_ts';
   static const String _prefsKeyLegal = 'app_config_legal_cache';
   static const String _prefsKeyLegalTs = 'app_config_legal_ts';
   static const Duration _cacheDuration = Duration(hours: 24);
 
   final Map<String, Map<String, dynamic>> _memoryCache = {};
   Map<String, dynamic>? _masterCache;
+
+  Future<Map<String, dynamic>> getAdsConfig({bool forceRefresh = false}) async {
+    final master = await _getMasterConfig(forceRefresh: forceRefresh);
+    if (master.containsKey(FirestoreAppConfigDocs.ads)) {
+      return Map<String, dynamic>.from(master[FirestoreAppConfigDocs.ads]);
+    }
+    return _getConfig(
+      FirestoreAppConfigDocs.ads,
+      _prefsKeyAds,
+      _prefsKeyAdsTs,
+      forceRefresh: forceRefresh,
+    );
+  }
 
   Future<Map<String, dynamic>> getGeneralConfig({
     bool forceRefresh = false,
@@ -118,16 +133,6 @@ class ConfigService {
       _prefsKeyLegalTs,
       forceRefresh: forceRefresh,
     );
-  }
-
-  Future<Map<String, dynamic>> getAdsConfig({bool forceRefresh = false}) async {
-    final master = await _getMasterConfig(forceRefresh: forceRefresh);
-    final section = master[FirestoreAppConfigDocs.ads];
-    if (section is Map<String, dynamic>) {
-      return Map<String, dynamic>.from(section);
-    }
-    debugPrint('ConfigService: ads config missing in master');
-    return {};
   }
 
   Future<Map<String, dynamic>> _getMasterConfig({
@@ -247,17 +252,22 @@ class ConfigService {
     }
   }
 
+  dynamic _valueToJsonSafe(dynamic value) {
+    if (value is Timestamp) {
+      return value.millisecondsSinceEpoch;
+    } else if (value is Map) {
+      return _dataToJsonSafe(Map<String, dynamic>.from(value));
+    } else if (value is List) {
+      return value.map((e) => _valueToJsonSafe(e)).toList();
+    }
+    return value;
+  }
+
   /// Helper to ensure data is JSON encodable (handle Timestamps)
   Map<String, dynamic> _dataToJsonSafe(Map<String, dynamic> data) {
     final Map<String, dynamic> safeData = {};
     data.forEach((key, value) {
-      if (value is Timestamp) {
-        safeData[key] = value.millisecondsSinceEpoch; // Store as int
-      } else if (value is Map) {
-        safeData[key] = _dataToJsonSafe(Map<String, dynamic>.from(value));
-      } else {
-        safeData[key] = value;
-      }
+      safeData[key] = _valueToJsonSafe(value);
     });
     return safeData;
   }

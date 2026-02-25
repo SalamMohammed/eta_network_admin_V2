@@ -690,16 +690,18 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<double> boostAdRateNew({required double percent}) async {
-    if (percent <= 0) return 0.0;
+  Future<double> boostAdRateNew({double? percent}) async {
+    // Note: percent is now ignored in favor of the engine's stored config
+    // to ensure the engine is autonomous and chronological.
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return 0.0;
     if (!_miningActive) return 0.0;
 
-    final boostAmount = MiningBatchCommitEngine.applyAdPercentBoost(
+    // Use the new registerAdWatch method which handles logging and local config
+    final boostAmount = await MiningBatchCommitEngine.registerAdWatch(
       uid: uid,
-      percent: percent,
     );
+    
     if (boostAmount <= 0) {
       return 0.0;
     }

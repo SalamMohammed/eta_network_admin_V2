@@ -28,7 +28,7 @@ class MobileHomePage extends StatefulWidget {
 }
 
 class _MobileHomePageState extends State<MobileHomePage>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   final _miningService = MiningStateService();
   final _adsService = AdsService();
   late final TabController _tab = TabController(length: 2, vsync: this);
@@ -36,6 +36,13 @@ class _MobileHomePageState extends State<MobileHomePage>
   String _liveSort = 'popular';
   DateTime? _lastUiUpdate;
   Timer? _debounceTimer;
+  Timer? _adCooldownTimer;
+  int _adCooldownSeconds = 0;
+  static const int _adCooldownDuration = 10;
+  
+  // Use nullable to safely handle Hot Reload initialization
+  AnimationController? _pulseController;
+  Animation<double>? _pulseAnimation;
 
   bool _rewardedLoading = false;
   Stream<Map<String, dynamic>?> _userCoinStream = const Stream.empty();
@@ -108,8 +115,29 @@ class _MobileHomePageState extends State<MobileHomePage>
     unawaited(_syncRewardedSessionWithMiningState());
   }
 
+  void _initPulseAnimation() {
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.05).animate(
+      CurvedAnimation(parent: _pulseController!, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Safety check for Hot Reload: if fields are null, init them now
+    if (_pulseController == null) {
+      _initPulseAnimation();
+    }
+  }
+
   @override
   void dispose() {
+    _pulseController?.dispose();
+    _adCooldownTimer?.cancel();
     _miningService.removeListener(_handleServiceUpdate);
     _adsService.removeListener(_handleAdsUpdate);
     _managerCoinsSub?.cancel();
@@ -242,11 +270,11 @@ class _MobileHomePageState extends State<MobileHomePage>
             final next = _rewardedWatchedThisSession + 1;
             setState(() => _rewardedWatchedThisSession = next);
             await _persistRewardedSessionLimiter();
+            _startAdCooldown();
 
             // Fixed: Claim reward for every ad watched (previously required 2+)
-            final boostAmount = await _miningService.boostAdRateNew(
-              percent: _adsService.config.rewardBonusPercent,
-            );
+            // The engine now handles the bonus calculation internally based on stored config.
+            final boostAmount = await _miningService.boostAdRateNew();
             if (!mounted) return;
             if (boostAmount > 0) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -276,6 +304,25 @@ class _MobileHomePageState extends State<MobileHomePage>
 
   Future<void> _maybeAutoShowRewardedOnMiningStart() async {
     await _tryShowRewardedAd(silentUnavailable: true);
+  }
+
+  void _startAdCooldown() {
+    if (!mounted) return;
+    setState(() => _adCooldownSeconds = _adCooldownDuration);
+    _adCooldownTimer?.cancel();
+    _adCooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        if (_adCooldownSeconds > 0) {
+          _adCooldownSeconds--;
+        } else {
+          timer.cancel();
+        }
+      });
+    });
   }
 
   void _handleServiceUpdate() {
@@ -461,6 +508,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     required int rewardedWatchedThisSession,
     required int rewardedMaxPerSession,
     required double rewardedBonusPercent,
+    required int adCooldownSeconds,
     required VoidCallback onShowRewarded,
   }) {
     const cardBg = Color(0xFF1B2632);
@@ -482,10 +530,14 @@ class _MobileHomePageState extends State<MobileHomePage>
 
         final rewardedLabel = rewardedLoading
             ? 'Loading ad…'
+            : adCooldownSeconds > 0
+            ? 'Wait ${adCooldownSeconds}s'
             : rewardedMaxPerSession > 0
-            // ? 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}% • $rewardedWatchedThisSession/$rewardedMaxPerSession'
             ? 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}%'
             : 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}%';
+
+        final canWatch =
+            !rewardedLoading && !rewardedLimitReached && adCooldownSeconds <= 0;
 
         return Container(
           padding: EdgeInsets.all(s(14)),
@@ -697,39 +749,77 @@ class _MobileHomePageState extends State<MobileHomePage>
                   if (showRewarded && miningActive) ...[
                     SizedBox(height: s(8)),
                     Center(
-                      child: InkWell(
-                        onTap: (rewardedLoading || rewardedLimitReached)
-                            ? null
-                            : onShowRewarded,
-                        borderRadius: BorderRadius.circular(999),
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: s(12),
-                            vertical: s(8),
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: Colors.white24),
-                            color: Colors.white.withValues(alpha: 0.04),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.ondemand_video_rounded,
-                                size: s(16),
-                                color: Colors.white70,
+                      child: ScaleTransition(
+                        scale: (canWatch && _pulseAnimation != null)
+                            ? _pulseAnimation!
+                            : const AlwaysStoppedAnimation(1.0),
+                        child: InkWell(
+                          onTap: canWatch ? onShowRewarded : null,
+                          borderRadius: BorderRadius.circular(999),
+                          child: Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: s(16),
+                              vertical: s(10),
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(999),
+                              // Golden Gradient for active state
+                              gradient: canWatch
+                                  ? const LinearGradient(
+                                      colors: [
+                                        Color(0xFFFFD700), // Gold
+                                        Color(0xFFFFA000), // Amber
+                                      ],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                  : null,
+                              color: canWatch
+                                  ? null
+                                  : Colors.white.withValues(alpha: 0.04),
+                              border: Border.all(
+                                color: canWatch
+                                    ? const Color(0xFFFFECB3)
+                                    : Colors.white24,
+                                width: canWatch ? 1.5 : 1.0,
                               ),
-                              SizedBox(width: s(8)),
-                              Text(
-                                rewardedLabel,
-                                style: TextStyle(
-                                  fontSize: s(13.5),
-                                  color: Colors.white70,
-                                  fontWeight: FontWeight.w600,
+                              boxShadow: canWatch
+                                  ? [
+                                      BoxShadow(
+                                        color: const Color(
+                                          0xFFFFD700,
+                                        ).withValues(alpha: 0.4),
+                                        blurRadius: 12,
+                                        spreadRadius: 2,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  adCooldownSeconds > 0
+                                      ? Icons.timer_outlined
+                                      : Icons.ondemand_video_rounded,
+                                  size: s(18),
+                                  color: canWatch
+                                      ? const Color(0xFF3E2723)
+                                      : Colors.white70,
                                 ),
-                              ),
-                            ],
+                                SizedBox(width: s(8)),
+                                Text(
+                                  rewardedLabel,
+                                  style: TextStyle(
+                                    fontSize: s(14),
+                                    color: canWatch
+                                        ? const Color(0xFF3E2723)
+                                        : Colors.white70,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -978,6 +1068,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                 rewardedMaxPerSession:
                     _adsService.config.maxRewardedPerMiningSession,
                 rewardedBonusPercent: _adsService.config.rewardBonusPercent,
+                adCooldownSeconds: _adCooldownSeconds,
                 onShowRewarded: () {
                   unawaited(_tryShowRewardedAd(silentUnavailable: false));
                 },

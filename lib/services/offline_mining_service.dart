@@ -119,6 +119,66 @@ class OfflineMiningCache {
   }
 }
 
+class OfflineMiningAdsCache {
+  static const _version = 1;
+  static SharedPreferences? _prefs;
+
+  static Future<void> init() async {
+    _prefs ??= await SharedPreferences.getInstance();
+  }
+
+  static String _configKey(String uid) =>
+      'offline_mining_ads_config_v$_version\_$uid';
+  static String _logKey(String uid) =>
+      'offline_mining_ads_log_v$_version\_$uid';
+
+  static Future<void> startSession(
+    String uid,
+    Map<String, dynamic> adsConfig,
+  ) async {
+    await init();
+    // 1. Reset/Overwrite Config with Timestamp
+    final configToStore = Map<String, dynamic>.from(adsConfig);
+    configToStore['storedAt'] = DateTime.now().millisecondsSinceEpoch;
+    await _prefs!.setString(_configKey(uid), json.encode(configToStore));
+
+    // 2. Clear Log
+    await _prefs!.remove(_logKey(uid));
+
+    // 3. Log Start
+    await appendLog(uid, {
+      'event': 'session_start',
+      'timestamp': DateTime.now().toIso8601String(),
+      'msg': 'Ads session reset to 0',
+    });
+  }
+
+  static Future<Map<String, dynamic>?> getStoredConfig(String uid) async {
+    await init();
+    final raw = _prefs!.getString(_configKey(uid));
+    if (raw == null) return null;
+    try {
+      return json.decode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> appendLog(String uid, Map<String, dynamic> entry) async {
+    await init();
+    final key = _logKey(uid);
+    final existingRaw = _prefs!.getString(key);
+    List<dynamic> list = [];
+    if (existingRaw != null) {
+      try {
+        list = json.decode(existingRaw) as List<dynamic>;
+      } catch (_) {}
+    }
+    list.add(entry);
+    await _prefs!.setString(key, json.encode(list));
+  }
+}
+
 class OfflineMiningSyncQueue {
   static const _queueKey = 'offline_mining_sync_queue_v1';
   static SharedPreferences? _prefs;
@@ -270,6 +330,7 @@ class _MiningConfig {
   final Map<String, dynamic> streakConfig;
   final Map<String, dynamic> ranksConfig;
   final Map<String, dynamic> referralConfig;
+  final Map<String, dynamic> adsConfig;
   final double maxReferralBonusRate;
   final int rewardedReferralMaxCount;
 
@@ -279,6 +340,7 @@ class _MiningConfig {
     required this.streakConfig,
     required this.ranksConfig,
     required this.referralConfig,
+    required this.adsConfig,
     required this.maxReferralBonusRate,
     required this.rewardedReferralMaxCount,
   });
@@ -318,6 +380,7 @@ class MiningBatchCommitEngine {
     final streakConfig = await cfg.getStreakConfig();
     final ranksConfig = await cfg.getRanksConfig();
     final referralConfig = await cfg.getReferralConfig();
+    final adsConfig = await cfg.getAdsConfig();
 
     final double baseRate =
         (appConfig[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
@@ -366,6 +429,7 @@ class MiningBatchCommitEngine {
       streakConfig: streakConfig,
       ranksConfig: ranksConfig,
       referralConfig: referralConfig,
+      adsConfig: adsConfig,
       maxReferralBonusRate: maxBonusRate,
       rewardedReferralMaxCount: rewardedMaxRefs,
     );
@@ -552,6 +616,119 @@ class MiningBatchCommitEngine {
     return rateReferral;
   }
 
+  static Future<double> registerAdWatch({required String uid}) async {
+    return OfflineMiningUserLock.runLocked<double>(uid, () async {
+      final session = _sessions[uid];
+      if (session == null || session.finished) {
+        return 0.0;
+      }
+
+      // 1. Load Local Config
+      var storedConfig = await OfflineMiningAdsCache.getStoredConfig(uid);
+
+      // If config is missing (e.g. first run after update), fetch and initialize
+      if (storedConfig == null) {
+        debugPrint('[Ads] Config missing, initializing mid-session...');
+        final cfg = await ConfigService().getAdsConfig();
+        // We use startSession logic but we must be careful not to reset the session itself,
+        // just the ads cache.
+        await OfflineMiningAdsCache.startSession(uid, cfg);
+        storedConfig = await OfflineMiningAdsCache.getStoredConfig(uid);
+      }
+
+      if (storedConfig == null) {
+        debugPrint('[Ads] Failed to load config even after fetch.');
+        return 0.0;
+      }
+
+      // 2. Get Bonus Percent
+      // The engine looks for 'rewardBonusPercent' which matches FirestoreAdsConfigFields
+      final rawPercent = storedConfig['rewardBonusPercent'];
+      double percent = 0.0;
+      if (rawPercent is num) {
+        percent = rawPercent.toDouble();
+      }
+
+      // 3. Calculate Bonus
+      // Formula: Base Rate * (Bonus Percent / 100)
+      final baseRate = session.rateBase;
+      final frac = (percent / 100.0).clamp(0.0, 1e6);
+      final bonusAmount = baseRate * frac;
+
+      // Log the calculation for transparency
+      debugPrint(
+        '[Ads] Calculating Bonus: Base($baseRate) * Percent($percent%) = $bonusAmount',
+      );
+
+      if (bonusAmount <= 0) {
+        return 0.0;
+      }
+
+      // 4. Apply Boost (Update Session)
+      // We update the session state in memory to reflect the new rate.
+      final now = DateTime.now();
+      DateTime newStartTime = session.startTime;
+      double newStartTotalPoints = session.startTotalPoints;
+
+      // Settle points for past duration so the new rate applies only from NOW
+      if (now.isAfter(session.startTime)) {
+        final elapsedHours =
+            now.difference(session.startTime).inMilliseconds / (1000 * 60 * 60);
+        final earnedAtOldRate = elapsedHours * session.hourlyRate;
+        if (earnedAtOldRate > 0) {
+          newStartTotalPoints += earnedAtOldRate;
+        }
+        newStartTime = now;
+      }
+
+      // Add the calculated bonus to the existing ads rate
+      final newRateAds = session.rateAds + bonusAmount;
+
+      // Recalculate the total hourly rate
+      final newHourlyRate =
+          session.rateBase +
+          session.rateRank +
+          session.rateStreak +
+          session.rateReferral +
+          session.rateManager +
+          newRateAds;
+
+      // Update the session object
+      _sessions[uid] = MiningSessionState(
+        uid: session.uid,
+        startTime: newStartTime,
+        plannedEnd: session.plannedEnd,
+        startTotalPoints: newStartTotalPoints,
+        totalInvited: session.totalInvited,
+        rateBase: session.rateBase,
+        rateStreak: session.rateStreak,
+        rateRank: session.rateRank,
+        rateReferral: session.rateReferral,
+        rateManager: session.rateManager,
+        rateAds: newRateAds,
+        hourlyRate: newHourlyRate,
+        streakDays: session.streakDays,
+        finished: session.finished,
+      );
+
+      // 5. Persistent Logging
+      // Log this specific ad watch with all details required for verification
+      await OfflineMiningAdsCache.appendLog(uid, {
+        'event': 'ad_watch',
+        'timestamp': now.toIso8601String(),
+        'baseRate': session.rateBase,
+        'bonusPercent': percent,
+        'bonusAmount': bonusAmount,
+        'oldHourlyRate': session.hourlyRate,
+        'newHourlyRate': newHourlyRate,
+        'newRateAds': newRateAds,
+        'msg': 'Ad watched, bonus applied to hourly rate.',
+      });
+
+      return bonusAmount;
+    });
+  }
+
   static void applyAdBoost({required String uid, required double boostAmount}) {
     if (boostAmount <= 0) {
       return;
@@ -645,8 +822,12 @@ class MiningBatchCommitEngine {
       final streakConfig = miningConfig.streakConfig;
       final ranksConfig = miningConfig.ranksConfig;
       final refConfig = miningConfig.referralConfig;
+      final adsConfig = miningConfig.adsConfig;
       final double maxBonusRate = miningConfig.maxReferralBonusRate;
       final int maxRefs = miningConfig.rewardedReferralMaxCount;
+
+      // Initialize Ads Session (Clear log, Store config, Reset Ads Rate)
+      await OfflineMiningAdsCache.startSession(uid, adsConfig);
 
       final userRef = _db.collection(FirestoreConstants.users).doc(uid);
       final now = DateTime.now();
