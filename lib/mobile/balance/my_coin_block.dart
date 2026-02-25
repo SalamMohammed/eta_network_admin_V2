@@ -1649,30 +1649,34 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          fmtDisplay(_display),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 2),
-                          child: Text(
-                            sym.isEmpty ? '—' : sym,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            fmtDisplay(_display),
                             style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 12.5,
+                              color: Colors.white,
+                              fontSize: 18,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              sym.isEmpty ? '—' : sym,
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -1692,30 +1696,34 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          fmtRate(rate),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 2),
-                          child: Text(
-                            baseSuffix,
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            fmtRate(rate),
                             style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 12.5,
+                              color: Colors.white,
+                              fontSize: 18,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 8),
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 2),
+                            child: Text(
+                              baseSuffix,
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),

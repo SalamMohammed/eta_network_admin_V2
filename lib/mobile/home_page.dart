@@ -38,8 +38,8 @@ class _MobileHomePageState extends State<MobileHomePage>
   Timer? _debounceTimer;
   Timer? _adCooldownTimer;
   int _adCooldownSeconds = 0;
-  static const int _adCooldownDuration = 10;
-  
+  static const int _adCooldownDuration = 20;
+
   // Use nullable to safely handle Hot Reload initialization
   AnimationController? _pulseController;
   Animation<double>? _pulseAnimation;
@@ -248,6 +248,7 @@ class _MobileHomePageState extends State<MobileHomePage>
 
     if (ad == null) {
       if (!silentUnavailable) {
+        // final errorMsg = _adsService.lastLoadError ?? 'Rewarded ad not available';
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Rewarded ad not available')),
         );

@@ -148,6 +148,7 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
   RewardedAd? _cachedRewardedAd;
   bool _isPreloading = false;
   DateTime? _lastLoadAttempt;
+  String? lastLoadError;
   static const Duration _minLoadInterval = Duration(seconds: 10);
 
   bool get isSupportedPlatform {
@@ -165,7 +166,8 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
       _initialized = true;
       return;
     }
-    await MobileAds.instance.initialize();
+    final status = await MobileAds.instance.initialize();
+    debugPrint('AdsService: Initialization status: ${status.adapterStatuses}');
     await _fetchConfig();
     _initialized = true;
     _preloadRewardedAd();
@@ -270,6 +272,10 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
     _isPreloading = true;
     _lastLoadAttempt = now;
 
+    debugPrint(
+      'AdsService: Loading Rewarded Ad (Preload) with ID: $rewardedAdUnitId',
+    );
+
     try {
       await RewardedAd.load(
         adUnitId: rewardedAdUnitId,
@@ -278,12 +284,16 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
           onAdLoaded: (ad) {
             _cachedRewardedAd = ad;
             _isPreloading = false;
+            lastLoadError = null;
             debugPrint('AdsService: Ad preloaded successfully');
           },
           onAdFailedToLoad: (error) {
             _cachedRewardedAd = null;
             _isPreloading = false;
+            lastLoadError =
+                'Preload failed: ${error.message} (Code: ${error.code})';
             debugPrint('AdsService: Ad failed to preload: $error');
+            debugPrint('AdsService: Response Info: ${error.responseInfo}');
           },
         ),
       );
@@ -308,17 +318,26 @@ class AdsService extends ChangeNotifier with WidgetsBindingObserver {
 
     // Fallback: Load on demand if cache missed
     final completer = Completer<RewardedAd?>();
+    debugPrint(
+      'AdsService: Loading Rewarded Ad (Fallback) with ID: $rewardedAdUnitId',
+    );
     RewardedAd.load(
       adUnitId: rewardedAdUnitId,
       request: const AdRequest(),
       rewardedAdLoadCallback: RewardedAdLoadCallback(
         onAdLoaded: (ad) {
           // Don't cache this one, return it immediately
+          lastLoadError = null;
           completer.complete(ad);
           // Start preloading the next one
           _preloadRewardedAd();
         },
-        onAdFailedToLoad: (error) => completer.complete(null),
+        onAdFailedToLoad: (error) {
+          lastLoadError = 'Load failed: ${error.message} (Code: ${error.code})';
+          debugPrint('AdsService: Ad failed to load: $error');
+          debugPrint('AdsService: Response Info: ${error.responseInfo}');
+          completer.complete(null);
+        },
       ),
     );
     return completer.future;
