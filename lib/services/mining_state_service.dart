@@ -118,6 +118,23 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   int get streakDays => _streakDays;
   Timestamp? get subscriptionExpiresAt => _subscriptionExpiresAt;
 
+  void _logDebugRates(String source) {
+    debugPrint('''
+[MiningStateService] Rate Update ($source):
+  Total Hourly Rate: $_hourlyRate ETA/hr
+  --------------------------------------
+  Base Rate:       $_rateBase
+  Streak Bonus:    $_rateStreak
+  Rank Bonus:      $_rateRank
+  Referral Bonus:  $_rateReferral
+  Manager Bonus:   $_rateManager
+  Ads Bonus:       $_rateAds
+  --------------------------------------
+  Mining Active:   $_miningActive
+  Total Points:    $_totalPoints
+''');
+  }
+
   Future<void> stopMining() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -251,6 +268,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     _rateAds =
         (syncRes[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0;
 
+    _logDebugRates('refresh');
+
     _lastStart = d[FirestoreUserFields.lastMiningStart] as Timestamp?;
     _lastEnd = d[FirestoreUserFields.lastMiningEnd] as Timestamp?;
     _streakDays = (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
@@ -311,6 +330,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
             _hourlyRate =
                 (rates[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
                 _hourlyRate;
+            _logDebugRates('recalculateRates');
             notifyListeners();
           }
         }),
@@ -564,6 +584,7 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
           if (newAds != null) _rateAds = newAds;
 
           if (changed) {
+            _logDebugRates('realtime_update');
             if (_miningActive) {
               // If mining, update base so simulation continues from new total
               _simBase = _totalPoints;
@@ -698,10 +719,8 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     if (!_miningActive) return 0.0;
 
     // Use the new registerAdWatch method which handles logging and local config
-    final boostAmount = await MiningBatchCommitEngine.registerAdWatch(
-      uid: uid,
-    );
-    
+    final boostAmount = await MiningBatchCommitEngine.registerAdWatch(uid: uid);
+
     if (boostAmount <= 0) {
       return 0.0;
     }

@@ -806,7 +806,12 @@ class _SignupPageState extends State<SignupPage> {
       case 'network-request-failed':
         return 'Network error, check your connection';
       default:
-        return e.message ?? 'Authentication error';
+        final msg = e.message ?? '';
+        if (msg.contains('Json conversion failed') ||
+            msg.contains('<!DOCTYPE html>')) {
+          return 'Network error. Please check your connection or VPN.';
+        }
+        return msg.isNotEmpty ? msg : 'Authentication error';
     }
   }
 

@@ -655,11 +655,6 @@ class MiningBatchCommitEngine {
       final frac = (percent / 100.0).clamp(0.0, 1e6);
       final bonusAmount = baseRate * frac;
 
-      // Log the calculation for transparency
-      debugPrint(
-        '[Ads] Calculating Bonus: Base($baseRate) * Percent($percent%) = $bonusAmount',
-      );
-
       if (bonusAmount <= 0) {
         return 0.0;
       }
@@ -988,6 +983,10 @@ class MiningBatchCommitEngine {
           '[MiningBatchCommitEngine] op=$opId rate mix uid=$uid base=$baseRate streak=$rateStreak rank=$rateRank referral=$rateReferral manager=$rateManager ads=$rateAds hourly=$newHourlyRate',
         );
 
+        final int currentDayIndex =
+            DateTime.utc(now.year, now.month, now.day).millisecondsSinceEpoch ~/
+            msPerDay;
+
         final Map<String, dynamic> writeData = {
           FirestoreUserFields.totalInvited: totalInvited,
           FirestoreUserFields.rateBase: baseRate,
@@ -1003,6 +1002,8 @@ class MiningBatchCommitEngine {
           FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(plannedEnd),
           FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(now),
           FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+          FirestoreUserFields.streakDays: sessionStreakDays,
+          FirestoreUserFields.streakLastUpdatedDay: currentDayIndex,
         };
         if (managedCoinSelections.isNotEmpty) {
           writeData[FirestoreUserFields.managedCoinSelections] =
@@ -1212,16 +1213,6 @@ class MiningBatchCommitEngine {
           }
         });
 
-        const int msPerDay = 24 * 60 * 60 * 1000;
-        final endUtc = DateTime.utc(
-          effectiveEnd.year,
-          effectiveEnd.month,
-          effectiveEnd.day,
-        );
-        final int todayIndex = endUtc.millisecondsSinceEpoch ~/ msPerDay;
-        final int nextStreakDays = session.streakDays;
-        final int nextDayIndex = todayIndex;
-
         final int currentTotalSessions =
             (liveData[FirestoreUserFields.totalSessions] as num?)?.toInt() ?? 0;
         final int nextTotalSessions = currentTotalSessions + 1;
@@ -1237,8 +1228,6 @@ class MiningBatchCommitEngine {
           FirestoreUserFields.rateReferral: session.rateReferral,
           FirestoreUserFields.rateManager: session.rateManager,
           FirestoreUserFields.rateAds: session.rateAds,
-          FirestoreUserFields.streakDays: nextStreakDays,
-          FirestoreUserFields.streakLastUpdatedDay: nextDayIndex,
           FirestoreUserFields.totalSessions: nextTotalSessions,
           FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
           ...coinUpdates,

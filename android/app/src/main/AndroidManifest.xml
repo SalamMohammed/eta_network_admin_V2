@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE" />
@@ -9,10 +10,24 @@
     <application
         android:label="ETA Network"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon">
+        android:icon="@mipmap/launcher_icon"
+        tools:replace="android:label">
+        
+        <!-- AdMob App ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-6293825955336280~1058252525" />
+
+        <!-- Meta Audience Network Configuration -->
+        <!-- TODO: Replace with your actual Facebook App ID -->
+        <meta-data
+            android:name="com.facebook.sdk.ApplicationId"
+            android:value="REPLACE_WITH_YOUR_FACEBOOK_APP_ID"/>
+        <!-- TODO: Replace with your actual Client Token -->
+        <meta-data
+            android:name="com.facebook.sdk.ClientToken"
+            android:value="REPLACE_WITH_YOUR_FACEBOOK_CLIENT_TOKEN"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
