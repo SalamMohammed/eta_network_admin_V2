@@ -67,7 +67,7 @@ class SchemaDeploymentService {
         FirestoreAppConfigDocs.ads: {
           FirestoreAdsConfigFields.enableRewarded: true, // bool
           FirestoreAdsConfigFields.enableBannerOnMiningPress: true, // bool
-          FirestoreAdsConfigFields.rewardBonusPercent: 2.0, // double
+          FirestoreAdsConfigFields.rewardBonusPercent: 10.0, // double
           FirestoreAdsConfigFields.maxRewardedPerDay: 5, // int
           FirestoreAdsConfigFields.maxRewardedPerMiningSession: 5, // int
           FirestoreAdsConfigFields.bannerAdUnitIdAndroid: '', // String

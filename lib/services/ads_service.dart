@@ -36,10 +36,10 @@ class AdsConfig {
     enableBannerOnMiningPress: true,
     maxRewardedPerDay: 5,
     maxRewardedPerMiningSession: 5,
-    rewardBonusPercent: 2,
-    bannerAdUnitIdAndroid: 'ca-app-pub-3940256099942544/6300978111',
+    rewardBonusPercent: 10,
+    bannerAdUnitIdAndroid: 'ca-app-pub-6293825955336280/7159614681',
     bannerAdUnitIdIos: 'ca-app-pub-3940256099942544/2934735716',
-    rewardedAdUnitIdAndroid: 'ca-app-pub-3940256099942544/5224354917',
+    rewardedAdUnitIdAndroid: 'ca-app-pub-6293825955336280/2179762501',
     rewardedAdUnitIdIos: 'ca-app-pub-3940256099942544/1712485313',
   );
 

@@ -85,24 +85,26 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   DateTime? _lastRecalcAttempt;
 
   // Getters
-  double get totalPoints => _totalPoints;
-  double get hourlyRate {
+  MiningSessionState? get _activeSession {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       final session = MiningBatchCommitEngine.getSession(uid);
       if (session != null && !session.finished) {
-        return session.hourlyRate;
+        return session;
       }
     }
-    return _hourlyRate;
+    return null;
   }
 
-  double get rateBase => _rateBase;
-  double get rateStreak => _rateStreak;
-  double get rateRank => _rateRank;
-  double get rateReferral => _rateReferral;
-  double get rateManager => _rateManager;
-  double get rateAds => _rateAds;
+  double get totalPoints => _totalPoints;
+  double get hourlyRate => _activeSession?.hourlyRate ?? _hourlyRate;
+
+  double get rateBase => _activeSession?.rateBase ?? _rateBase;
+  double get rateStreak => _activeSession?.rateStreak ?? _rateStreak;
+  double get rateRank => _activeSession?.rateRank ?? _rateRank;
+  double get rateReferral => _activeSession?.rateReferral ?? _rateReferral;
+  double get rateManager => _activeSession?.rateManager ?? _rateManager;
+  double get rateAds => _activeSession?.rateAds ?? _rateAds;
   bool get miningActive => _miningActive;
   double get displayTotal => _displayTotal;
   bool get managerEnabled => _managerEnabled;
@@ -725,8 +727,10 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       return 0.0;
     }
 
-    _rateAds += boostAmount;
-    _hourlyRate += boostAmount;
+    // Manual update removed because getters now use MiningBatchCommitEngine session
+    // which is updated by registerAdWatch.
+    // _rateAds += boostAmount;
+    // _hourlyRate += boostAmount;
 
     notifyListeners();
 

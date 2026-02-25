@@ -380,7 +380,21 @@ class MiningBatchCommitEngine {
     final streakConfig = await cfg.getStreakConfig();
     final ranksConfig = await cfg.getRanksConfig();
     final referralConfig = await cfg.getReferralConfig();
-    final adsConfig = await cfg.getAdsConfig();
+    var adsConfig = await cfg.getAdsConfig();
+
+    // Ensure critical ads config fields are present by merging with defaults
+    if (!adsConfig.containsKey(FirestoreAdsConfigFields.rewardBonusPercent)) {
+      debugPrint(
+        '[MiningBatchCommitEngine] adsConfig missing critical fields, applying defaults',
+      );
+      final defaults = {
+        FirestoreAdsConfigFields.rewardBonusPercent: 10.0,
+        FirestoreAdsConfigFields.maxRewardedPerDay: 5,
+        FirestoreAdsConfigFields.maxRewardedPerMiningSession: 5,
+        FirestoreAdsConfigFields.enableRewarded: true,
+      };
+      adsConfig = {...defaults, ...adsConfig};
+    }
 
     final double baseRate =
         (appConfig[FirestoreAppConfigFields.baseRate] as num?)?.toDouble() ??
@@ -616,9 +630,56 @@ class MiningBatchCommitEngine {
     return rateReferral;
   }
 
+  static Future<MiningSessionState?> _tryRestoreSession(String uid) async {
+    try {
+      final doc = await _db.collection(FirestoreConstants.users).doc(uid).get();
+      if (!doc.exists) return null;
+      final d = doc.data()!;
+      final lastEnd = (d[FirestoreUserFields.lastMiningEnd] as Timestamp?)
+          ?.toDate();
+      if (lastEnd == null || lastEnd.isBefore(DateTime.now())) {
+        return null;
+      }
+
+      final session = MiningSessionState(
+        uid: uid,
+        startTime:
+            (d[FirestoreUserFields.lastMiningStart] as Timestamp?)?.toDate() ??
+            DateTime.now(),
+        plannedEnd: lastEnd,
+        startTotalPoints:
+            (d[FirestoreUserFields.totalPoints] as num?)?.toDouble() ?? 0.0,
+        totalInvited:
+            (d[FirestoreUserFields.totalInvited] as num?)?.toInt() ?? 0,
+        rateBase: (d[FirestoreUserFields.rateBase] as num?)?.toDouble() ?? 0.0,
+        rateStreak:
+            (d[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0,
+        rateRank: (d[FirestoreUserFields.rateRank] as num?)?.toDouble() ?? 0.0,
+        rateReferral:
+            (d[FirestoreUserFields.rateReferral] as num?)?.toDouble() ?? 0.0,
+        rateManager:
+            (d[FirestoreUserFields.rateManager] as num?)?.toDouble() ?? 0.0,
+        rateAds: (d[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0,
+        hourlyRate:
+            (d[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0,
+        streakDays: (d[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0,
+        finished: false,
+      );
+      _sessions[uid] = session;
+      debugPrint('[MiningBatchCommitEngine] Restored active session for $uid');
+      return session;
+    } catch (e) {
+      debugPrint('[MiningBatchCommitEngine] Failed to restore session: $e');
+      return null;
+    }
+  }
+
   static Future<double> registerAdWatch({required String uid}) async {
     return OfflineMiningUserLock.runLocked<double>(uid, () async {
-      final session = _sessions[uid];
+      var session = _sessions[uid];
+      if (session == null) {
+        session = await _tryRestoreSession(uid);
+      }
       if (session == null || session.finished) {
         return 0.0;
       }
@@ -643,19 +704,57 @@ class MiningBatchCommitEngine {
 
       // 2. Get Bonus Percent
       // The engine looks for 'rewardBonusPercent' which matches FirestoreAdsConfigFields
-      final rawPercent = storedConfig['rewardBonusPercent'];
+      dynamic rawPercent = storedConfig['rewardBonusPercent'];
+
+      // RELOAD CHECK: If the key is missing, it might be a stale cache or missing in Firestore.
+      // Try to fetch latest config once.
+      if (rawPercent == null) {
+        debugPrint(
+          '[Ads] rewardBonusPercent missing in local cache. Fetching latest from server...',
+        );
+        final latestCfg = await ConfigService().getAdsConfig(
+          forceRefresh: true,
+        );
+        await OfflineMiningAdsCache.startSession(uid, latestCfg);
+        storedConfig = await OfflineMiningAdsCache.getStoredConfig(uid) ?? {};
+        rawPercent = storedConfig[FirestoreAdsConfigFields.rewardBonusPercent];
+        debugPrint(
+          '[Ads] Refreshed Config. rewardBonusPercent is now: $rawPercent',
+        );
+      }
+
       double percent = 0.0;
       if (rawPercent is num) {
         percent = rawPercent.toDouble();
+      } else {
+        // FALLBACK: If still missing/null, use default 10.0%
+        debugPrint(
+          '[Ads] rewardBonusPercent missing in Firestore. Using default 10.0%',
+        );
+        percent = 10.0;
       }
+
+      debugPrint('[Ads] Stored Config: $storedConfig');
+      debugPrint('[Ads] Extracted rewardBonusPercent: $percent');
 
       // 3. Calculate Bonus
       // Formula: Base Rate * (Bonus Percent / 100)
       final baseRate = session.rateBase;
+
+      if (baseRate <= 0) {
+        debugPrint(
+          '[Ads] Base Rate is zero ($baseRate). Cannot calculate bonus.',
+        );
+        return 0.0;
+      }
+
       final frac = (percent / 100.0).clamp(0.0, 1e6);
       final bonusAmount = baseRate * frac;
 
       if (bonusAmount <= 0) {
+        debugPrint(
+          '[Ads] Calculated bonus is zero (percent=$percent, base=$baseRate).',
+        );
         return 0.0;
       }
 
@@ -719,6 +818,23 @@ class MiningBatchCommitEngine {
         'newRateAds': newRateAds,
         'msg': 'Ad watched, bonus applied to hourly rate.',
       });
+
+      // 6. Update Firestore
+      // Critical: Persist the new rate to Firestore so that:
+      // a) It survives app restarts (restored via _tryRestoreSession)
+      // b) Real-time listeners (MiningStateService) pick up the correct value
+      //    instead of overwriting it with 0.0 from a stale doc.
+      try {
+        await _db.collection(FirestoreConstants.users).doc(uid).set({
+          FirestoreUserFields.rateAds: newRateAds,
+          FirestoreUserFields.hourlyRate: newHourlyRate,
+          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      } catch (e) {
+        debugPrint('[Ads] Failed to persist rate update to Firestore: $e');
+        // We don't fail the operation because the local session is updated,
+        // but we log the error.
+      }
 
       return bonusAmount;
     });
