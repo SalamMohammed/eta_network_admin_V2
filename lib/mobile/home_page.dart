@@ -1002,10 +1002,7 @@ class _MobileHomePageState extends State<MobileHomePage>
 
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.maybePop(context),
-        ),
+        automaticallyImplyLeading: false,
         title: const Text('ETA Network'),
         actions: const [],
       ),

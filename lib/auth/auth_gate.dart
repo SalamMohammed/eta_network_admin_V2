@@ -27,15 +27,16 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
+        debugPrint(
+          'DEBUG: AuthGate state change. ConnectionState: ${snapshot.connectionState}, HasData: ${snapshot.hasData}, User: ${snapshot.data?.uid}',
+        );
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
         if (!snapshot.hasData) {
-          return const LoginPage(
-            goToSelectorAfterAuth: false,
-          );
+          return const LoginPage(goToSelectorAfterAuth: false);
         }
         return const _MobileOnboardingRouter();
       },
@@ -52,9 +53,7 @@ class AuthGate extends StatelessWidget {
           );
         }
         if (!snapshot.hasData) {
-          return const LoginPage(
-            goToSelectorAfterAuth: false,
-          );
+          return const LoginPage(goToSelectorAfterAuth: false);
         }
         return const DashboardPage();
       },

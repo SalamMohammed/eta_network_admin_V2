@@ -72,12 +72,35 @@ class _SignupPageState extends State<SignupPage> {
         debugPrint('[$level][${ts()}][$op] $msg$extras$err$st');
       }
 
+      debugPrint('DEBUG: Creating user with email and password...');
       final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
       final uid = cred.user!.uid;
+      debugPrint('DEBUG: User created successfully. UID: $uid');
+
+      // Force auth propagation before Firestore writes
+      debugPrint('DEBUG: Waiting for initial auth propagation (2s)...');
+      await Future.delayed(const Duration(seconds: 2));
+      try {
+        await FirebaseAuth.instance.currentUser?.reload();
+        debugPrint(
+          'DEBUG: Initial user reload complete. User: ${FirebaseAuth.instance.currentUser?.uid}',
+        );
+      } catch (e) {
+        debugPrint('DEBUG: Initial user reload failed: $e');
+      }
+
+      if (FirebaseAuth.instance.currentUser == null) {
+        throw FirebaseAuthException(
+          code: 'auth-propagation-failed',
+          message:
+              'User is unauthenticated after creation. Please try logging in.',
+        );
+      }
+
       final username = _emailController.text.trim().split('@').first;
       final referralCode = _generateReferralCode();
       log(
@@ -87,35 +110,38 @@ class _SignupPageState extends State<SignupPage> {
         extra: {'uid': uid},
       );
       try {
-        await FirestoreHelper.instance
-            .collection(FirestoreConstants.users)
-            .doc(uid)
-            .set({
-              FirestoreUserFields.uid: uid,
-              FirestoreUserFields.email: cred.user!.email,
-              FirestoreUserFields.username: username,
-              FirestoreUserFields.migrationUnifiedEarnings: true,
-              FirestoreUserFields.referralCode: referralCode,
-              FirestoreUserFields.invitedBy: null,
-              FirestoreUserFields.referralLocked: false,
-              FirestoreUserFields.role: FirestoreUserRoles.free,
-              FirestoreUserFields.rank: FirestoreUserRanks.explorer,
-              FirestoreUserFields.totalPoints: 0,
-              FirestoreUserFields.lastMiningStart: null,
-              FirestoreUserFields.lastMiningEnd: null,
-              FirestoreUserFields.streakDays: 0,
-              FirestoreUserFields.totalSessions: 0,
-              FirestoreUserFields.country: null,
-              FirestoreUserFields.deviceId: null,
-              FirestoreUserFields.managerEnabled: false,
-              FirestoreUserFields.activeManagerId: null,
-              FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
-              FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-              FirestoreUserFields.subscription: {
-                FirestoreUserSubscriptionFields.status: 'expired',
-                FirestoreUserSubscriptionFields.autoRenew: false,
-              },
-            }, SetOptions(merge: true));
+        debugPrint('DEBUG: Creating user document in Firestore...');
+        await _retry(
+          () => FirestoreHelper.instance
+              .collection(FirestoreConstants.users)
+              .doc(uid)
+              .set({
+                FirestoreUserFields.uid: uid,
+                FirestoreUserFields.email: cred.user!.email,
+                FirestoreUserFields.username: username,
+                FirestoreUserFields.migrationUnifiedEarnings: true,
+                FirestoreUserFields.referralCode: referralCode,
+                FirestoreUserFields.invitedBy: null,
+                FirestoreUserFields.referralLocked: false,
+                FirestoreUserFields.role: FirestoreUserRoles.free,
+                FirestoreUserFields.rank: FirestoreUserRanks.explorer,
+                FirestoreUserFields.totalPoints: 0,
+                FirestoreUserFields.lastMiningStart: null,
+                FirestoreUserFields.lastMiningEnd: null,
+                FirestoreUserFields.streakDays: 0,
+                FirestoreUserFields.totalSessions: 0,
+                FirestoreUserFields.country: null,
+                FirestoreUserFields.deviceId: null,
+                FirestoreUserFields.managerEnabled: false,
+                FirestoreUserFields.activeManagerId: null,
+                FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
+                FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+                FirestoreUserFields.subscription: {
+                  FirestoreUserSubscriptionFields.status: 'expired',
+                  FirestoreUserSubscriptionFields.autoRenew: false,
+                },
+              }, SetOptions(merge: true)),
+        );
         log('INFO', 'uid-flag', 'created signup user doc', extra: {'uid': uid});
       } on FirebaseException catch (fe, st) {
         log(
@@ -130,29 +156,42 @@ class _SignupPageState extends State<SignupPage> {
       }
 
       // Initialize unified earnings fields on user doc
-      await FirestoreHelper.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .set({
-            FirestoreUserFields.hourlyRate: 0,
-            FirestoreUserFields.managedCoinSelections: [],
-            FirestoreUserFields.rateBase: 0.0,
-            FirestoreUserFields.rateStreak: 0.0,
-            FirestoreUserFields.rateRank: 0.0,
-            FirestoreUserFields.rateReferral: 0.0,
-            FirestoreUserFields.rateManager: 0.0,
-            FirestoreUserFields.rateAds: 0.0,
-            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+      await _retry(
+        () => FirestoreHelper.instance
+            .collection(FirestoreConstants.users)
+            .doc(uid)
+            .set({
+              FirestoreUserFields.hourlyRate: 0,
+              FirestoreUserFields.managedCoinSelections: [],
+              FirestoreUserFields.rateBase: 0.0,
+              FirestoreUserFields.rateStreak: 0.0,
+              FirestoreUserFields.rateRank: 0.0,
+              FirestoreUserFields.rateReferral: 0.0,
+              FirestoreUserFields.rateManager: 0.0,
+              FirestoreUserFields.rateAds: 0.0,
+              FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true)),
+      );
 
-      final b = Uint8List(0);
-      final r = FirebaseStorage.instance.ref().child('users/$uid/thumbnail');
-      await r.putData(b, SettableMetadata(contentType: 'image/png'));
-      final u = await r.getDownloadURL();
-      await FirestoreHelper.instance
-          .collection(FirestoreConstants.users)
-          .doc(uid)
-          .set({FirestoreUserFields.thumbnailUrl: u}, SetOptions(merge: true));
+      try {
+        final b = Uint8List(0);
+        final r = FirebaseStorage.instance.ref().child('users/$uid/thumbnail');
+        await _retry(
+          () => r.putData(b, SettableMetadata(contentType: 'image/png')),
+        );
+        final u = await _retry(() => r.getDownloadURL());
+        await _retry(
+          () => FirestoreHelper.instance
+              .collection(FirestoreConstants.users)
+              .doc(uid)
+              .set({
+                FirestoreUserFields.thumbnailUrl: u,
+              }, SetOptions(merge: true)),
+        );
+      } catch (e) {
+        debugPrint('DEBUG: Thumbnail setup failed (non-critical): $e');
+        // Continue signup even if thumbnail fails
+      }
 
       final providedCode = _referralController.text.trim();
       await ReferralEngine.processReferralOnSignup(
@@ -165,9 +204,27 @@ class _SignupPageState extends State<SignupPage> {
       await AuthVerificationService.sendVerificationEmail();
 
       if (mounted) {
-        Navigator.pushReplacement(
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created! Finalizing setup...'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // Wait for auth propagation to avoid "User is unauthenticated" race conditions
+        await Future.delayed(const Duration(seconds: 2));
+        try {
+          await FirebaseAuth.instance.currentUser?.reload();
+        } catch (_) {}
+
+        // Navigate to AuthGate which will handle the authenticated state
+        // and show the verification overlay via MobileAppScaffold
+        Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const AuthGate()),
+          (route) => false,
         );
       }
     } on FirebaseAuthException catch (e) {
@@ -830,5 +887,24 @@ class _SignupPageState extends State<SignupPage> {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final rnd = Random();
     return List.generate(8, (_) => chars[rnd.nextInt(chars.length)]).join();
+  }
+
+  Future<T> _retry<T>(
+    Future<T> Function() operation, {
+    int maxAttempts = 3,
+  }) async {
+    int attempts = 0;
+    while (true) {
+      try {
+        attempts++;
+        return await operation();
+      } catch (e) {
+        debugPrint(
+          'DEBUG: Operation failed (attempt $attempts/$maxAttempts): $e',
+        );
+        if (attempts >= maxAttempts) rethrow;
+        await Future.delayed(const Duration(seconds: 1));
+      }
+    }
   }
 }

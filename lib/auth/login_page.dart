@@ -245,15 +245,26 @@ class _LoginPageState extends State<LoginPage> {
       _error = null;
     });
     try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+      debugPrint('DEBUG: Attempting login for $email');
+      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
       );
+      debugPrint('DEBUG: Login successful. UID: ${cred.user?.uid}');
+      if (cred.user != null) {
+        await _ensureUserDocExists(cred.user!);
+      }
     } on FirebaseAuthException catch (e) {
+      debugPrint(
+        'DEBUG: Login failed (FirebaseAuthException): ${e.code} - ${e.message}',
+      );
       setState(() {
         _error = _friendlyAuthError(e);
       });
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('DEBUG: Login failed (General): $e\nStack: $st');
       setState(() {
         _error = 'Login failed';
       });

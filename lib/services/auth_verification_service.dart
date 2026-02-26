@@ -7,7 +7,7 @@ class AuthVerificationService {
     return ActionCodeSettings(
       url: url,
       handleCodeInApp: false,
-      androidPackageName: 'com.eta.network',
+      androidPackageName: 'net.etanetwork.app',
       androidInstallApp: true,
       iOSBundleId: DefaultFirebaseOptions.ios.iosBundleId,
     );
@@ -17,7 +17,9 @@ class AuthVerificationService {
     final u = FirebaseAuth.instance.currentUser;
     if (u == null) return;
     try {
-      await u.sendEmailVerification(_settings());
+      if (!u.emailVerified) {
+        await u.sendEmailVerification(_settings());
+      }
     } catch (_) {}
   }
 

@@ -84,5 +84,6 @@ flutter {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation("com.google.ads.mediation:unity:4.13.1.0")
+    implementation("com.unity3d.ads:unity-ads:4.13.1")
     implementation("com.google.ads.mediation:facebook:6.18.0.0")
 }
