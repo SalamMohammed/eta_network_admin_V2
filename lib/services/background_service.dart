@@ -71,8 +71,13 @@ class BackgroundService {
   /// Uses AndroidAlarmManager for exact timing on Android,
   /// and Workmanager for iOS (best effort).
   static Future<void> scheduleManagerWakeup(DateTime targetTime) async {
+    // Add 2 minutes buffer to ensure session is definitely finished and app state is settled
+    // This prevents race conditions where the app might still be closing or the session
+    // hasn't fully registered as "finished" in all subsystems.
+    final adjustedTarget = targetTime.add(const Duration(minutes: 2));
+
     final now = DateTime.now();
-    if (targetTime.isBefore(now)) {
+    if (adjustedTarget.isBefore(now)) {
       debugPrint(
         '[BackgroundService] Target time is in past, running immediately',
       );
@@ -80,11 +85,11 @@ class BackgroundService {
       return;
     }
 
-    debugPrint('[BackgroundService] Scheduling wakeup at $targetTime');
+    debugPrint('[BackgroundService] Scheduling wakeup at $adjustedTarget');
 
     if (defaultTargetPlatform == TargetPlatform.android) {
       await AndroidAlarmManager.oneShotAt(
-        targetTime,
+        adjustedTarget,
         _alarmId,
         alarmCallback,
         exact: true,
@@ -95,9 +100,9 @@ class BackgroundService {
       // iOS / Other: Use Workmanager
       // Workmanager minimum interval is 15min usually for periodic,
       // but oneOff can be scheduled with initialDelay.
-      final delay = targetTime.difference(now);
+      final delay = adjustedTarget.difference(now);
       await Workmanager().registerOneOffTask(
-        "${taskManagerWakeup}_${targetTime.millisecondsSinceEpoch}",
+        "${taskManagerWakeup}_${adjustedTarget.millisecondsSinceEpoch}",
         taskManagerWakeup,
         initialDelay: delay,
         existingWorkPolicy: ExistingWorkPolicy.replace,
