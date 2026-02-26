@@ -65,10 +65,21 @@ build/
 android/.gradle/
 android/local.properties
 android/**/GeneratedPluginRegistrant.java
+android/**/google-services.json
+**/google-services.json
 
 # iOS
 ios/Pods/
 ios/.generated/
+ios/**/GoogleService-Info.plist
+**/GoogleService-Info.plist
 
 # Misc
 *.log
+lib/firebase_options.dart
+**/*.keystore
+**/*.jks
+**/*.p12
+**/*.pem
+**/service-account.json
+**/google-play-*.json
