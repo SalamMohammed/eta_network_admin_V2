@@ -498,12 +498,16 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                               ),
                                             ),
                                             SizedBox(width: s(8)),
-                                            Text(
-                                              'Created by @$username',
-                                              style: TextStyle(
-                                                color: Colors.white70,
-                                                fontSize: s(13.5),
-                                                fontWeight: FontWeight.w800,
+                                            Flexible(
+                                              child: Text(
+                                                'Created by @$username',
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: s(13.5),
+                                                  fontWeight: FontWeight.w800,
+                                                ),
                                               ),
                                             ),
                                             SizedBox(width: s(8)),
@@ -529,7 +533,9 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                         ).withValues(alpha: 0.35),
                                         title: 'Mining rate',
                                         value: fmtRate(rate),
-                                        suffix: 'ETA/hr',
+                                        suffix: symbol.isNotEmpty
+                                            ? '$symbol/hr'
+                                            : 'ETA/hr',
                                         footnote: changePct == null
                                             ? null
                                             : '${changePct >= 0 ? '+' : ''}${changePct.toStringAsFixed(1)}%',
@@ -813,11 +819,100 @@ class _LiveMinedDisplayState extends State<LiveMinedDisplay>
   double _rate = 0.0;
   Timestamp? _start;
   double _totalBase = 0.0;
+  Stream<Map<String, dynamic>?>? _miningStream;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _initStream();
+  }
+
+  @override
+  void didUpdateWidget(LiveMinedDisplay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.uid != oldWidget.uid ||
+        widget.coinOwnerId != oldWidget.coinOwnerId) {
+      _initStream();
+    }
+  }
+
+  void _initStream() {
+    if (widget.uid.isEmpty || widget.coinOwnerId.isEmpty) {
+      _miningStream = null;
+      return;
+    }
+
+    _miningStream = FirestoreHelper.instance
+        .collection(FirestoreConstants.users)
+        .doc(widget.uid)
+        .snapshots()
+        .map((snap) {
+          final data = snap.data() ?? {};
+          final wallet =
+              (data[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
+
+          // Robust extraction matching CoinService._extractWalletCoins logic
+          // to handle both nested 'coins' map and flat 'wallet.coins.ID' keys
+          Map<String, dynamic> coins = {};
+          final nestedCoins = (wallet['coins'] as Map<String, dynamic>?);
+
+          if (nestedCoins != null && nestedCoins.isNotEmpty) {
+            coins = Map<String, dynamic>.from(nestedCoins);
+          } else {
+            // Fallback for flat keys if necessary
+            final prefix = '${FirestoreUserFields.wallet}.coins.';
+            data.forEach((key, value) {
+              if (key.startsWith(prefix) && value is Map<String, dynamic>) {
+                final ownerId = key.substring(prefix.length);
+                if (ownerId.isNotEmpty) {
+                  coins[ownerId] = value;
+                }
+              }
+            });
+          }
+
+          final coin = coins[widget.coinOwnerId];
+          if (coin is Map<String, dynamic>) {
+            final m = Map<String, dynamic>.from(coin);
+
+            // Normalize keys to ensure _processData finds them (matching CoinService.watchUserCoin)
+            m[FirestoreUserCoinMiningFields.ownerId] =
+                m[FirestoreUserCoinMiningFields.ownerId] ?? widget.coinOwnerId;
+
+            m[FirestoreUserCoinFields.ownerId] =
+                m[FirestoreUserCoinFields.ownerId] ??
+                m[FirestoreUserCoinMiningFields.ownerId];
+
+            m[FirestoreUserCoinFields.name] =
+                m[FirestoreUserCoinFields.name] ??
+                m[FirestoreUserCoinMiningFields.name];
+            m[FirestoreUserCoinFields.symbol] =
+                m[FirestoreUserCoinFields.symbol] ??
+                m[FirestoreUserCoinMiningFields.symbol];
+            m[FirestoreUserCoinFields.imageUrl] =
+                m[FirestoreUserCoinFields.imageUrl] ??
+                m[FirestoreUserCoinMiningFields.imageUrl];
+            m[FirestoreUserCoinFields.description] =
+                m[FirestoreUserCoinFields.description] ??
+                m[FirestoreUserCoinMiningFields.description];
+            m[FirestoreUserCoinFields.socialLinks] =
+                m[FirestoreUserCoinFields.socialLinks] ??
+                m[FirestoreUserCoinMiningFields.socialLinks];
+
+            m[FirestoreUserCoinFields.baseRatePerHour] =
+                m[FirestoreUserCoinFields.baseRatePerHour] ??
+                m[FirestoreUserCoinMiningFields.hourlyRate];
+
+            // Critical: Ensure hourlyRate is set for _processData
+            m[FirestoreUserCoinMiningFields.hourlyRate] =
+                m[FirestoreUserCoinMiningFields.hourlyRate] ??
+                m[FirestoreUserCoinFields.baseRatePerHour];
+
+            return m;
+          }
+          return null;
+        });
   }
 
   @override
@@ -962,41 +1057,16 @@ class _LiveMinedDisplayState extends State<LiveMinedDisplay>
 
   @override
   Widget build(BuildContext context) {
-    Stream<Map<String, dynamic>?> stream;
-    if (CoinService.useSqlBackend) {
-      // For SQL, we rely on initialData (fetched in dialog) or manual polling if needed.
-      // watchUserCoin(uid) returns the *created* coin, which is wrong if uid != coinOwnerId.
-      if (widget.uid == widget.coinOwnerId) {
-        stream = CoinService.watchUserCoin(widget.uid);
-      } else {
-        // No stream for mined coins in SQL yet (unless we poll getMyCoins)
-        stream = Stream.value(null);
-      }
-    } else {
-      stream = FirestoreHelper.instance
-          .collection(FirestoreConstants.users)
-          .doc(widget.uid)
-          .snapshots()
-          .map((snap) {
-            final data = snap.data() ?? {};
-            final wallet =
-                (data[FirestoreUserFields.wallet] as Map<String, dynamic>?) ??
-                {};
-            final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
-            final coin = coins[widget.coinOwnerId];
-            if (coin is Map<String, dynamic>) {
-              return Map<String, dynamic>.from(coin);
-            }
-            return null;
-          });
-    }
-
     return StreamBuilder<Map<String, dynamic>?>(
-      stream: stream,
+      stream: _miningStream,
       builder: (context, snap) {
         final d = snap.data;
+        // If snapshot has data, use it. If null (loading/error), fallback to initialData if available
         if (d != null) {
           _processData(d);
+        } else if (widget.initialData != null && _display == 0.0) {
+          // Initialize once with initialData if we haven't processed anything yet
+          _processData(widget.initialData!);
         }
         return widget.builder(_display);
       },

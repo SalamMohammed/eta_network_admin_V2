@@ -1229,8 +1229,8 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
       _showError('Symbol is required.');
       return;
     }
-    if (symbol.length < 2 || symbol.length > 10) {
-      _showError('Symbol must be 2–10 letters/numbers.');
+    if (symbol.length < 2 || symbol.length > 6) {
+      _showError('Symbol must be 2–6 letters/numbers.');
       return;
     }
     if (symbolCtrl.text.trim() != symbol) {
@@ -1653,93 +1653,36 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                       builder: (context, constraints) {
                         final numberText = fmtDisplay(_display);
                         final symbolText = sym.isEmpty ? '—' : sym;
-                        const baseNumberSize = 18.0;
-                        const baseSymbolSize = 12.5;
-                        const minNumberSize = 10.0;
-                        const minSymbolSize = 8.5;
-                        const gap = 8.0;
-                        final maxSymbolWidth = constraints.maxWidth * 0.38;
 
-                        double measure(String text, TextStyle style) {
-                          final painter = TextPainter(
-                            text: TextSpan(text: text, style: style),
-                            maxLines: 1,
-                            textDirection: Directionality.of(context),
-                            textScaler: MediaQuery.textScalerOf(context),
-                          )..layout(minWidth: 0, maxWidth: double.infinity);
-                          return painter.size.width;
-                        }
-
-                        const baseNumberStyle = TextStyle(
-                          color: Colors.white,
-                          fontSize: baseNumberSize,
-                          fontWeight: FontWeight.w900,
-                        );
-                        const baseSymbolStyle = TextStyle(
-                          color: Colors.white54,
-                          fontSize: baseSymbolSize,
-                          fontWeight: FontWeight.w900,
-                        );
-
-                        final desiredSymbolWidth =
-                            measure(symbolText, baseSymbolStyle);
-                        final clampedSymbolWidth = desiredSymbolWidth
-                            .clamp(0.0, maxSymbolWidth)
-                            .toDouble();
-                        final availableNumberWidth = (constraints.maxWidth -
-                                gap -
-                                clampedSymbolWidth)
-                            .clamp(0.0, constraints.maxWidth)
-                            .toDouble();
-
-                        final numberWidth = measure(numberText, baseNumberStyle);
-                        final numberScale = numberWidth <= 0
-                            ? 1.0
-                            : (availableNumberWidth / numberWidth)
-                                .clamp(0.0, 1.0)
-                                .toDouble();
-                        final numberSize = (baseNumberSize * numberScale)
-                            .clamp(minNumberSize, baseNumberSize)
-                            .toDouble();
-
-                        final symbolScale = desiredSymbolWidth <= 0
-                            ? 1.0
-                            : (maxSymbolWidth / desiredSymbolWidth)
-                                .clamp(0.0, 1.0)
-                                .toDouble();
-                        final symbolSize = (baseSymbolSize * symbolScale)
-                            .clamp(minSymbolSize, baseSymbolSize)
-                            .toDouble();
-
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              numberText,
-                              maxLines: 1,
-                              overflow: TextOverflow.clip,
-                              style: baseNumberStyle.copyWith(
-                                fontSize: numberSize,
-                              ),
-                            ),
-                            const SizedBox(width: gap),
-                            ConstrainedBox(
-                              constraints:
-                                  BoxConstraints(maxWidth: maxSymbolWidth),
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 2),
-                                child: Text(
-                                  symbolText,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: false,
-                                  style: baseSymbolStyle.copyWith(
-                                    fontSize: symbolSize,
+                        return SizedBox(
+                          width: constraints.maxWidth,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  numberText,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18.0,
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  symbolText,
+                                  style: const TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         );
                       },
                     ),
@@ -1765,93 +1708,36 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                       builder: (context, constraints) {
                         final rateText = fmtRate(rate);
                         final suffixText = baseSuffix;
-                        const baseRateSize = 18.0;
-                        const baseSuffixSize = 12.5;
-                        const minRateSize = 10.0;
-                        const minSuffixSize = 8.5;
-                        const gap = 8.0;
-                        final maxSuffixWidth = constraints.maxWidth * 0.48;
 
-                        double measure(String text, TextStyle style) {
-                          final painter = TextPainter(
-                            text: TextSpan(text: text, style: style),
-                            maxLines: 1,
-                            textDirection: Directionality.of(context),
-                            textScaler: MediaQuery.textScalerOf(context),
-                          )..layout(minWidth: 0, maxWidth: double.infinity);
-                          return painter.size.width;
-                        }
-
-                        const baseRateStyle = TextStyle(
-                          color: Colors.white,
-                          fontSize: baseRateSize,
-                          fontWeight: FontWeight.w900,
-                        );
-                        const baseSuffixStyle = TextStyle(
-                          color: Colors.white54,
-                          fontSize: baseSuffixSize,
-                          fontWeight: FontWeight.w900,
-                        );
-
-                        final desiredSuffixWidth =
-                            measure(suffixText, baseSuffixStyle);
-                        final clampedSuffixWidth = desiredSuffixWidth
-                            .clamp(0.0, maxSuffixWidth)
-                            .toDouble();
-                        final availableRateWidth = (constraints.maxWidth -
-                                gap -
-                                clampedSuffixWidth)
-                            .clamp(0.0, constraints.maxWidth)
-                            .toDouble();
-
-                        final rateWidth = measure(rateText, baseRateStyle);
-                        final rateScale = rateWidth <= 0
-                            ? 1.0
-                            : (availableRateWidth / rateWidth)
-                                .clamp(0.0, 1.0)
-                                .toDouble();
-                        final rateSize = (baseRateSize * rateScale)
-                            .clamp(minRateSize, baseRateSize)
-                            .toDouble();
-
-                        final suffixScale = desiredSuffixWidth <= 0
-                            ? 1.0
-                            : (maxSuffixWidth / desiredSuffixWidth)
-                                .clamp(0.0, 1.0)
-                                .toDouble();
-                        final suffixSize = (baseSuffixSize * suffixScale)
-                            .clamp(minSuffixSize, baseSuffixSize)
-                            .toDouble();
-
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              rateText,
-                              maxLines: 1,
-                              overflow: TextOverflow.clip,
-                              style: baseRateStyle.copyWith(
-                                fontSize: rateSize,
-                              ),
-                            ),
-                            const SizedBox(width: gap),
-                            ConstrainedBox(
-                              constraints:
-                                  BoxConstraints(maxWidth: maxSuffixWidth),
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 2),
-                                child: Text(
-                                  suffixText,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  softWrap: false,
-                                  style: baseSuffixStyle.copyWith(
-                                    fontSize: suffixSize,
+                        return SizedBox(
+                          width: constraints.maxWidth,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              children: [
+                                Text(
+                                  rateText,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 18.0,
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
-                              ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  suffixText,
+                                  style: const TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         );
                       },
                     ),
