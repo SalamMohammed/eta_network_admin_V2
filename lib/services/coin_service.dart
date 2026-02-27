@@ -327,8 +327,10 @@ class CoinService with WidgetsBindingObserver {
     return controller.stream;
   }
 
-  static Future<Map<String, dynamic>> getUserCoinConfig() async {
-    return ConfigService().getUserCoinConfig();
+  static Future<Map<String, dynamic>> getUserCoinConfig({
+    bool forceRefresh = false,
+  }) async {
+    return ConfigService().getUserCoinConfig(forceRefresh: forceRefresh);
   }
 
   static Future<void> checkCoinUniqueness({

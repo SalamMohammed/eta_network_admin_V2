@@ -615,7 +615,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
   bool _allowImageUpload = false;
   int _maxDesc = 500;
   int _maxLinks = 6;
-  double _minRate = 0.01;
+  double _minRate = 0.000000001;
   double _maxRate = 10.0;
   bool _submitting = false;
   Uint8List? _thumbBytes;
@@ -676,9 +676,8 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
         500;
     _maxLinks =
         (cfg[FirestoreAppConfigFields.maxSocialLinks] as num?)?.toInt() ?? 6;
-    _minRate =
-        (cfg[FirestoreAppConfigFields.minRatePerHour] as num?)?.toDouble() ??
-        0.01;
+    // We ignore minRatePerHour from config as per requirement, defaulting to near-zero.
+    _minRate = 0.000000001;
     _maxRate =
         (cfg[FirestoreAppConfigFields.maxRatePerHour] as num?)?.toDouble() ??
         10.0;
@@ -1243,8 +1242,8 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
       _showError('Description is too long.');
       return;
     }
-    if (rate == null || rate < _minRate || rate > _maxRate) {
-      _showError('Base mining rate is out of range.');
+    if (rate == null || rate <= 0 || rate > _maxRate) {
+      _showError('Base mining rate must be between 0.000000001 and $_maxRate.');
       return;
     }
 
