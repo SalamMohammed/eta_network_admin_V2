@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../shared/firestore_constants.dart';
 import 'config_service.dart';
 import 'rank_engine.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class OfflineMiningUserLock {
   static final Map<String, Future<void>> _tails = {};
@@ -376,11 +377,12 @@ class MiningBatchCommitEngine {
     final startedAt = DateTime.now();
     final cfg = ConfigService();
     _logReferral(opId, uid, 'BEGIN config load for mining session', indent: 0);
-    final appConfig = await cfg.getGeneralConfig();
-    final streakConfig = await cfg.getStreakConfig();
-    final ranksConfig = await cfg.getRanksConfig();
-    final referralConfig = await cfg.getReferralConfig();
-    var adsConfig = await cfg.getAdsConfig();
+    // Force refresh to ensure we have the latest rules
+    final appConfig = await cfg.getGeneralConfig(forceRefresh: true);
+    final streakConfig = await cfg.getStreakConfig(forceRefresh: true);
+    final ranksConfig = await cfg.getRanksConfig(forceRefresh: true);
+    final referralConfig = await cfg.getReferralConfig(forceRefresh: true);
+    var adsConfig = await cfg.getAdsConfig(forceRefresh: true);
 
     // Ensure critical ads config fields are present by merging with defaults
     if (!adsConfig.containsKey(FirestoreAdsConfigFields.rewardBonusPercent)) {
@@ -920,6 +922,16 @@ class MiningBatchCommitEngine {
   }) async {
     final opId = 'start-$uid-${DateTime.now().millisecondsSinceEpoch}';
     debugPrint('[MiningBatchCommitEngine] op=$opId startSession call uid=$uid');
+
+    // 1. Read User (Force Refresh) - Match Foreground Logic
+    // Ensure auth token is fresh to avoid "User is unauthenticated" errors
+    try {
+      await FirebaseAuth.instance.currentUser?.reload();
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+    } catch (e) {
+      debugPrint('[MiningBatchCommitEngine] Auth reload failed: $e');
+    }
+
     return OfflineMiningUserLock.runLocked(uid, () async {
       _logReferral(
         opId,
@@ -1040,8 +1052,31 @@ class MiningBatchCommitEngine {
         double rateManager = 0.0;
         double managerBonusPerHour = 0.0;
 
-        final bool managerEnabled =
+        // Strict Manager Check (Subscriber Only)
+        // Match logic from MiningStateService to ensure consistency
+        final bool isPro =
+            userData[FirestoreUserFields.role] == FirestoreUserRoles.pro;
+        final sub =
+            userData[FirestoreUserFields.subscription] as Map<String, dynamic>?;
+        final subStatus =
+            sub?[FirestoreUserSubscriptionFields.status] as String?;
+        final subExpires =
+            sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
+        final bool isSubActive = subStatus == 'active';
+        final bool isExpired =
+            subExpires != null && now.isAfter(subExpires.toDate());
+        final bool managerEnabledRaw =
             (userData[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+
+        final bool managerEnabled =
+            isPro && isSubActive && !isExpired && managerEnabledRaw;
+
+        if (!managerEnabled && managerEnabledRaw) {
+          debugPrint(
+            '[MiningBatchCommitEngine] op=$opId manager logically disabled due to sub/role check: pro=$isPro sub=$subStatus expired=$isExpired',
+          );
+        }
+
         final String? activeManagerId =
             userData[FirestoreUserFields.activeManagerId] as String?;
 
@@ -1052,32 +1087,51 @@ class MiningBatchCommitEngine {
             '[MiningBatchCommitEngine] op=$opId manager inactive uid=$uid enabled=$managerEnabled managerId=$activeManagerId',
           );
         } else {
+          Map<String, dynamic> managerData = {};
+          bool usedCache = false;
+
+          // Explicitly read from Firestore to ensure fresh data (ignoring cache)
+          // This satisfies the requirement: "one read to manager"
           final managerRef = _db
               .collection(FirestoreConstants.managers)
               .doc(activeManagerId);
           final managerSnap = await transaction.get(managerRef);
-          final managerData = managerSnap.data() ?? <String, dynamic>{};
-          final double rawMultiplier =
+          managerData = managerSnap.data() ?? <String, dynamic>{};
+
+          double rawMultiplier =
               (managerData[FirestoreManagerFields.managerMultiplier] as num?)
                   ?.toDouble() ??
               0.0;
-          if (rawMultiplier <= 0.0) {
-            debugPrint(
-              '[MiningBatchCommitEngine] op=$opId manager multiplier missing or zero uid=$uid managerId=$activeManagerId raw=$rawMultiplier',
-            );
-          } else {
-            double clamped = rawMultiplier;
-            if (clamped < 0.1) {
-              clamped = 0.1;
-            } else if (clamped > 10.0) {
-              clamped = 10.0;
-            }
-            managerBonusPerHour = baseRate * (clamped - 1.0);
-            rateManager = managerBonusPerHour;
-            debugPrint(
-              '[MiningBatchCommitEngine] op=$opId manager bonus uid=$uid managerId=$activeManagerId multiplier=$clamped baseRate=$baseRate bonusPerHour=$managerBonusPerHour',
-            );
+
+          // REVERTED: Default is 0.0.
+          // If manager is enabled, it should have a multiplier > 1.0.
+          // If multiplier is 0.0 or 1.0, bonus is 0.
+          debugPrint(
+            '[MiningBatchCommitEngine] op=$opId manager multiplier value uid=$uid managerId=$activeManagerId raw=$rawMultiplier.',
+          );
+
+          double clamped = rawMultiplier;
+          if (clamped < 0.0) {
+            clamped = 0.0;
+          } else if (clamped > 10.0) {
+            clamped = 10.0;
           }
+
+          // Fix: If multiplier is <= 1.0, bonus should be 0.
+          // Formula: base * (multiplier - 1.0)
+          // If multiplier is 0.0: base * -1.0 = -base (Negative bonus! Wrong)
+          // If multiplier is 1.0: base * 0.0 = 0.0 (No bonus. Correct)
+          // So we clamp the subtraction factor.
+          if (clamped <= 1.0) {
+            managerBonusPerHour = 0.0;
+          } else {
+            managerBonusPerHour = baseRate * (clamped - 1.0);
+          }
+
+          rateManager = managerBonusPerHour;
+          debugPrint(
+            '[MiningBatchCommitEngine] op=$opId manager bonus uid=$uid managerId=$activeManagerId multiplier=$clamped baseRate=$baseRate bonusPerHour=$managerBonusPerHour',
+          );
         }
 
         final List<String> managedCoinSelections =

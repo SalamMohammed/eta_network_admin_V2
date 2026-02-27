@@ -72,10 +72,15 @@ class _SignupPageState extends State<SignupPage> {
         debugPrint('[$level][${ts()}][$op] $msg$extras$err$st');
       }
 
-      debugPrint('DEBUG: Creating user with email and password...');
+      debugPrint(
+        'DEBUG: Creating user with email and password (email=${_emailController.text.trim()})...',
+      );
       final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
+      );
+      debugPrint(
+        'DEBUG: createUserWithEmailAndPassword success. UID: ${cred.user?.uid}',
       );
 
       final uid = cred.user!.uid;

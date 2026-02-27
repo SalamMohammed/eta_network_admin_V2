@@ -47,7 +47,8 @@ class ReferralEngine {
 
       final batch = FirestoreHelper.instance.batch();
 
-      batch.update(inviteeRef, {
+      // Combined update for invitee to avoid multiple operations on same doc in batch
+      final inviteeUpdate = {
         '${FirestoreUserFields.stats}.${FirestoreUserFields.invitedBy}':
             inviterUid,
         '${FirestoreUserFields.stats}.${FirestoreUserFields.referralLocked}':
@@ -55,7 +56,13 @@ class ReferralEngine {
         // Fallback for legacy (optional, but good for Phase 2 compatibility)
         FirestoreUserFields.invitedBy: inviterUid,
         FirestoreUserFields.referralLocked: true,
-      });
+        FirestoreUserFields.totalPoints: FieldValue.increment(
+          inviteeFixedBonus,
+        ),
+        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      };
+
+      batch.set(inviteeRef, inviteeUpdate, SetOptions(merge: true));
 
       // Update Inviter's consolidated referral stats
       final referralSummary = {
@@ -65,21 +72,15 @@ class ReferralEngine {
         'isActive': true,
       };
 
-      batch.update(inviterRef, {
-        '${FirestoreUserFields.referrals}.${FirestoreUserFields.totalReferrals}':
-            FieldValue.increment(1),
-        '${FirestoreUserFields.referrals}.${FirestoreUserFields.activeReferrals}':
-            FieldValue.increment(1),
-        '${FirestoreUserFields.referrals}.${FirestoreUserFields.recentReferrals}':
-            FieldValue.arrayUnion([referralSummary]),
-      });
-
-      // Update points directly on unified user document
-      batch.set(inviteeRef, {
-        FirestoreUserFields.totalPoints: FieldValue.increment(
-          inviteeFixedBonus,
-        ),
-        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+      // Use set with merge to create the referrals map if it doesn't exist
+      batch.set(inviterRef, {
+        FirestoreUserFields.referrals: {
+          FirestoreUserFields.totalReferrals: FieldValue.increment(1),
+          FirestoreUserFields.activeReferrals: FieldValue.increment(1),
+          FirestoreUserFields.recentReferrals: FieldValue.arrayUnion([
+            referralSummary,
+          ]),
+        },
       }, SetOptions(merge: true));
 
       final referralMetaRef = inviteeRef

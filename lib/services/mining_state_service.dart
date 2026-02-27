@@ -967,31 +967,135 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
   /// Fetches fresh data to ensure accuracy.
   Future<void> runManagerLogic() async {
     debugPrint('[MiningStateService] runManagerLogic started');
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    var user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      try {
+        user = await FirebaseAuth.instance
+            .authStateChanges()
+            .firstWhere((u) => u != null)
+            .timeout(const Duration(seconds: 5));
+      } catch (_) {}
+    }
+
+    final uid = user?.uid;
     if (uid == null) {
       debugPrint('[MiningStateService] No user logged in');
       return;
     }
 
-    final userDoc = await UserService().getUser(uid, forceRefresh: true);
+    Future<T> runWithAuthRetry<T>(Future<T> Function() action) async {
+      var attempt = 0;
+      while (true) {
+        try {
+          return await action();
+        } on FirebaseException catch (e) {
+          final code = e.code;
+          if (attempt >= 2) rethrow;
+          if (code == 'unauthenticated') {
+            try {
+              await FirebaseAuth.instance.currentUser?.getIdToken(true);
+              await FirebaseAuth.instance.currentUser?.reload();
+            } catch (_) {}
+          } else if (code != 'unavailable' &&
+              code != 'deadline-exceeded' &&
+              code != 'aborted' &&
+              code != 'cancelled') {
+            rethrow;
+          }
+          attempt++;
+          await Future.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+        }
+      }
+    }
+
+    // 1. Read User (Force Refresh)
+    // Ensure auth token is fresh to avoid "User is unauthenticated" errors
+    try {
+      await FirebaseAuth.instance.currentUser?.reload();
+      await FirebaseAuth.instance.currentUser?.getIdToken(true);
+    } catch (e) {
+      debugPrint('[MiningStateService] Auth reload failed: $e');
+      // If reload fails (e.g. network error), we might still proceed if user is not null,
+      // but it's risky. If token expired, subsequent Firestore calls will fail.
+    }
+
+    final userDoc = await runWithAuthRetry(
+      () => UserService().getUser(uid, forceRefresh: true),
+    );
     if (userDoc == null) {
       debugPrint('[MiningStateService] Failed to fetch user data');
       return;
     }
     final userData = userDoc.data() ?? {};
+
+    // Check Subscription & Role
     final bool isPro =
         userData[FirestoreUserFields.role] == FirestoreUserRoles.pro;
-    final bool managerEnabled =
-        (userData[FirestoreUserFields.managerEnabled] as bool?) ?? false;
 
-    if (!isPro || !managerEnabled) {
+    final sub =
+        userData[FirestoreUserFields.subscription] as Map<String, dynamic>?;
+    final subExpires =
+        sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
+    final now = DateTime.now();
+    final bool isExpired =
+        subExpires != null && now.isAfter(subExpires.toDate());
+    final bool isSubActive =
+        sub?[FirestoreUserSubscriptionFields.status] == 'active';
+
+    // Manager is enabled ONLY if:
+    // 1. User is Pro (subscriber)
+    // 2. Subscription is active and not expired
+    // 3. Manager feature flag is enabled
+    final bool managerEnabled =
+        isPro &&
+        !isExpired &&
+        isSubActive &&
+        ((userData[FirestoreUserFields.managerEnabled] as bool?) ?? false);
+
+    if (!managerEnabled) {
       debugPrint(
-        '[MiningStateService] Access denied: not pro user or manager disabled',
+        '[MiningStateService] Access denied: manager disabled or subscription invalid',
       );
       return;
     }
 
-    await _refresh();
+    // 2. Read Config (Force Refresh)
+    // Explicitly refresh config to ensure we have the latest rules
+    await runWithAuthRetry(
+      () => ConfigService().getGeneralConfig(forceRefresh: true),
+    );
+
+    // 3. Read Manager (Force Refresh)
+    // Explicitly fetch manager data if we have an ID
+    final activeManagerId =
+        (userData[FirestoreUserFields.activeManagerId] as String?) ?? '';
+
+    if (activeManagerId.isNotEmpty) {
+      try {
+        final mgr = await runWithAuthRetry(
+          () => FirestoreHelper.instance
+              .collection(FirestoreConstants.managers)
+              .doc(activeManagerId)
+              .get(),
+        );
+
+        if (mgr.exists) {
+          // Update local cache so _refresh() uses this fresh data
+          _cachedManagerData = mgr.data();
+          _cachedManagerId = activeManagerId;
+          _lastManagerFetch = DateTime.now();
+        }
+      } catch (e) {
+        debugPrint('[MiningStateService] Failed to fetch manager doc: $e');
+      }
+    }
+
+    try {
+      await runWithAuthRetry(() => _refresh());
+    } catch (e) {
+      debugPrint('[MiningStateService] Refresh failed: $e');
+      return;
+    }
 
     // If manager not enabled (double check after refresh), stop.
     if (!_managerEnabled || !_managerGlobalEnabled) {
@@ -1000,7 +1104,6 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     final devId = await DeviceId.get();
-    final now = DateTime.now();
 
     // 2. Start OWN coin if needed
     if (_managerEtaAuto && !_miningActive) {

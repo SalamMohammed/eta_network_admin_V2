@@ -56,6 +56,34 @@ class _LoginPageState extends State<LoginPage> {
       debugPrint('[$level][${ts()}][$op] $msg$extras$err$st');
     }
 
+    // Retry mechanism for Firestore operations (transient permission/network errors)
+    Future<T> retry<T>(Future<T> Function() fn, {int maxAttempts = 3}) async {
+      int attempts = 0;
+      while (true) {
+        try {
+          attempts++;
+          return await fn();
+        } catch (e) {
+          if (attempts >= maxAttempts) rethrow;
+          final delay = Duration(milliseconds: 500 * attempts); // Backoff
+          log(
+            'WARN',
+            'retry',
+            'Attempt $attempts failed, retrying in ${delay.inMilliseconds}ms',
+            error: e,
+          );
+          await Future.delayed(delay);
+          // Refresh user token if permission denied
+          if (e is FirebaseException && e.code == 'permission-denied') {
+            try {
+              await user.reload();
+              log('INFO', 'retry', 'User token reloaded');
+            } catch (_) {}
+          }
+        }
+      }
+    }
+
     final ref = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
         .doc(user.uid);
@@ -65,7 +93,9 @@ class _LoginPageState extends State<LoginPage> {
       'ensureUserDocExists start',
       extra: {'uid': user.uid, 'path': ref.path},
     );
-    final snap = await UserService().getUser(user.uid, forceRefresh: true);
+    final snap = await retry(
+      () => UserService().getUser(user.uid, forceRefresh: true),
+    );
     if (snap != null && snap.exists) {
       final data = snap.data() ?? {};
       final existingEmail = data[FirestoreUserFields.email] as String?;
@@ -134,10 +164,12 @@ class _LoginPageState extends State<LoginPage> {
             'backfilling uidMigrationCheckFinished=false',
             extra: {'uid': user.uid},
           );
-          await ref.set({
-            FirestoreUserFields.uidMigrationCheckFinished: false,
-            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
+          await retry(
+            () => ref.set({
+              FirestoreUserFields.uidMigrationCheckFinished: false,
+              FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true)),
+          );
           log(
             'INFO',
             'uid-flag',
@@ -183,35 +215,37 @@ class _LoginPageState extends State<LoginPage> {
         'creating new user doc with uidMigrationCheckFinished=false',
         extra: {'uid': user.uid},
       );
-      await ref.set({
-        FirestoreUserFields.uid: user.uid,
-        FirestoreUserFields.email: email,
-        FirestoreUserFields.username: username,
-        FirestoreUserFields.uidMigrationCheckFinished: false,
-        FirestoreUserFields.referralCode: _generateReferralCode(),
-        FirestoreUserFields.invitedBy: null,
-        FirestoreUserFields.referralLocked: false,
-        FirestoreUserFields.role: FirestoreUserRoles.free,
-        FirestoreUserFields.rank: FirestoreUserRanks.explorer,
-        FirestoreUserFields.totalPoints: 0,
-        FirestoreUserFields.hourlyRate: 0,
-        FirestoreUserFields.lastMiningStart: null,
-        FirestoreUserFields.lastMiningEnd: null,
-        FirestoreUserFields.streakDays: 0,
-        FirestoreUserFields.totalSessions: 0,
-        FirestoreUserFields.country: null,
-        FirestoreUserFields.deviceId: null,
-        FirestoreUserFields.managerEnabled: false,
-        FirestoreUserFields.activeManagerId: null,
-        if (user.photoURL != null && user.photoURL!.isNotEmpty)
-          FirestoreUserFields.thumbnailUrl: user.photoURL,
-        FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
-        FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-        FirestoreUserFields.subscription: {
-          FirestoreUserSubscriptionFields.status: 'expired',
-          FirestoreUserSubscriptionFields.autoRenew: false,
-        },
-      }, SetOptions(merge: true));
+      await retry(
+        () => ref.set({
+          FirestoreUserFields.uid: user.uid,
+          FirestoreUserFields.email: email,
+          FirestoreUserFields.username: username,
+          FirestoreUserFields.uidMigrationCheckFinished: false,
+          FirestoreUserFields.referralCode: _generateReferralCode(),
+          FirestoreUserFields.invitedBy: null,
+          FirestoreUserFields.referralLocked: false,
+          FirestoreUserFields.role: FirestoreUserRoles.free,
+          FirestoreUserFields.rank: FirestoreUserRanks.explorer,
+          FirestoreUserFields.totalPoints: 0,
+          FirestoreUserFields.hourlyRate: 0,
+          FirestoreUserFields.lastMiningStart: null,
+          FirestoreUserFields.lastMiningEnd: null,
+          FirestoreUserFields.streakDays: 0,
+          FirestoreUserFields.totalSessions: 0,
+          FirestoreUserFields.country: null,
+          FirestoreUserFields.deviceId: null,
+          FirestoreUserFields.managerEnabled: false,
+          FirestoreUserFields.activeManagerId: null,
+          if (user.photoURL != null && user.photoURL!.isNotEmpty)
+            FirestoreUserFields.thumbnailUrl: user.photoURL,
+          FirestoreUserFields.createdAt: FieldValue.serverTimestamp(),
+          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+          FirestoreUserFields.subscription: {
+            FirestoreUserSubscriptionFields.status: 'expired',
+            FirestoreUserSubscriptionFields.autoRenew: false,
+          },
+        }, SetOptions(merge: true)),
+      );
       log('INFO', 'uid-flag', 'created new user doc', extra: {'uid': user.uid});
     } on FirebaseException catch (fe, st) {
       log(
@@ -248,11 +282,13 @@ class _LoginPageState extends State<LoginPage> {
       final email = _emailController.text.trim();
       final password = _passwordController.text;
       debugPrint('DEBUG: Attempting login for $email');
+      debugPrint('DEBUG: Calling signInWithEmailAndPassword...');
       final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
       debugPrint('DEBUG: Login successful. UID: ${cred.user?.uid}');
+      debugPrint('DEBUG: User email verified: ${cred.user?.emailVerified}');
       if (cred.user != null) {
         await _ensureUserDocExists(cred.user!);
       }
