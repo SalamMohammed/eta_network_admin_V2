@@ -111,14 +111,24 @@ class _BalancePageState extends State<BalancePage> {
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  Text(
-                                    total.toStringAsFixed(3),
-                                    style: TextStyle(
-                                      fontSize: s(40),
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                      height: 1.0,
-                                    ),
+                                  Builder(
+                                    builder: (context) {
+                                      final text = total.toStringAsFixed(3);
+                                      double size = 40.0;
+                                      if (text.length > 9) {
+                                        size = 40.0 * (9.0 / text.length);
+                                        if (size < 15.0) size = 15.0;
+                                      }
+                                      return Text(
+                                        text,
+                                        style: TextStyle(
+                                          fontSize: s(size),
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.white,
+                                          height: 1.0,
+                                        ),
+                                      );
+                                    },
                                   ),
                                   SizedBox(width: s(10)),
                                   Padding(
@@ -225,10 +235,7 @@ class _BalancePageState extends State<BalancePage> {
     final vPad = (size.width * 0.03).clamp(8.0, 12.0);
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.maybePop(context),
-        ),
+        automaticallyImplyLeading: false,
         title: const Text('Balance'),
       ),
       body: SingleChildScrollView(

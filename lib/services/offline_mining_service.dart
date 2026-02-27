@@ -45,7 +45,7 @@ class OfflineMiningCache {
     _prefs ??= await SharedPreferences.getInstance();
   }
 
-  static String _key(String uid) => 'offline_mining_cache_v$_version\_$uid';
+  static String _key(String uid) => 'offline_mining_cache_v${_version}_$uid';
 
   static int _checksum(String json) {
     var sum = 0;
@@ -106,7 +106,7 @@ class OfflineMiningCache {
       return value.millisecondsSinceEpoch;
     }
     if (value is Map) {
-      return _toJsonSafe(Map<String, dynamic>.from(value as Map));
+      return _toJsonSafe(Map<String, dynamic>.from(value));
     }
     if (value is List) {
       return value.map(_toJsonSafeValue).toList();
@@ -129,9 +129,9 @@ class OfflineMiningAdsCache {
   }
 
   static String _configKey(String uid) =>
-      'offline_mining_ads_config_v$_version\_$uid';
+      'offline_mining_ads_config_v${_version}_$uid';
   static String _logKey(String uid) =>
-      'offline_mining_ads_log_v$_version\_$uid';
+      'offline_mining_ads_log_v${_version}_$uid';
 
   static Future<void> startSession(
     String uid,
@@ -197,7 +197,7 @@ class OfflineMiningSyncQueue {
       final decoded = json.decode(raw) as List<dynamic>;
       final list = decoded
           .whereType<Map>()
-          .map((e) => Map<String, dynamic>.from(e as Map))
+          .map((e) => Map<String, dynamic>.from(e))
           .toList();
       if (list.isEmpty) {
         return [];
@@ -679,9 +679,7 @@ class MiningBatchCommitEngine {
   static Future<double> registerAdWatch({required String uid}) async {
     return OfflineMiningUserLock.runLocked<double>(uid, () async {
       var session = _sessions[uid];
-      if (session == null) {
-        session = await _tryRestoreSession(uid);
-      }
+      session ??= await _tryRestoreSession(uid);
       if (session == null || session.finished) {
         return 0.0;
       }
@@ -1088,7 +1086,6 @@ class MiningBatchCommitEngine {
           );
         } else {
           Map<String, dynamic> managerData = {};
-          bool usedCache = false;
 
           // Explicitly read from Firestore to ensure fresh data (ignoring cache)
           // This satisfies the requirement: "one read to manager"

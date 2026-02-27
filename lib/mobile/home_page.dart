@@ -608,14 +608,24 @@ class _MobileHomePageState extends State<MobileHomePage>
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.end,
                             children: [
-                              Text(
-                                totalEta.toStringAsFixed(3),
-                                style: TextStyle(
-                                  fontSize: s(50),
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                  height: 1.0,
-                                ),
+                              Builder(
+                                builder: (context) {
+                                  final text = totalEta.toStringAsFixed(3);
+                                  double size = 50.0;
+                                  if (text.length > 9) {
+                                    size = 50.0 * (9.0 / text.length);
+                                    if (size < 20.0) size = 20.0;
+                                  }
+                                  return Text(
+                                    text,
+                                    style: TextStyle(
+                                      fontSize: s(size),
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      height: 1.0,
+                                    ),
+                                  );
+                                }
                               ),
                               SizedBox(width: s(10)),
                               Padding(

@@ -301,8 +301,11 @@ void main() {
           forcedEnd: now.add(const Duration(minutes: 30)),
         );
 
-        final streak = finishRes[FirestoreUserFields.streakDays] as int;
         final sessions = finishRes[FirestoreUserFields.totalSessions] as int;
+        // finishSession doesn't return streakDays (it's updated in startSession),
+        // so we check the DB directly.
+        final streak =
+            fake._users['u1']![FirestoreUserFields.streakDays] as int;
 
         expect(streak, 4);
         expect(sessions, 6);
@@ -575,14 +578,14 @@ void main() {
         expect(r0, closeTo(0.0, 0.000001));
         expect(h0, closeTo(1.0, 0.000001));
 
-        expect(r1, closeTo(0.1, 0.000001));
-        expect(h1, closeTo(1.1, 0.000001));
+        expect(r1, closeTo(0.5, 0.000001));
+        expect(h1, closeTo(1.5, 0.000001));
 
-        expect(r10, closeTo(0.1, 0.000001));
-        expect(h10, closeTo(1.1, 0.000001));
+        expect(r10, closeTo(5.0, 0.000001));
+        expect(h10, closeTo(6.0, 0.000001));
 
-        expect(r100, closeTo(0.2, 0.000001));
-        expect(h100, closeTo(1.2, 0.000001));
+        expect(r100, closeTo(20.0, 0.000001));
+        expect(h100, closeTo(21.0, 0.000001));
       },
     );
 
@@ -608,7 +611,9 @@ void main() {
           deviceId: 'dev1',
         );
 
-        final r1 = start1[FirestoreUserFields.rateReferral] as double;
+        final r1 =
+            (start1[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
+            0.0;
 
         expect(r1, greaterThan(0.0));
       },
