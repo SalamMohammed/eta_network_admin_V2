@@ -42,9 +42,81 @@ class LanguagePage extends StatelessWidget {
                 SizedBox(height: s(12)),
                 _LanguageTile(
                   scale: s,
-                  title: 'Español',
+                  title: '繁體中文',
+                  selected:
+                      currentLocale.languageCode == 'zh' &&
+                      currentLocale.scriptCode == 'Hant',
+                  onTap: () => localeProvider.setLocale(
+                    const Locale.fromSubtags(
+                      languageCode: 'zh',
+                      scriptCode: 'Hant',
+                    ),
+                  ),
+                ),
+                SizedBox(height: s(12)),
+                _LanguageTile(
+                  scale: s,
+                  title: '简体中文',
+                  selected:
+                      currentLocale.languageCode == 'zh' &&
+                      currentLocale.scriptCode != 'Hant',
+                  onTap: () => localeProvider.setLocale(const Locale('zh')),
+                ),
+                SizedBox(height: s(12)),
+                _LanguageTile(
+                  scale: s,
+                  title: 'हिंदी',
+                  selected: currentLocale.languageCode == 'hi',
+                  onTap: () => localeProvider.setLocale(const Locale('hi')),
+                ),
+                SizedBox(height: s(12)),
+                _LanguageTile(
+                  scale: s,
+                  title: 'Tiếng Việt',
+                  selected: currentLocale.languageCode == 'vi',
+                  onTap: () => localeProvider.setLocale(const Locale('vi')),
+                ),
+                SizedBox(height: s(12)),
+                _LanguageTile(
+                  scale: s,
+                  title: 'Bahasa Melayu',
+                  selected: currentLocale.languageCode == 'ms',
+                  onTap: () => localeProvider.setLocale(const Locale('ms')),
+                ),
+                SizedBox(height: s(12)),
+                _LanguageTile(
+                  scale: s,
+                  title: '한국어',
+                  selected: currentLocale.languageCode == 'ko',
+                  onTap: () => localeProvider.setLocale(const Locale('ko')),
+                ),
+                SizedBox(height: s(12)),
+                _LanguageTile(
+                  scale: s,
+                  title: 'Española',
                   selected: currentLocale.languageCode == 'es',
                   onTap: () => localeProvider.setLocale(const Locale('es')),
+                ),
+                SizedBox(height: s(12)),
+                _LanguageTile(
+                  scale: s,
+                  title: 'Türk',
+                  selected: currentLocale.languageCode == 'tr',
+                  onTap: () => localeProvider.setLocale(const Locale('tr')),
+                ),
+                SizedBox(height: s(12)),
+                _LanguageTile(
+                  scale: s,
+                  title: 'Português',
+                  selected: currentLocale.languageCode == 'pt',
+                  onTap: () => localeProvider.setLocale(const Locale('pt')),
+                ),
+                SizedBox(height: s(12)),
+                _LanguageTile(
+                  scale: s,
+                  title: 'العربية',
+                  selected: currentLocale.languageCode == 'ar',
+                  onTap: () => localeProvider.setLocale(const Locale('ar')),
                 ),
               ],
             );

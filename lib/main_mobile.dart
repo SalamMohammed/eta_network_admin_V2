@@ -59,6 +59,18 @@ class MyMobileApp extends StatelessWidget {
           supportedLocales: const [
             Locale('en'), // English
             Locale('es'), // Spanish
+            Locale('zh'), // Chinese (Simplified)
+            Locale.fromSubtags(
+              languageCode: 'zh',
+              scriptCode: 'Hant',
+            ), // Chinese (Traditional)
+            Locale('hi'), // Hindi
+            Locale('vi'), // Vietnamese
+            Locale('ms'), // Malay
+            Locale('ko'), // Korean
+            Locale('tr'), // Turkish
+            Locale('pt'), // Portuguese
+            Locale('ar'), // Arabic
           ],
 
           // Start at the AuthGate to check login status.
@@ -74,11 +86,11 @@ Future<void> _initBackgroundServices() async {
   try {
     // Track where the installation came from (e.g., Play Store referral).
     await InstallReferrerService.init();
-    
+
     // Setup push notifications.
     await NotificationService().init();
     await NotificationService().ensureTokenRegistered();
-    
+
     // Setup ads.
     await AdsService().init();
   } catch (_) {
