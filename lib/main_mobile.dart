@@ -10,6 +10,7 @@ import 'services/install_referrer_service.dart';
 import 'shared/constants.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'l10n/generated/app_localizations.dart';
+import 'l10n/fallback_localization_delegate.dart';
 import 'services/locale_provider.dart';
 
 // This is the main entry point specifically for the Mobile version of the app.
@@ -55,6 +56,8 @@ class MyMobileApp extends StatelessWidget {
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
+            FallbackMaterialLocalizationsDelegate(),
+            FallbackCupertinoLocalizationsDelegate(),
           ],
           supportedLocales: const [
             Locale('en'), // English
@@ -71,6 +74,29 @@ class MyMobileApp extends StatelessWidget {
             Locale('tr'), // Turkish
             Locale('pt'), // Portuguese
             Locale('ar'), // Arabic
+            Locale('id'), // Indonesian
+            Locale('fr'), // French
+            Locale('de'), // German
+            Locale('my'), // Burmese
+            Locale('te'), // Telugu
+            Locale('ne'), // Nepali
+            Locale('bn'), // Bengali
+            Locale('mr'), // Marathi
+            Locale('ta'), // Tamil
+            Locale('pa'), // Punjabi
+            Locale('ur'), // Urdu
+            Locale('th'), // Thai
+            Locale('ru'), // Russian
+            Locale('it'), // Italian
+            Locale('tl'), // Tagalog
+            Locale('ja'), // Japanese
+            Locale('ps'), // Pashto
+            Locale('yo'), // Yoruba
+            Locale('ff'), // Fulfulde
+            Locale('ha'), // Hausa
+            Locale('ig'), // Igbo
+            Locale('fa'), // Persian
+            Locale('pcm'), // Pidgin English
           ],
 
           // Start at the AuthGate to check login status.

@@ -60,7 +60,7 @@ class AppLocalizationsAr extends AppLocalizations {
   String get home => 'الرئيسية';
 
   @override
-  String get referral => 'الإحالة';
+  String get referral => 'الدعوة';
 
   @override
   String get profile => 'الملف الشخصي';
