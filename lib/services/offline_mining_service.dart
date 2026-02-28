@@ -1128,6 +1128,10 @@ class MiningBatchCommitEngine {
           final bool managerEnabled =
               isPro && isSubActive && !isExpired && managerEnabledRaw;
 
+          debugPrint(
+            '[MiningDebug] Manager Eligibility: uid=$uid finalEnabled=$managerEnabled (role=${userData[FirestoreUserFields.role]}, subStatus=$subStatus, subExpired=$isExpired, managerEnabledRaw=$managerEnabledRaw)',
+          );
+
           if (!managerEnabled && managerEnabledRaw) {
             debugPrint(
               '[MiningBatchCommitEngine] op=$opId manager logically disabled due to sub/role check: pro=$isPro sub=$subStatus expired=$isExpired',
@@ -1136,6 +1140,17 @@ class MiningBatchCommitEngine {
 
           final String? activeManagerId =
               userData[FirestoreUserFields.activeManagerId] as String?;
+
+          // Explicitly log the decision logic for the user to see
+          if (managerEnabled) {
+            debugPrint(
+              '[MiningDebug] User IS ELIGIBLE for manager bonus. Role=${userData[FirestoreUserFields.role]}, SubStatus=$subStatus, ActiveManagerId=$activeManagerId',
+            );
+          } else {
+            debugPrint(
+              '[MiningDebug] User is NOT ELIGIBLE for manager bonus. Role=${userData[FirestoreUserFields.role]}, SubStatus=$subStatus. Bonus forced to 0.0.',
+            );
+          }
 
           if (!managerEnabled ||
               activeManagerId == null ||
