@@ -13,6 +13,7 @@ import '../../shared/pick_image_io.dart'
     as picker;
 import 'dart:typed_data';
 import '../widgets/coin_details_dialog.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 enum MyCoinBlockVariant { standard, home }
 
@@ -106,7 +107,9 @@ class _NoCoinCard extends StatelessWidget {
                                   fit: BoxFit.scaleDown,
                                   alignment: Alignment.centerLeft,
                                   child: Text(
-                                    'Create Community Coin',
+                                    AppLocalizations.of(
+                                      context,
+                                    )!.createCommunityCoin,
                                     maxLines: 1,
                                     style: TextStyle(
                                       fontSize: s(20),
@@ -122,7 +125,9 @@ class _NoCoinCard extends StatelessWidget {
                                 widthFactor: 0.88,
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  'Launch your own coin on ETA Network instantly.',
+                                  AppLocalizations.of(
+                                    context,
+                                  )!.launchCoinDescription,
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
@@ -177,20 +182,26 @@ class _NoCoinCard extends StatelessWidget {
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
+              children: [
                 Text(
-                  'Create your own coin',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  AppLocalizations.of(context)!.createYourOwnCoin,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                SizedBox(height: 6),
+                const SizedBox(height: 6),
                 Text(
-                  'Launch your own community coin that other ETA users can mine.',
+                  AppLocalizations.of(context)!.launchCommunityCoinDescription,
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          ElevatedButton(onPressed: onCreate, child: const Text('Create Coin')),
+          ElevatedButton(
+            onPressed: onCreate,
+            child: Text(AppLocalizations.of(context)!.createCoin),
+          ),
         ],
       ),
     );
@@ -546,12 +557,14 @@ class _CoinCard extends StatelessWidget {
                 ),
                 ElevatedButton(
                   onPressed: onEdit,
-                  child: const Text('Edit coin'),
+                  child: Text(AppLocalizations.of(context)!.editCoin),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            Text('Base rate: ${rate.toStringAsFixed(3)} coins/hour'),
+            Text(
+              AppLocalizations.of(context)!.baseRate(rate.toStringAsFixed(3)),
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
@@ -615,7 +628,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
   bool _allowImageUpload = false;
   int _maxDesc = 500;
   int _maxLinks = 6;
-  double _minRate = 0.000000001;
+  // _minRate removed as it was unused
   double _maxRate = 10.0;
   bool _submitting = false;
   Uint8List? _thumbBytes;
@@ -677,7 +690,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
     _maxLinks =
         (cfg[FirestoreAppConfigFields.maxSocialLinks] as num?)?.toInt() ?? 6;
     // We ignore minRatePerHour from config as per requirement, defaulting to near-zero.
-    _minRate = 0.000000001;
+    // _minRate = 0.000000001;
     _maxRate =
         (cfg[FirestoreAppConfigFields.maxRatePerHour] as num?)?.toDouble() ??
         10.0;
@@ -948,34 +961,62 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                                       onChanged: (v) => setState(
                                         () => _rows[i].type = v ?? 'website',
                                       ),
-                                      items: const [
+                                      items: [
                                         DropdownMenuItem(
                                           value: 'website',
-                                          child: Text('Website'),
+                                          child: Text(
+                                            AppLocalizations.of(
+                                              context,
+                                            )!.linkTypeWebsite,
+                                          ),
                                         ),
                                         DropdownMenuItem(
                                           value: 'youtube',
-                                          child: Text('YouTube'),
+                                          child: Text(
+                                            AppLocalizations.of(
+                                              context,
+                                            )!.linkTypeYouTube,
+                                          ),
                                         ),
                                         DropdownMenuItem(
                                           value: 'facebook',
-                                          child: Text('Facebook'),
+                                          child: Text(
+                                            AppLocalizations.of(
+                                              context,
+                                            )!.linkTypeFacebook,
+                                          ),
                                         ),
                                         DropdownMenuItem(
                                           value: 'twitter',
-                                          child: Text('X / Twitter'),
+                                          child: Text(
+                                            AppLocalizations.of(
+                                              context,
+                                            )!.linkTypeTwitter,
+                                          ),
                                         ),
                                         DropdownMenuItem(
                                           value: 'instagram',
-                                          child: Text('Instagram'),
+                                          child: Text(
+                                            AppLocalizations.of(
+                                              context,
+                                            )!.linkTypeInstagram,
+                                          ),
                                         ),
                                         DropdownMenuItem(
                                           value: 'telegram',
-                                          child: Text('Telegram'),
+                                          child: Text(
+                                            AppLocalizations.of(
+                                              context,
+                                            )!.linkTypeTelegram,
+                                          ),
                                         ),
                                         DropdownMenuItem(
                                           value: 'other',
-                                          child: Text('Other'),
+                                          child: Text(
+                                            AppLocalizations.of(
+                                              context,
+                                            )!.linkTypeOther,
+                                          ),
                                         ),
                                       ],
                                     ),
@@ -985,7 +1026,9 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                                 Expanded(
                                   child: TextField(
                                     controller: _rows[i].urlCtrl,
-                                    decoration: deco('Paste URL'),
+                                    decoration: deco(
+                                      AppLocalizations.of(context)!.pasteUrl,
+                                    ),
                                   ),
                                 ),
                                 SizedBox(width: s(6)),
@@ -1017,7 +1060,8 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                         TextSpan(
                           children: [
                             TextSpan(
-                              text: 'Important Notice ',
+                              text:
+                                  '${AppLocalizations.of(context)!.importantNoticeTitle} ',
                               style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w900,
@@ -1026,8 +1070,9 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                               ),
                             ),
                             TextSpan(
-                              text:
-                                  'This coin is part of the ETA Network ecosystem and represents participation in a growing digital community. Community coins are created by users to build, experiment, and engage within the network.ETA Network is in an early stage of development. As the ecosystem grows, new utilities, features, and integrations may be introduced based on community activity, platform evolution, and applicable guidelines.',
+                              text: AppLocalizations.of(
+                                context,
+                              )!.importantNoticeBody,
                               style: TextStyle(
                                 color: Colors.white70,
                                 fontWeight: FontWeight.w700,
@@ -1059,7 +1104,7 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                                 ),
                               ),
                               child: Text(
-                                'Cancel',
+                                AppLocalizations.of(context)!.cancel,
                                 style: TextStyle(
                                   fontWeight: FontWeight.w900,
                                   fontSize: s(14.2),
@@ -1103,8 +1148,16 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
                                   SizedBox(width: s(10)),
                                   Text(
                                     _submitting
-                                        ? 'Please wait…'
-                                        : (_isEditing ? 'Save' : 'Create Coin'),
+                                        ? AppLocalizations.of(
+                                            context,
+                                          )!.pleaseWait
+                                        : (_isEditing
+                                              ? AppLocalizations.of(
+                                                  context,
+                                                )!.save
+                                              : AppLocalizations.of(
+                                                  context,
+                                                )!.createCoin),
                                     style: TextStyle(
                                       fontSize: s(14.5),
                                       fontWeight: FontWeight.w900,
@@ -1221,15 +1274,15 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
     final desc = descCtrl.text.trim();
     final rate = double.tryParse(rateCtrl.text.trim());
     if (name.length < 3 || name.length > 30) {
-      _showError('Coin name must be 3–30 characters.');
+      _showError(AppLocalizations.of(context)!.coinNameLengthError);
       return;
     }
     if (symbol.isEmpty) {
-      _showError('Symbol is required.');
+      _showError(AppLocalizations.of(context)!.symbolRequiredError);
       return;
     }
     if (symbol.length < 2 || symbol.length > 6) {
-      _showError('Symbol must be 2–6 letters/numbers.');
+      _showError(AppLocalizations.of(context)!.symbolLengthError);
       return;
     }
     if (symbolCtrl.text.trim() != symbol) {
@@ -1239,11 +1292,13 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
       );
     }
     if (desc.length > _maxDesc) {
-      _showError('Description is too long.');
+      _showError(AppLocalizations.of(context)!.descriptionTooLongError);
       return;
     }
     if (rate == null || rate <= 0 || rate > _maxRate) {
-      _showError('Base mining rate must be between 0.000000001 and $_maxRate.');
+      _showError(
+        AppLocalizations.of(context)!.baseRateRangeError(_maxRate.toString()),
+      );
       return;
     }
 
@@ -1260,8 +1315,9 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
           .where(FirestoreUserCoinFields.name, isEqualTo: v)
           .limit(1)
           .get();
+      if (!mounted) return;
       if (qs.docs.isNotEmpty && qs.docs.first.id != uid) {
-        _showError('Coin name already exists. Please choose another.');
+        _showError(AppLocalizations.of(context)!.coinNameExistsError);
         return;
       }
     }
@@ -1278,17 +1334,20 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
           .where(FirestoreUserCoinFields.symbol, isEqualTo: v)
           .limit(1)
           .get();
+      if (!mounted) return;
       if (qs.docs.isNotEmpty && qs.docs.first.id != uid) {
-        _showError('Symbol already exists. Please choose another.');
+        _showError(AppLocalizations.of(context)!.symbolExistsError);
         return;
       }
     }
+    if (!mounted) return;
+
     final links = <Map<String, dynamic>>[];
     for (final r in _rows) {
       final u = r.urlCtrl.text.trim();
       if (u.isEmpty) continue;
       if (!_validUrl(u)) {
-        _showError('One of the URLs is invalid.');
+        _showError(AppLocalizations.of(context)!.urlInvalidError);
         return;
       }
       links.add({'type': r.type, 'iconName': r.type, 'url': u});
@@ -1326,8 +1385,14 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
         thumbnailContentType: _thumbContentType,
       );
     } catch (e) {
-      setState(() => _submitting = false);
-      _showError(e.toString().replaceAll('Exception: ', ''));
+      if (mounted) {
+        setState(() => _submitting = false);
+        _showError(
+          AppLocalizations.of(
+            context,
+          )!.createCoinFailed(e.toString().replaceAll('Exception: ', '')),
+        );
+      }
       return;
     }
     debugPrint('[CreateCoinDialog] Submit end');
@@ -1424,10 +1489,65 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
           final data = snap.data() ?? {};
           final wallet =
               (data[FirestoreUserFields.wallet] as Map<String, dynamic>?) ?? {};
-          final coins = (wallet['coins'] as Map<String, dynamic>?) ?? {};
+
+          // Robust extraction matching CoinService._extractWalletCoins logic
+          // to handle both nested 'coins' map and flat 'wallet.coins.ID' keys
+          Map<String, dynamic> coins = {};
+          final nestedCoins = (wallet['coins'] as Map<String, dynamic>?);
+
+          if (nestedCoins != null && nestedCoins.isNotEmpty) {
+            coins = Map<String, dynamic>.from(nestedCoins);
+          } else {
+            // Fallback for flat keys if necessary
+            final prefix = '${FirestoreUserFields.wallet}.coins.';
+            data.forEach((key, value) {
+              if (key.startsWith(prefix) && value is Map<String, dynamic>) {
+                final ownerId = key.substring(prefix.length);
+                if (ownerId.isNotEmpty) {
+                  coins[ownerId] = value;
+                }
+              }
+            });
+          }
+
           final coin = coins[widget.coinOwnerId];
           if (coin is Map<String, dynamic>) {
-            return Map<String, dynamic>.from(coin);
+            final m = Map<String, dynamic>.from(coin);
+
+            // Normalize keys to ensure _processData finds them (matching CoinService.watchUserCoin)
+            m[FirestoreUserCoinMiningFields.ownerId] =
+                m[FirestoreUserCoinMiningFields.ownerId] ?? widget.coinOwnerId;
+
+            m[FirestoreUserCoinFields.ownerId] =
+                m[FirestoreUserCoinFields.ownerId] ??
+                m[FirestoreUserCoinMiningFields.ownerId];
+
+            m[FirestoreUserCoinFields.name] =
+                m[FirestoreUserCoinFields.name] ??
+                m[FirestoreUserCoinMiningFields.name];
+            m[FirestoreUserCoinFields.symbol] =
+                m[FirestoreUserCoinFields.symbol] ??
+                m[FirestoreUserCoinMiningFields.symbol];
+            m[FirestoreUserCoinFields.imageUrl] =
+                m[FirestoreUserCoinFields.imageUrl] ??
+                m[FirestoreUserCoinMiningFields.imageUrl];
+            m[FirestoreUserCoinFields.description] =
+                m[FirestoreUserCoinFields.description] ??
+                m[FirestoreUserCoinMiningFields.description];
+            m[FirestoreUserCoinFields.socialLinks] =
+                m[FirestoreUserCoinFields.socialLinks] ??
+                m[FirestoreUserCoinMiningFields.socialLinks];
+
+            m[FirestoreUserCoinFields.baseRatePerHour] =
+                m[FirestoreUserCoinFields.baseRatePerHour] ??
+                m[FirestoreUserCoinMiningFields.hourlyRate];
+
+            // Critical: Ensure hourlyRate is set for _processData
+            m[FirestoreUserCoinMiningFields.hourlyRate] =
+                m[FirestoreUserCoinMiningFields.hourlyRate] ??
+                m[FirestoreUserCoinFields.baseRatePerHour];
+
+            return m;
           }
           return null;
         });
@@ -1639,9 +1759,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Mined Coins',
-                      style: TextStyle(
+                    Text(
+                      AppLocalizations.of(context)!.minedCoins,
+                      style: const TextStyle(
                         color: Colors.white54,
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
@@ -1694,9 +1814,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Base Rate',
-                      style: TextStyle(
+                    Text(
+                      AppLocalizations.of(context)!.baseRateLabel,
+                      style: const TextStyle(
                         color: Colors.white54,
                         fontSize: 12,
                         fontWeight: FontWeight.w800,
@@ -1777,7 +1897,13 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                       } catch (e) {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Start failed: $e')),
+                            SnackBar(
+                              content: Text(
+                                AppLocalizations.of(
+                                  context,
+                                )!.startFailed(e.toString()),
+                              ),
+                            ),
                           );
                         }
                       }
@@ -1798,7 +1924,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                   const Icon(Icons.power_settings_new_rounded, size: 18),
                   const SizedBox(width: 8),
                   Text(
-                    active ? 'Mining' : 'Mine',
+                    active
+                        ? AppLocalizations.of(context)!.mining
+                        : AppLocalizations.of(context)!.mine,
                     style: const TextStyle(
                       fontWeight: FontWeight.w900,
                       fontSize: 15,
@@ -1810,7 +1938,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
           ),
           const SizedBox(height: 8),
           Text(
-            active ? 'Mining… • $remaining' : 'Inactive',
+            active
+                ? '${AppLocalizations.of(context)!.mining}… • $remaining'
+                : AppLocalizations.of(context)!.inactive,
             style: TextStyle(
               color: statusColor,
               fontSize: 12.5,
@@ -1857,7 +1987,7 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
             children: [
               Expanded(
                 child: Text(
-                  'Session Progress',
+                  AppLocalizations.of(context)!.sessionProgress,
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 16,
@@ -1876,7 +2006,7 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
               ),
               const SizedBox(width: 8),
               Text(
-                'remaining',
+                AppLocalizations.of(context)!.remainingLabel,
                 style: TextStyle(
                   color: Colors.white54,
                   fontSize: 16,
@@ -1953,7 +2083,13 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                             } catch (e) {
                               if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('Start failed: $e')),
+                                  SnackBar(
+                                    content: Text(
+                                      AppLocalizations.of(
+                                        context,
+                                      )!.startFailed(e.toString()),
+                                    ),
+                                  ),
                                 );
                               }
                             }
@@ -1982,7 +2118,7 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                         ),
                         const SizedBox(width: 10),
                         Text(
-                          'Boost Rate',
+                          AppLocalizations.of(context)!.boostRate,
                           style: TextStyle(
                             fontWeight: FontWeight.w900,
                             fontSize: 18,
@@ -2017,7 +2153,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
           ),
           const SizedBox(height: 4),
           Text(
-            active ? 'Mining… • $remaining' : 'Inactive',
+            active
+                ? '${AppLocalizations.of(context)!.mining}… • $remaining'
+                : AppLocalizations.of(context)!.inactive,
             style: TextStyle(
               color: statusColor,
               fontSize: 12.5,
@@ -2034,9 +2172,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Mined',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context)!.minedLabel,
+                style: const TextStyle(
                   color: Colors.white54,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -2053,7 +2191,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
               ),
               const SizedBox(height: 2),
               Text(
-                active ? 'Mining… • $remaining' : 'Inactive',
+                active
+                    ? '${AppLocalizations.of(context)!.mining}… • $remaining'
+                    : AppLocalizations.of(context)!.inactive,
                 style: TextStyle(
                   color: statusColor,
                   fontSize: 12.5,
@@ -2094,7 +2234,13 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Start failed: $e')),
+                          SnackBar(
+                            content: Text(
+                              AppLocalizations.of(
+                                context,
+                              )!.startFailed(e.toString()),
+                            ),
+                          ),
                         );
                       }
                     }
@@ -2112,7 +2258,9 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
               minimumSize: const Size(64, 34),
             ),
             child: Text(
-              active ? 'Mining' : 'Mine',
+              active
+                  ? AppLocalizations.of(context)!.mining
+                  : AppLocalizations.of(context)!.mine,
               style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
             ),
           ),
@@ -2164,6 +2312,6 @@ class _CoinMiningControlsState extends State<CoinMiningControls>
     if (rem.isNegative) rem = Duration.zero;
     final h = rem.inHours;
     final m = rem.inMinutes % 60;
-    return '${h}h ${m}m remaining';
+    return '${h}h ${m}m ${AppLocalizations.of(context)!.remaining}';
   }
 }

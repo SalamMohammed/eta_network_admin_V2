@@ -16,9 +16,11 @@ class OfflineMiningUserLock {
   static Future<T> runLocked<T>(String uid, Future<T> Function() action) {
     final previous = _tails[uid] ?? Future.value();
     final completer = Completer<void>();
-    final current = previous.then((_) => completer.future);
+    // Ensure the chain continues even if 'previous' failed
+    final current = previous.catchError((_) {}).then((_) => completer.future);
     _tails[uid] = current;
-    return previous.then((_) async {
+
+    return previous.catchError((_) {}).then((_) async {
       try {
         final result = await action();
         completer.complete();
@@ -133,6 +135,13 @@ class OfflineMiningAdsCache {
   static String _logKey(String uid) =>
       'offline_mining_ads_log_v${_version}_$uid';
 
+  static Object? _toEncodable(dynamic object) {
+    if (object is Timestamp) {
+      return object.millisecondsSinceEpoch;
+    }
+    return object;
+  }
+
   static Future<void> startSession(
     String uid,
     Map<String, dynamic> adsConfig,
@@ -141,7 +150,10 @@ class OfflineMiningAdsCache {
     // 1. Reset/Overwrite Config with Timestamp
     final configToStore = Map<String, dynamic>.from(adsConfig);
     configToStore['storedAt'] = DateTime.now().millisecondsSinceEpoch;
-    await _prefs!.setString(_configKey(uid), json.encode(configToStore));
+    await _prefs!.setString(
+      _configKey(uid),
+      json.encode(configToStore, toEncodable: _toEncodable),
+    );
 
     // 2. Clear Log
     await _prefs!.remove(_logKey(uid));
@@ -176,7 +188,7 @@ class OfflineMiningAdsCache {
       } catch (_) {}
     }
     list.add(entry);
-    await _prefs!.setString(key, json.encode(list));
+    await _prefs!.setString(key, json.encode(list, toEncodable: _toEncodable));
   }
 }
 
@@ -203,15 +215,22 @@ class OfflineMiningSyncQueue {
         return [];
       }
       await _prefs!.remove(_queueKey);
-      return [];
+      return list;
     } catch (_) {
       return [];
     }
   }
 
+  static Object? _toEncodable(dynamic object) {
+    if (object is Timestamp) {
+      return object.millisecondsSinceEpoch;
+    }
+    return object;
+  }
+
   static Future<void> _saveQueue(List<Map<String, dynamic>> queue) async {
     await _init();
-    final encoded = json.encode(queue);
+    final encoded = json.encode(queue, toEncodable: _toEncodable);
     await _prefs!.setString(_queueKey, encoded);
   }
 
@@ -376,13 +395,38 @@ class MiningBatchCommitEngine {
   ) async {
     final startedAt = DateTime.now();
     final cfg = ConfigService();
+    debugPrint('[MiningDebug] _loadMiningConfig: BEGIN for $uid');
     _logReferral(opId, uid, 'BEGIN config load for mining session', indent: 0);
     // Force refresh to ensure we have the latest rules
-    final appConfig = await cfg.getGeneralConfig(forceRefresh: true);
-    final streakConfig = await cfg.getStreakConfig(forceRefresh: true);
-    final ranksConfig = await cfg.getRanksConfig(forceRefresh: true);
-    final referralConfig = await cfg.getReferralConfig(forceRefresh: true);
-    var adsConfig = await cfg.getAdsConfig(forceRefresh: true);
+    // Fallback to cache if network fails
+    Map<String, dynamic> appConfig;
+    Map<String, dynamic> streakConfig;
+    Map<String, dynamic> ranksConfig;
+    Map<String, dynamic> referralConfig;
+    Map<String, dynamic> adsConfig;
+
+    try {
+      debugPrint('[MiningDebug] Attempting to fetch config from network...');
+      appConfig = await cfg.getGeneralConfig(forceRefresh: true);
+      streakConfig = await cfg.getStreakConfig(forceRefresh: true);
+      ranksConfig = await cfg.getRanksConfig(forceRefresh: true);
+      referralConfig = await cfg.getReferralConfig(forceRefresh: true);
+      adsConfig = await cfg.getAdsConfig(forceRefresh: true);
+      debugPrint('[MiningDebug] Network config fetch successful.');
+    } catch (e, stack) {
+      debugPrint(
+        '[MiningBatchCommitEngine] Config refresh failed ($e), using cache',
+      );
+      debugPrint(
+        '[MiningDebug] Network config fetch failed: $e\n$stack\nFalling back to cache.',
+      );
+      appConfig = await cfg.getGeneralConfig(forceRefresh: false);
+      streakConfig = await cfg.getStreakConfig(forceRefresh: false);
+      ranksConfig = await cfg.getRanksConfig(forceRefresh: false);
+      referralConfig = await cfg.getReferralConfig(forceRefresh: false);
+      adsConfig = await cfg.getAdsConfig(forceRefresh: false);
+      debugPrint('[MiningDebug] Cache config fetch complete.');
+    }
 
     // Ensure critical ads config fields are present by merging with defaults
     if (!adsConfig.containsKey(FirestoreAdsConfigFields.rewardBonusPercent)) {
@@ -919,15 +963,19 @@ class MiningBatchCommitEngine {
     int? activeReferralCount,
   }) async {
     final opId = 'start-$uid-${DateTime.now().millisecondsSinceEpoch}';
+    debugPrint('[MiningDebug] startSession: BEGIN for $uid, opId=$opId');
     debugPrint('[MiningBatchCommitEngine] op=$opId startSession call uid=$uid');
 
     // 1. Read User (Force Refresh) - Match Foreground Logic
     // Ensure auth token is fresh to avoid "User is unauthenticated" errors
     try {
+      debugPrint('[MiningDebug] Reloading Auth User...');
       await FirebaseAuth.instance.currentUser?.reload();
       await FirebaseAuth.instance.currentUser?.getIdToken(true);
-    } catch (e) {
+      debugPrint('[MiningDebug] Auth User Reloaded.');
+    } catch (e, stack) {
       debugPrint('[MiningBatchCommitEngine] Auth reload failed: $e');
+      debugPrint('[MiningDebug] Auth reload failed: $e\n$stack');
     }
 
     return OfflineMiningUserLock.runLocked(uid, () async {
@@ -937,7 +985,11 @@ class MiningBatchCommitEngine {
         'START mining session: preparing config and user data',
         indent: 0,
       );
+      debugPrint('[MiningDebug] Entering Locked Section. Loading Config...');
       final miningConfig = await _loadMiningConfig(opId, uid);
+      debugPrint(
+        '[MiningDebug] Config Loaded. BaseRate: ${miningConfig.baseRate}',
+      );
       final double baseRate = miningConfig.baseRate;
       final double durationHours = miningConfig.durationHours;
       final streakConfig = miningConfig.streakConfig;
@@ -959,291 +1011,312 @@ class MiningBatchCommitEngine {
         plannedEnd = maxEnd;
       }
 
-      final result = await _db.runTransaction((transaction) async {
-        final userSnap = await transaction.get(userRef);
-        if (!userSnap.exists) {
-          return <String, dynamic>{};
-        }
-        final userData = userSnap.data() ?? <String, dynamic>{};
-
-        int totalInvited = 0;
-        final totalInvitedRaw = userData[FirestoreUserFields.totalInvited];
-        if (totalInvitedRaw is num) {
-          totalInvited = totalInvitedRaw.toInt();
-        } else if (totalInvitedRaw != null) {
-          debugPrint(
-            '[MiningBatchCommitEngine] non-numeric totalInvited for $uid: $totalInvitedRaw',
-          );
-        }
-        _logReferral(
-          opId,
-          uid,
-          'user data: totalInvitedRaw=$totalInvitedRaw, totalInvitedParsed=$totalInvited',
-          indent: 1,
-        );
-
-        final int previousStreakDays =
-            (userData[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
-        final String storedRank =
-            (userData[FirestoreUserFields.rank] as String?) ??
-            FirestoreUserRanks.explorer;
-        final Map<String, dynamic> rankRules =
-            (ranksConfig[FirestoreRankConfigFields.rankRules]
-                as Map<String, dynamic>?) ??
-            {};
-        final Map<String, dynamic> rankMults =
-            (ranksConfig[FirestoreRankConfigFields.rankMultipliers]
-                as Map<String, dynamic>?) ??
-            {};
-
-        String effectiveRank = storedRank;
-        if (activeReferralCount != null &&
-            rankRules.isNotEmpty &&
-            rankMults.isNotEmpty) {
-          effectiveRank = RankEngine.getBestRank(
-            streakDays: previousStreakDays,
-            activeReferrals: activeReferralCount,
-            ranksCfg: ranksConfig,
-            currentRank: storedRank,
-          );
-        }
-
-        double rankMultiplier =
-            (rankMults[effectiveRank] as num?)?.toDouble() ?? 1.0;
-        if (rankMultiplier <= 0.0) {
-          rankMultiplier = 1.0;
-        }
-        final double rateRank = baseRate * (rankMultiplier - 1.0);
-
-        final lastEndTs =
-            userData[FirestoreUserFields.lastMiningEnd] as Timestamp?;
-        final int msPerDay = 24 * 60 * 60 * 1000;
-        int sessionStreakDays = 0;
-        if (lastEndTs != null) {
-          final diffMs = now.difference(lastEndTs.toDate()).inMilliseconds;
-          if (diffMs >= 0 && diffMs < msPerDay) {
-            sessionStreakDays = previousStreakDays + 1;
+      debugPrint('[MiningDebug] Starting Transaction...');
+      Map<String, dynamic> result;
+      try {
+        result = await _db.runTransaction((transaction) async {
+          debugPrint('[MiningDebug] Transaction Block Executing...');
+          final userSnap = await transaction.get(userRef);
+          if (!userSnap.exists) {
+            debugPrint('[MiningDebug] User doc does not exist!');
+            return <String, dynamic>{};
           }
-        }
+          debugPrint('[MiningDebug] User Doc Read via Transaction.');
+          final userData = userSnap.data() ?? <String, dynamic>{};
 
-        double rateStreak = 0.0;
-        if (sessionStreakDays > 0) {
-          rateStreak = _computeStreakRate(
-            streakConfig: streakConfig,
-            sessionStreakDays: sessionStreakDays,
+          int totalInvited = 0;
+          final totalInvitedRaw = userData[FirestoreUserFields.totalInvited];
+          if (totalInvitedRaw is num) {
+            totalInvited = totalInvitedRaw.toInt();
+          } else if (totalInvitedRaw != null) {
+            debugPrint(
+              '[MiningBatchCommitEngine] non-numeric totalInvited for $uid: $totalInvitedRaw',
+            );
+          }
+          _logReferral(
+            opId,
+            uid,
+            'user data: totalInvitedRaw=$totalInvitedRaw, totalInvitedParsed=$totalInvited',
+            indent: 1,
+          );
+
+          final int previousStreakDays =
+              (userData[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0;
+          final String storedRank =
+              (userData[FirestoreUserFields.rank] as String?) ??
+              FirestoreUserRanks.explorer;
+          final Map<String, dynamic> rankRules =
+              (ranksConfig[FirestoreRankConfigFields.rankRules]
+                  as Map<String, dynamic>?) ??
+              {};
+          final Map<String, dynamic> rankMults =
+              (ranksConfig[FirestoreRankConfigFields.rankMultipliers]
+                  as Map<String, dynamic>?) ??
+              {};
+
+          String effectiveRank = storedRank;
+          if (activeReferralCount != null &&
+              rankRules.isNotEmpty &&
+              rankMults.isNotEmpty) {
+            effectiveRank = RankEngine.getBestRank(
+              streakDays: previousStreakDays,
+              activeReferrals: activeReferralCount,
+              ranksCfg: ranksConfig,
+              currentRank: storedRank,
+            );
+          }
+
+          double rankMultiplier =
+              (rankMults[effectiveRank] as num?)?.toDouble() ?? 1.0;
+          if (rankMultiplier <= 0.0) {
+            rankMultiplier = 1.0;
+          }
+          final double rateRank = baseRate * (rankMultiplier - 1.0);
+
+          final lastEndTs =
+              userData[FirestoreUserFields.lastMiningEnd] as Timestamp?;
+          final int msPerDay = 24 * 60 * 60 * 1000;
+          int sessionStreakDays = 0;
+          if (lastEndTs != null) {
+            final diffMs = now.difference(lastEndTs.toDate()).inMilliseconds;
+            if (diffMs >= 0 && diffMs < msPerDay) {
+              sessionStreakDays = previousStreakDays + 1;
+            }
+          }
+
+          double rateStreak = 0.0;
+          if (sessionStreakDays > 0) {
+            rateStreak = _computeStreakRate(
+              streakConfig: streakConfig,
+              sessionStreakDays: sessionStreakDays,
+              baseRate: baseRate,
+              uid: uid,
+              opId: opId,
+            );
+          }
+
+          final double rateReferral = _computeReferralBonus(
+            totalInvited: totalInvited,
+            referralConfig: refConfig,
             baseRate: baseRate,
+            maxBonusRate: maxBonusRate,
+            maxRefs: maxRefs,
             uid: uid,
             opId: opId,
           );
-        }
 
-        final double rateReferral = _computeReferralBonus(
-          totalInvited: totalInvited,
-          referralConfig: refConfig,
-          baseRate: baseRate,
-          maxBonusRate: maxBonusRate,
-          maxRefs: maxRefs,
-          uid: uid,
-          opId: opId,
-        );
+          double rateManager = 0.0;
+          double managerBonusPerHour = 0.0;
 
-        double rateManager = 0.0;
-        double managerBonusPerHour = 0.0;
+          // Strict Manager Check (Subscriber Only)
+          // Match logic from MiningStateService to ensure consistency
+          final bool isPro =
+              userData[FirestoreUserFields.role] == FirestoreUserRoles.pro;
+          final sub =
+              userData[FirestoreUserFields.subscription]
+                  as Map<String, dynamic>?;
+          final subStatus =
+              sub?[FirestoreUserSubscriptionFields.status] as String?;
+          final subExpires =
+              sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
+          final bool isSubActive = subStatus == 'active';
+          final bool isExpired =
+              subExpires != null && now.isAfter(subExpires.toDate());
+          final bool managerEnabledRaw =
+              (userData[FirestoreUserFields.managerEnabled] as bool?) ?? false;
 
-        // Strict Manager Check (Subscriber Only)
-        // Match logic from MiningStateService to ensure consistency
-        final bool isPro =
-            userData[FirestoreUserFields.role] == FirestoreUserRoles.pro;
-        final sub =
-            userData[FirestoreUserFields.subscription] as Map<String, dynamic>?;
-        final subStatus =
-            sub?[FirestoreUserSubscriptionFields.status] as String?;
-        final subExpires =
-            sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
-        final bool isSubActive = subStatus == 'active';
-        final bool isExpired =
-            subExpires != null && now.isAfter(subExpires.toDate());
-        final bool managerEnabledRaw =
-            (userData[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+          final bool managerEnabled =
+              isPro && isSubActive && !isExpired && managerEnabledRaw;
 
-        final bool managerEnabled =
-            isPro && isSubActive && !isExpired && managerEnabledRaw;
+          if (!managerEnabled && managerEnabledRaw) {
+            debugPrint(
+              '[MiningBatchCommitEngine] op=$opId manager logically disabled due to sub/role check: pro=$isPro sub=$subStatus expired=$isExpired',
+            );
+          }
 
-        if (!managerEnabled && managerEnabledRaw) {
+          final String? activeManagerId =
+              userData[FirestoreUserFields.activeManagerId] as String?;
+
+          if (!managerEnabled ||
+              activeManagerId == null ||
+              activeManagerId.isEmpty) {
+            debugPrint(
+              '[MiningBatchCommitEngine] op=$opId manager inactive uid=$uid enabled=$managerEnabled managerId=$activeManagerId',
+            );
+          } else {
+            Map<String, dynamic> managerData = {};
+
+            // Explicitly read from Firestore to ensure fresh data (ignoring cache)
+            // This satisfies the requirement: "one read to manager"
+            final managerRef = _db
+                .collection(FirestoreConstants.managers)
+                .doc(activeManagerId);
+            debugPrint(
+              '[MiningDebug] Reading Manager Doc ($activeManagerId)...',
+            );
+            final managerSnap = await transaction.get(managerRef);
+            debugPrint('[MiningDebug] Manager Doc Read.');
+            managerData = managerSnap.data() ?? <String, dynamic>{};
+
+            double rawMultiplier =
+                (managerData[FirestoreManagerFields.managerMultiplier] as num?)
+                    ?.toDouble() ??
+                0.0;
+
+            // REVERTED: Default is 0.0.
+            // If manager is enabled, it should have a multiplier > 1.0.
+            // If multiplier is 0.0 or 1.0, bonus is 0.
+            debugPrint(
+              '[MiningBatchCommitEngine] op=$opId manager multiplier value uid=$uid managerId=$activeManagerId raw=$rawMultiplier.',
+            );
+
+            double clamped = rawMultiplier;
+            if (clamped < 0.0) {
+              clamped = 0.0;
+            } else if (clamped > 10.0) {
+              clamped = 10.0;
+            }
+
+            // Fix: If multiplier is <= 1.0, bonus should be 0.
+            // Formula: base * (multiplier - 1.0)
+            // If multiplier is 0.0: base * -1.0 = -base (Negative bonus! Wrong)
+            // If multiplier is 1.0: base * 0.0 = 0.0 (No bonus. Correct)
+            // So we clamp the subtraction factor.
+            if (clamped <= 1.0) {
+              managerBonusPerHour = 0.0;
+            } else {
+              managerBonusPerHour = baseRate * (clamped - 1.0);
+            }
+
+            rateManager = managerBonusPerHour;
+            debugPrint(
+              '[MiningBatchCommitEngine] op=$opId manager bonus uid=$uid managerId=$activeManagerId multiplier=$clamped baseRate=$baseRate bonusPerHour=$managerBonusPerHour',
+            );
+          }
+
+          final List<String> managedCoinSelections =
+              (userData[FirestoreUserFields.managedCoinSelections] as List?)
+                  ?.cast<String>() ??
+              <String>[];
+
+          final double rateAds = 0.0;
+
+          final double newHourlyRate =
+              baseRate +
+              rateRank +
+              rateStreak +
+              rateReferral +
+              rateManager +
+              rateAds;
+
           debugPrint(
-            '[MiningBatchCommitEngine] op=$opId manager logically disabled due to sub/role check: pro=$isPro sub=$subStatus expired=$isExpired',
+            '[MiningBatchCommitEngine] op=$opId rate mix uid=$uid base=$baseRate streak=$rateStreak rank=$rateRank referral=$rateReferral manager=$rateManager ads=$rateAds hourly=$newHourlyRate',
           );
-        }
 
-        final String? activeManagerId =
-            userData[FirestoreUserFields.activeManagerId] as String?;
+          final int currentDayIndex =
+              DateTime.utc(
+                now.year,
+                now.month,
+                now.day,
+              ).millisecondsSinceEpoch ~/
+              msPerDay;
 
-        if (!managerEnabled ||
-            activeManagerId == null ||
-            activeManagerId.isEmpty) {
-          debugPrint(
-            '[MiningBatchCommitEngine] op=$opId manager inactive uid=$uid enabled=$managerEnabled managerId=$activeManagerId',
-          );
-        } else {
-          Map<String, dynamic> managerData = {};
+          final Map<String, dynamic> writeData = {
+            FirestoreUserFields.totalInvited: totalInvited,
+            FirestoreUserFields.rateBase: baseRate,
+            FirestoreUserFields.rateRank: rateRank,
+            FirestoreUserFields.rateStreak: rateStreak,
+            FirestoreUserFields.rateReferral: rateReferral,
+            FirestoreUserFields.rateManager: rateManager,
+            FirestoreUserFields.rateAds: rateAds,
+            FirestoreUserFields.hourlyRate: newHourlyRate,
+            FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
+            FirestoreUserFields.rank: effectiveRank,
+            FirestoreUserFields.lastMiningStart: Timestamp.fromDate(now),
+            FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(plannedEnd),
+            FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(now),
+            FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
+            FirestoreUserFields.streakDays: sessionStreakDays,
+            FirestoreUserFields.streakLastUpdatedDay: currentDayIndex,
+          };
+          if (managedCoinSelections.isNotEmpty) {
+            writeData[FirestoreUserFields.managedCoinSelections] =
+                managedCoinSelections;
+          }
+          if (deviceId != null) {
+            writeData[FirestoreUserFields.deviceId] = deviceId;
+          }
 
-          // Explicitly read from Firestore to ensure fresh data (ignoring cache)
-          // This satisfies the requirement: "one read to manager"
-          final managerRef = _db
-              .collection(FirestoreConstants.managers)
-              .doc(activeManagerId);
-          final managerSnap = await transaction.get(managerRef);
-          managerData = managerSnap.data() ?? <String, dynamic>{};
+          transaction.set(userRef, writeData, SetOptions(merge: true));
 
-          double rawMultiplier =
-              (managerData[FirestoreManagerFields.managerMultiplier] as num?)
-                  ?.toDouble() ??
+          final double totalPoints =
+              (userData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
               0.0;
 
-          // REVERTED: Default is 0.0.
-          // If manager is enabled, it should have a multiplier > 1.0.
-          // If multiplier is 0.0 or 1.0, bonus is 0.
-          debugPrint(
-            '[MiningBatchCommitEngine] op=$opId manager multiplier value uid=$uid managerId=$activeManagerId raw=$rawMultiplier.',
-          );
+          final debug = <String, dynamic>{
+            'baseRate': baseRate,
+            'streakBonus': rateStreak,
+            'rankBonus': rateRank,
+            'referralBonus': rateReferral,
+            'managerBonus': rateManager,
+            'hourlyRate': newHourlyRate,
+            'totalInvited': totalInvited,
+            'sessionStreakDays': sessionStreakDays,
+          };
 
-          double clamped = rawMultiplier;
-          if (clamped < 0.0) {
-            clamped = 0.0;
-          } else if (clamped > 10.0) {
-            clamped = 10.0;
-          }
+          return {
+            ...writeData,
+            'debug': debug,
+            FirestoreUserFields.totalPoints: totalPoints,
+            FirestoreUserFields.streakDays: sessionStreakDays,
+          };
+        });
 
-          // Fix: If multiplier is <= 1.0, bonus should be 0.
-          // Formula: base * (multiplier - 1.0)
-          // If multiplier is 0.0: base * -1.0 = -base (Negative bonus! Wrong)
-          // If multiplier is 1.0: base * 0.0 = 0.0 (No bonus. Correct)
-          // So we clamp the subtraction factor.
-          if (clamped <= 1.0) {
-            managerBonusPerHour = 0.0;
-          } else {
-            managerBonusPerHour = baseRate * (clamped - 1.0);
-          }
-
-          rateManager = managerBonusPerHour;
-          debugPrint(
-            '[MiningBatchCommitEngine] op=$opId manager bonus uid=$uid managerId=$activeManagerId multiplier=$clamped baseRate=$baseRate bonusPerHour=$managerBonusPerHour',
-          );
+        if (result.isEmpty) {
+          return result;
         }
 
-        final List<String> managedCoinSelections =
-            (userData[FirestoreUserFields.managedCoinSelections] as List?)
-                ?.cast<String>() ??
-            <String>[];
-
-        final double rateAds = 0.0;
-
-        final double newHourlyRate =
-            baseRate +
-            rateRank +
-            rateStreak +
-            rateReferral +
-            rateManager +
-            rateAds;
+        final session = MiningSessionState(
+          uid: uid,
+          startTime: now,
+          plannedEnd: plannedEnd,
+          startTotalPoints:
+              (result[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
+              0.0,
+          totalInvited:
+              (result[FirestoreUserFields.totalInvited] as num?)?.toInt() ?? 0,
+          rateBase:
+              (result[FirestoreUserFields.rateBase] as num?)?.toDouble() ?? 0.0,
+          rateStreak:
+              (result[FirestoreUserFields.rateStreak] as num?)?.toDouble() ??
+              0.0,
+          rateRank:
+              (result[FirestoreUserFields.rateRank] as num?)?.toDouble() ?? 0.0,
+          rateReferral:
+              (result[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
+              0.0,
+          rateManager:
+              (result[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
+              0.0,
+          rateAds:
+              (result[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0,
+          hourlyRate:
+              (result[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ??
+              0.0,
+          streakDays:
+              (result[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0,
+        );
+        _sessions[uid] = session;
 
         debugPrint(
-          '[MiningBatchCommitEngine] op=$opId rate mix uid=$uid base=$baseRate streak=$rateStreak rank=$rateRank referral=$rateReferral manager=$rateManager ads=$rateAds hourly=$newHourlyRate',
+          '[MiningBatchCommitEngine] op=$opId startSession committed uid=$uid start=${now.toIso8601String()} end=${plannedEnd.toIso8601String()}',
         );
 
-        final int currentDayIndex =
-            DateTime.utc(now.year, now.month, now.day).millisecondsSinceEpoch ~/
-            msPerDay;
-
-        final Map<String, dynamic> writeData = {
-          FirestoreUserFields.totalInvited: totalInvited,
-          FirestoreUserFields.rateBase: baseRate,
-          FirestoreUserFields.rateRank: rateRank,
-          FirestoreUserFields.rateStreak: rateStreak,
-          FirestoreUserFields.rateReferral: rateReferral,
-          FirestoreUserFields.rateManager: rateManager,
-          FirestoreUserFields.rateAds: rateAds,
-          FirestoreUserFields.hourlyRate: newHourlyRate,
-          FirestoreUserFields.managerBonusPerHour: managerBonusPerHour,
-          FirestoreUserFields.rank: effectiveRank,
-          FirestoreUserFields.lastMiningStart: Timestamp.fromDate(now),
-          FirestoreUserFields.lastMiningEnd: Timestamp.fromDate(plannedEnd),
-          FirestoreUserFields.lastSyncedAt: Timestamp.fromDate(now),
-          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-          FirestoreUserFields.streakDays: sessionStreakDays,
-          FirestoreUserFields.streakLastUpdatedDay: currentDayIndex,
-        };
-        if (managedCoinSelections.isNotEmpty) {
-          writeData[FirestoreUserFields.managedCoinSelections] =
-              managedCoinSelections;
-        }
-        if (deviceId != null) {
-          writeData[FirestoreUserFields.deviceId] = deviceId;
-        }
-
-        transaction.set(userRef, writeData, SetOptions(merge: true));
-
-        final double totalPoints =
-            (userData[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
-            0.0;
-
-        final debug = <String, dynamic>{
-          'baseRate': baseRate,
-          'streakBonus': rateStreak,
-          'rankBonus': rateRank,
-          'referralBonus': rateReferral,
-          'managerBonus': rateManager,
-          'hourlyRate': newHourlyRate,
-          'totalInvited': totalInvited,
-          'sessionStreakDays': sessionStreakDays,
-        };
-
-        return {
-          ...writeData,
-          'debug': debug,
-          FirestoreUserFields.totalPoints: totalPoints,
-          FirestoreUserFields.streakDays: sessionStreakDays,
-        };
-      });
-
-      if (result.isEmpty) {
         return result;
+      } catch (e, stack) {
+        debugPrint('[MiningDebug] Transaction failed: $e\n$stack');
+        rethrow;
       }
-
-      final session = MiningSessionState(
-        uid: uid,
-        startTime: now,
-        plannedEnd: plannedEnd,
-        startTotalPoints:
-            (result[FirestoreUserFields.totalPoints] as num?)?.toDouble() ??
-            0.0,
-        totalInvited:
-            (result[FirestoreUserFields.totalInvited] as num?)?.toInt() ?? 0,
-        rateBase:
-            (result[FirestoreUserFields.rateBase] as num?)?.toDouble() ?? 0.0,
-        rateStreak:
-            (result[FirestoreUserFields.rateStreak] as num?)?.toDouble() ?? 0.0,
-        rateRank:
-            (result[FirestoreUserFields.rateRank] as num?)?.toDouble() ?? 0.0,
-        rateReferral:
-            (result[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
-            0.0,
-        rateManager:
-            (result[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
-            0.0,
-        rateAds:
-            (result[FirestoreUserFields.rateAds] as num?)?.toDouble() ?? 0.0,
-        hourlyRate:
-            (result[FirestoreUserFields.hourlyRate] as num?)?.toDouble() ?? 0.0,
-        streakDays:
-            (result[FirestoreUserFields.streakDays] as num?)?.toInt() ?? 0,
-      );
-      _sessions[uid] = session;
-
-      debugPrint(
-        '[MiningBatchCommitEngine] op=$opId startSession committed uid=$uid start=${now.toIso8601String()} end=${plannedEnd.toIso8601String()}',
-      );
-
-      return result;
     });
   }
 

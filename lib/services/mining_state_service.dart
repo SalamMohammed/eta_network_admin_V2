@@ -615,6 +615,9 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
       throw Exception('User not logged in');
     }
     final devId = _deviceId ?? await DeviceId.get();
+    debugPrint(
+      '[MiningStateService] startMining: uid=$uid, devId=$devId, refCount=$_activeReferralCount',
+    );
     try {
       final res = await MiningBatchCommitEngine.startSession(
         uid: uid,
@@ -1252,6 +1255,14 @@ class MiningStateService extends ChangeNotifier with WidgetsBindingObserver {
     if (earliestEnd != null) {
       debugPrint('[MiningStateService] Scheduling next wakeup at $earliestEnd');
       await BackgroundService.scheduleManagerWakeup(earliestEnd);
+    } else if (_managerEnabled && _managerGlobalEnabled && _managerEtaAuto) {
+      // Retry in 15 mins if we expected to be mining but aren't
+      // This prevents the offline engine from stopping completely on transient errors
+      final retryTime = DateTime.now().add(const Duration(minutes: 15));
+      debugPrint(
+        '[MiningStateService] No active mining found, scheduling retry wakeup at $retryTime',
+      );
+      await BackgroundService.scheduleManagerWakeup(retryTime);
     }
   }
 

@@ -6,9 +6,10 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../../shared/firestore_constants.dart';
-import '../../services/coin_service.dart';
-import '../../services/sql_api_service.dart';
+// import '../../services/coin_service.dart';
+// import '../../services/sql_api_service.dart';
 import '../../utils/firestore_helper.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 void showCoinDetailsDialog(BuildContext context, Map<String, dynamic> data) {
   showDialog(
@@ -46,7 +47,7 @@ class CoinDetailsDialog extends StatefulWidget {
 
 class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
   late Map<String, dynamic> _data;
-  bool _isLoading = false;
+  // bool _isLoading = false;
 
   @override
   void initState() {
@@ -83,14 +84,15 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
     final symbol = (_data['symbol'] as String?) ?? '';
     final imageUrl = (_data['imageUrl'] as String?) ?? '';
     final description =
-        (_data['description'] as String?) ?? 'No description available.';
+        (_data['description'] as String?) ??
+        AppLocalizations.of(context)!.noDescriptionAvailable;
     final rate =
         _safeDoubleNullable(_data[FirestoreUserCoinMiningFields.hourlyRate]) ??
         _safeDoubleNullable(_data[FirestoreUserCoinFields.baseRatePerHour]) ??
         0.0;
-    final total =
-        _safeDoubleNullable(_data[FirestoreUserCoinMiningFields.totalPoints]) ??
-        0.0;
+    // final total =
+    //     _safeDoubleNullable(_data[FirestoreUserCoinMiningFields.totalPoints]) ??
+    //     0.0;
     final links = _safeList(_data['socialLinks']);
     final holders =
         _safeDoubleNullable(_data['holdersCount']) ??
@@ -466,7 +468,9 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                       final username =
                                           (u?[FirestoreUserFields.username]
                                               as String?) ??
-                                          'Unknown';
+                                          AppLocalizations.of(
+                                            context,
+                                          )!.unknownUser;
                                       return Container(
                                         padding: EdgeInsets.symmetric(
                                           horizontal: s(12),
@@ -500,7 +504,9 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                             SizedBox(width: s(8)),
                                             Flexible(
                                               child: Text(
-                                                'Created by @$username',
+                                                AppLocalizations.of(
+                                                  context,
+                                                )!.createdBy(username),
                                                 maxLines: 1,
                                                 overflow: TextOverflow.ellipsis,
                                                 style: TextStyle(
@@ -531,11 +537,15 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                         iconBg: const Color(
                                           0xFF1B4BFF,
                                         ).withValues(alpha: 0.35),
-                                        title: 'Mining rate',
+                                        title: AppLocalizations.of(
+                                          context,
+                                        )!.miningRate,
                                         value: fmtRate(rate),
                                         suffix: symbol.isNotEmpty
-                                            ? '$symbol/hr'
-                                            : 'ETA/hr',
+                                            ? '$symbol${AppLocalizations.of(context)!.perHourSuffix}'
+                                            : AppLocalizations.of(
+                                                context,
+                                              )!.etaPerHourSuffix,
                                         footnote: changePct == null
                                             ? null
                                             : '${changePct >= 0 ? '+' : ''}${changePct.toStringAsFixed(1)}%',
@@ -559,7 +569,9 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                             iconBg: const Color(
                                               0xFF8B5CF6,
                                             ).withValues(alpha: 0.28),
-                                            title: 'Your mined',
+                                            title: AppLocalizations.of(
+                                              context,
+                                            )!.yourMined,
                                             value: valStr,
                                           );
                                         },
@@ -576,7 +588,9 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                         iconBg: const Color(
                                           0xFFFF4D9D,
                                         ).withValues(alpha: 0.22),
-                                        title: 'Holders',
+                                        title: AppLocalizations.of(
+                                          context,
+                                        )!.holders,
                                         value: compactNum(holders),
                                       ),
                                     ),
@@ -597,7 +611,9 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                                   iconBg: const Color(
                                                     0xFF8B5CF6,
                                                   ).withValues(alpha: 0.28),
-                                                  title: 'Total mined',
+                                                  title: AppLocalizations.of(
+                                                    context,
+                                                  )!.totalMined,
                                                   value: done
                                                       ? compactNum(v)
                                                       : '…',
@@ -612,7 +628,7 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                 Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
-                                    'About $name',
+                                    '${AppLocalizations.of(context)!.about} $name',
                                     style: TextStyle(
                                       color: Colors.white,
                                       fontSize: s(16),
@@ -646,7 +662,13 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                     child: GestureDetector(
                                       onTap: toggle,
                                       child: Text(
-                                        expanded ? 'Read Less' : 'Read More',
+                                        expanded
+                                            ? AppLocalizations.of(
+                                                context,
+                                              )!.readLess
+                                            : AppLocalizations.of(
+                                                context,
+                                              )!.readMore,
                                         style: TextStyle(
                                           color: buttonBlue,
                                           fontSize: s(13.5),
@@ -661,7 +683,9 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                   Align(
                                     alignment: Alignment.centerLeft,
                                     child: Text(
-                                      'Project Links',
+                                      AppLocalizations.of(
+                                        context,
+                                      )!.projectLinks,
                                       style: TextStyle(
                                         color: Colors.white,
                                         fontSize: s(14),
@@ -702,7 +726,7 @@ class _CoinDetailsDialogState extends State<CoinDetailsDialog> {
                                       elevation: 0,
                                     ),
                                     child: Text(
-                                      'Close',
+                                      AppLocalizations.of(context)!.close,
                                       style: TextStyle(
                                         fontSize: s(15),
                                         fontWeight: FontWeight.w900,

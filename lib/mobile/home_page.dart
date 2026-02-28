@@ -20,6 +20,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_verification_service.dart';
 import 'widgets/coin_details_dialog.dart';
 
+import '../l10n/generated/app_localizations.dart';
+
 class MobileHomePage extends StatefulWidget {
   const MobileHomePage({super.key});
 
@@ -136,6 +138,7 @@ class _MobileHomePageState extends State<MobileHomePage>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _pulseController?.dispose();
     _adCooldownTimer?.cancel();
     _miningService.removeListener(_handleServiceUpdate);
@@ -250,7 +253,9 @@ class _MobileHomePageState extends State<MobileHomePage>
       if (!silentUnavailable) {
         // final errorMsg = _adsService.lastLoadError ?? 'Rewarded ad not available';
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Rewarded ad not available')),
+          SnackBar(
+            content: Text(AppLocalizations.of(context)!.rewardedAdNotAvailable),
+          ),
         );
       }
       return false;
@@ -281,7 +286,9 @@ class _MobileHomePageState extends State<MobileHomePage>
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(
-                    'Rate boosted: +${boostAmount.toStringAsFixed(4)} ETA/hr',
+                    AppLocalizations.of(
+                      context,
+                    )!.rateBoosted(boostAmount.toStringAsFixed(4)),
                   ),
                 ),
               );
@@ -289,9 +296,13 @@ class _MobileHomePageState extends State<MobileHomePage>
           } catch (e) {
             debugPrint('Rewarded bonus apply failed: $e');
             if (!mounted) return;
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('Ad bonus failed: $e')));
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  AppLocalizations.of(context)!.adBonusFailed(e.toString()),
+                ),
+              ),
+            );
           }
         }());
         // Hide generic AdMob reward message to avoid confusion
@@ -520,9 +531,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     const pillText = Color(0xFFE6EDF5);
     const streakOrange = Color(0xFFFF8A00);
 
-    final streakText = streakDays == 1
-        ? '1 Day Streak'
-        : '$streakDays Day Streak';
+    final streakText = AppLocalizations.of(context)!.dayStreakValue(streakDays);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -530,12 +539,16 @@ class _MobileHomePageState extends State<MobileHomePage>
         double s(double v) => v * scale;
 
         final rewardedLabel = rewardedLoading
-            ? 'Loading ad…'
+            ? AppLocalizations.of(context)!.loadingAd
             : adCooldownSeconds > 0
-            ? 'Wait ${adCooldownSeconds}s'
+            ? AppLocalizations.of(context)!.waitSeconds(adCooldownSeconds)
             : rewardedMaxPerSession > 0
-            ? 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}%'
-            : 'Reward +${rewardedBonusPercent.toStringAsFixed(0)}%';
+            ? AppLocalizations.of(
+                context,
+              )!.rewardPlusPercent(rewardedBonusPercent.toStringAsFixed(0))
+            : AppLocalizations.of(
+                context,
+              )!.rewardPlusPercent(rewardedBonusPercent.toStringAsFixed(0));
 
         final canWatch =
             !rewardedLoading && !rewardedLimitReached && adCooldownSeconds <= 0;
@@ -625,13 +638,13 @@ class _MobileHomePageState extends State<MobileHomePage>
                                       height: 1.0,
                                     ),
                                   );
-                                }
+                                },
                               ),
                               SizedBox(width: s(10)),
                               Padding(
                                 padding: EdgeInsets.only(bottom: s(8)),
                                 child: Text(
-                                  'ETA',
+                                  AppLocalizations.of(context)!.eta,
                                   style: TextStyle(
                                     color: Colors.white54,
                                     fontSize: s(20),
@@ -664,7 +677,9 @@ class _MobileHomePageState extends State<MobileHomePage>
                           ),
                           SizedBox(width: s(10)),
                           Text(
-                            '+${hourlyRate.toStringAsFixed(2)} ETA/hr',
+                            AppLocalizations.of(
+                              context,
+                            )!.etaPerHr(hourlyRate.toStringAsFixed(2)),
                             style: TextStyle(
                               color: Colors.white70,
                               fontSize: s(16),
@@ -681,7 +696,9 @@ class _MobileHomePageState extends State<MobileHomePage>
                           ),
                           SizedBox(width: s(10)),
                           Text(
-                            miningActive ? 'Mining Active' : 'Inactive',
+                            miningActive
+                                ? '${AppLocalizations.of(context)!.mining} ${AppLocalizations.of(context)!.active}'
+                                : AppLocalizations.of(context)!.inactive,
                             style: TextStyle(
                               color: Colors.white54,
                               fontSize: s(16),
@@ -696,7 +713,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                   Row(
                     children: [
                       Text(
-                        'Session ends in',
+                        AppLocalizations.of(context)!.sessionEndsIn,
                         style: TextStyle(
                           color: Colors.white38,
                           fontSize: s(14),
@@ -748,7 +765,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                         size: s(24),
                       ),
                       label: Text(
-                        'Start Earning',
+                        AppLocalizations.of(context)!.startMining,
                         style: TextStyle(
                           fontSize: s(19),
                           fontWeight: FontWeight.w800,
@@ -953,7 +970,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(
-                    'Mined Coins',
+                    AppLocalizations.of(context)!.minedCoins,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: selected == 0 ? activeText : inactiveText,
@@ -974,7 +991,7 @@ class _MobileHomePageState extends State<MobileHomePage>
                     borderRadius: BorderRadius.circular(14),
                   ),
                   child: Text(
-                    'Live Coins',
+                    AppLocalizations.of(context)!.liveCoins,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: selected == 1 ? activeText : inactiveText,
@@ -1013,7 +1030,7 @@ class _MobileHomePageState extends State<MobileHomePage>
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('ETA Network'),
+        title: Text(AppLocalizations.of(context)!.etaNetwork),
         actions: const [],
       ),
       body: SingleChildScrollView(
@@ -1046,8 +1063,13 @@ class _MobileHomePageState extends State<MobileHomePage>
                           (dbg['referralBonus'] as num?)?.toDouble() ?? 0.0;
                       final total =
                           (dbg['hourlyRate'] as num?)?.toDouble() ?? 0.0;
-                      final msg =
-                          'Rate breakdown: Base ${base.toStringAsFixed(2)}, Streak +${streak.toStringAsFixed(2)}, Rank +${rank.toStringAsFixed(2)}, Referrals +${ref.toStringAsFixed(2)} = ${total.toStringAsFixed(2)} ETA/hr';
+                      final msg = AppLocalizations.of(context)!.rateBreakdown(
+                        base.toStringAsFixed(2),
+                        streak.toStringAsFixed(2),
+                        rank.toStringAsFixed(2),
+                        ref.toStringAsFixed(2),
+                        total.toStringAsFixed(2),
+                      );
                       debugPrint(msg);
                       ScaffoldMessenger.of(
                         context,
@@ -1059,9 +1081,9 @@ class _MobileHomePageState extends State<MobileHomePage>
                     if (!context.mounted) return;
                     debugPrint('Start failed: $e');
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
+                      SnackBar(
                         content: Text(
-                          'Unable to start mining. Please check your internet connection and try again.',
+                          '${AppLocalizations.of(context)!.unableToStartMining}\nError: $e',
                         ),
                       ),
                     );
@@ -1289,10 +1311,10 @@ class _MobileHomePageState extends State<MobileHomePage>
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'ASSET',
-                  style: TextStyle(
+                  AppLocalizations.of(context)!.asset.toUpperCase(),
+                  style: const TextStyle(
                     color: Colors.white54,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -1300,9 +1322,9 @@ class _MobileHomePageState extends State<MobileHomePage>
                   ),
                 ),
               ),
-              const Text(
-                'STATUS',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context)!.filterStatus.toUpperCase(),
+                style: const TextStyle(
                   color: Colors.white54,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -1312,22 +1334,29 @@ class _MobileHomePageState extends State<MobileHomePage>
               PopupMenuButton<String>(
                 onSelected: (v) => setState(() => _minedSort = v),
                 itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'popular', child: Text('Popular')),
-                  const PopupMenuItem(
+                  PopupMenuItem(
+                    value: 'popular',
+                    child: Text(AppLocalizations.of(context)!.filterPopular),
+                  ),
+                  PopupMenuItem(
                     value: 'name_az',
-                    child: Text('Names A–Z'),
+                    child: Text(
+                      '${AppLocalizations.of(context)!.filterNames} A–Z',
+                    ),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'name_za',
-                    child: Text('Names Z–A'),
+                    child: Text(
+                      '${AppLocalizations.of(context)!.filterNames} Z–A',
+                    ),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'old_new',
-                    child: Text('Old → New'),
+                    child: Text(AppLocalizations.of(context)!.filterOldNew),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'new_old',
-                    child: Text('New → Old'),
+                    child: Text(AppLocalizations.of(context)!.filterNewOld),
                   ),
                 ],
                 child: const Icon(Icons.tune_rounded, size: 18),
@@ -1359,10 +1388,10 @@ class _MobileHomePageState extends State<MobileHomePage>
               }
 
               if (coins.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Center(
-                    child: Text('No coins yet. Add from Live Coins.'),
+                    child: Text(AppLocalizations.of(context)!.noCoinsYet),
                   ),
                 );
               }
@@ -1396,10 +1425,10 @@ class _MobileHomePageState extends State<MobileHomePage>
         children: [
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Text(
-                  'ASSET',
-                  style: TextStyle(
+                  AppLocalizations.of(context)!.asset.toUpperCase(),
+                  style: const TextStyle(
                     color: Colors.white54,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -1407,9 +1436,9 @@ class _MobileHomePageState extends State<MobileHomePage>
                   ),
                 ),
               ),
-              const Text(
-                'RATE',
-                style: TextStyle(
+              Text(
+                AppLocalizations.of(context)!.rate,
+                style: const TextStyle(
                   color: Colors.white54,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -1422,23 +1451,33 @@ class _MobileHomePageState extends State<MobileHomePage>
                   _liveCoinsStream = CoinService.watchLiveCoins(sort: v);
                 }),
                 itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'popular', child: Text('Popular')),
-                  const PopupMenuItem(
+                  PopupMenuItem(
+                    value: 'popular',
+                    child: Text(AppLocalizations.of(context)!.filterPopular),
+                  ),
+                  PopupMenuItem(
                     value: 'name_az',
-                    child: Text('Names A–Z'),
+                    child: Text(
+                      '${AppLocalizations.of(context)!.filterNames} A–Z',
+                    ),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'name_za',
-                    child: Text('Names Z–A'),
+                    child: Text(
+                      '${AppLocalizations.of(context)!.filterNames} Z–A',
+                    ),
                   ),
-                  const PopupMenuItem(value: 'random', child: Text('Random')),
-                  const PopupMenuItem(
+                  PopupMenuItem(
+                    value: 'random',
+                    child: Text(AppLocalizations.of(context)!.filterRandom),
+                  ),
+                  PopupMenuItem(
                     value: 'old_new',
-                    child: Text('Old → New'),
+                    child: Text(AppLocalizations.of(context)!.filterOldNew),
                   ),
-                  const PopupMenuItem(
+                  PopupMenuItem(
                     value: 'new_old',
-                    child: Text('New → Old'),
+                    child: Text(AppLocalizations.of(context)!.filterNewOld),
                   ),
                 ],
                 child: const Icon(Icons.tune_rounded, size: 18),
@@ -1473,9 +1512,13 @@ class _MobileHomePageState extends State<MobileHomePage>
               }
 
               if (coins.isEmpty) {
-                return const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Center(child: Text('No live community coins')),
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Center(
+                    child: Text(
+                      AppLocalizations.of(context)!.noLiveCommunityCoins,
+                    ),
+                  ),
                 );
               }
               return Column(
@@ -1694,7 +1737,7 @@ class _MobileHomePageState extends State<MobileHomePage>
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${rate.toStringAsFixed(3)}/h',
+                  '${rate.toStringAsFixed(3)}${AppLocalizations.of(context)!.perHourSuffix}',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
@@ -1713,8 +1756,12 @@ class _MobileHomePageState extends State<MobileHomePage>
                             );
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Added to Mined Coins'),
+                                SnackBar(
+                                  content: Text(
+                                    AppLocalizations.of(
+                                      context,
+                                    )!.addedToMinedCoins,
+                                  ),
                                 ),
                               );
                               setState(() {});
@@ -1723,7 +1770,13 @@ class _MobileHomePageState extends State<MobileHomePage>
                           } catch (e) {
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Failed to add: $e')),
+                                SnackBar(
+                                  content: Text(
+                                    AppLocalizations.of(
+                                      context,
+                                    )!.failedToAdd(e.toString()),
+                                  ),
+                                ),
                               );
                             }
                           }
@@ -2361,7 +2414,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                                 SizedBox(width: s(10)),
                               ],
                               Text(
-                                'Subscribe & Boost Mining',
+                                AppLocalizations.of(context)!.subscribeAndBoost,
                                 style: TextStyle(
                                   fontSize: s(15),
                                   fontWeight: FontWeight.w900,
@@ -2388,7 +2441,9 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                           ),
                           SizedBox(width: s(6)),
                           Text(
-                            'Secure payment via Google Play',
+                            AppLocalizations.of(
+                              context,
+                            )!.securePaymentViaGooglePlay,
                             style: TextStyle(
                               color: Colors.white38,
                               fontSize: s(12.5),
@@ -2417,17 +2472,17 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
         context: context,
         builder: (ctx) {
           return AlertDialog(
-            title: const Text('Email verification required'),
-            content: const Text('Please verify your email to continue.'),
+            title: Text(AppLocalizations.of(ctx)!.verifyEmailTitle),
+            content: Text(AppLocalizations.of(ctx)!.verifyEmailMessage),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Close'),
+                child: Text(AppLocalizations.of(ctx)!.close),
               ),
               TextButton(
                 onPressed: () =>
                     AuthVerificationService.sendVerificationEmail(),
-                child: const Text('Resend Email'),
+                child: Text(AppLocalizations.of(ctx)!.resendEmail),
               ),
               TextButton(
                 onPressed: () async {
@@ -2436,7 +2491,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                   if (!ctx.mounted) return;
                   Navigator.pop(ctx, ok);
                 },
-                child: const Text('Refresh Status'),
+                child: Text(AppLocalizations.of(ctx)!.refreshStatus),
               ),
             ],
           );
@@ -2474,9 +2529,11 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
       } else {
         if (mounted) {
           setState(() => processingManagerId = null);
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Purchase failed')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(AppLocalizations.of(context)!.purchaseFailed),
+            ),
+          );
         }
       }
       return;
@@ -2527,7 +2584,6 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
               : const Color(0xFF1B4BFF));
 
     final pct = (((multiplier - 1.0) * 100).clamp(0.0, 9999.0));
-    final pctText = '+${pct.toStringAsFixed(0)}% Speed';
     final price = pkg?.storeProduct.priceString ?? '—';
 
     return GestureDetector(
@@ -2591,7 +2647,9 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                           ),
                           SizedBox(width: scale(6)),
                           Text(
-                            pctText,
+                            AppLocalizations.of(
+                              context,
+                            )!.speedBoost(pct.toStringAsFixed(0)),
                             style: TextStyle(
                               color: const Color(0xFF2ECC71),
                               fontSize: scale(13),
@@ -2611,7 +2669,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                             ),
                             SizedBox(width: scale(6)),
                             Text(
-                              'Auto-collect',
+                              AppLocalizations.of(context)!.autoCollect,
                               style: TextStyle(
                                 color: Colors.white54,
                                 fontSize: scale(12.5),
@@ -2630,7 +2688,9 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                             ),
                             SizedBox(width: scale(6)),
                             Text(
-                              'Auto mine $maxCoins ${maxCoins == 1 ? 'coin' : 'coins'}',
+                              AppLocalizations.of(
+                                context,
+                              )!.autoMineCoins(maxCoins),
                               style: TextStyle(
                                 color: Colors.white54,
                                 fontSize: scale(12.5),
@@ -2757,17 +2817,17 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
         context: context,
         builder: (ctx) {
           return AlertDialog(
-            title: const Text('Email verification required'),
-            content: const Text('Please verify your email to view plans.'),
+            title: Text(AppLocalizations.of(ctx)!.verifyEmailTitle),
+            content: Text(AppLocalizations.of(ctx)!.verifyEmailMessage),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('Close'),
+                child: Text(AppLocalizations.of(ctx)!.close),
               ),
               TextButton(
                 onPressed: () =>
                     AuthVerificationService.sendVerificationEmail(),
-                child: const Text('Resend Email'),
+                child: Text(AppLocalizations.of(ctx)!.resendEmail),
               ),
               TextButton(
                 onPressed: () async {
@@ -2776,7 +2836,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                   if (!ctx.mounted) return;
                   Navigator.pop(ctx, ok);
                 },
-                child: const Text('Refresh Status'),
+                child: Text(AppLocalizations.of(ctx)!.refreshStatus),
               ),
             ],
           );
@@ -2789,8 +2849,8 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     if (offs == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Subscriptions are only available on Android/iOS.'),
+        SnackBar(
+          content: Text(AppLocalizations.of(context)!.subscriptionsUnavailable),
         ),
       );
       return;
@@ -2819,7 +2879,11 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     if (pkgs.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No subscription plans available')),
+        SnackBar(
+          content: Text(
+            AppLocalizations.of(context)!.noSubscriptionPlansAvailable,
+          ),
+        ),
       );
       return;
     }
@@ -2835,9 +2899,12 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'Subscription Plans',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                Text(
+                  AppLocalizations.of(context)!.subscriptionPlans,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Flexible(
@@ -2854,9 +2921,9 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                         ),
                         subtitle: Text(id),
                         trailing: isTarget
-                            ? const Text(
-                                'Recommended',
-                                style: TextStyle(color: Colors.green),
+                            ? Text(
+                                AppLocalizations.of(context)!.recommended,
+                                style: const TextStyle(color: Colors.green),
                               )
                             : null,
                         onTap: () => Navigator.pop(ctx, p),
@@ -2867,7 +2934,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel'),
+                  child: Text(AppLocalizations.of(context)!.cancel),
                 ),
               ],
             ),
@@ -2887,9 +2954,9 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     } else {
       if (mounted) {
         setState(() => processingManagerId = null);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Purchase failed')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context)!.purchaseFailed)),
+        );
       }
     }
   }
@@ -3425,7 +3492,9 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
                         Icon(Icons.check_circle_rounded, size: s(20)),
                         SizedBox(width: s(10)),
                         Text(
-                          'Start Mining (${selectedIds.length})',
+                          AppLocalizations.of(
+                            context,
+                          )!.startMiningWithCount(selectedIds.length),
                           style: TextStyle(
                             fontSize: s(15),
                             fontWeight: FontWeight.w900,
@@ -3453,7 +3522,7 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
                             ),
                           ),
                           child: Text(
-                            'Clear Selection',
+                            AppLocalizations.of(context)!.clearSelection,
                             style: TextStyle(
                               fontSize: s(14),
                               fontWeight: FontWeight.w900,
@@ -3478,7 +3547,7 @@ class _CoinSelectDialogState extends State<_CoinSelectDialog> {
                             ),
                           ),
                           child: Text(
-                            'Cancel',
+                            AppLocalizations.of(context)!.cancel,
                             style: TextStyle(
                               fontSize: s(14),
                               fontWeight: FontWeight.w900,

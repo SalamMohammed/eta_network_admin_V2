@@ -5,6 +5,8 @@ import '../../services/mining_state_service.dart';
 import '../../services/user_service.dart';
 import 'my_coin_block.dart';
 
+import '../../l10n/generated/app_localizations.dart';
+
 class BalancePage extends StatefulWidget {
   const BalancePage({super.key});
 
@@ -92,7 +94,7 @@ class _BalancePageState extends State<BalancePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Total Balance',
+                          AppLocalizations.of(context)!.totalBalance,
                           style: TextStyle(
                             color: Colors.white70,
                             fontSize: s(16),
@@ -236,7 +238,8 @@ class _BalancePageState extends State<BalancePage> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Balance'),
+        title: Text(AppLocalizations.of(context)!.balanceTitle),
+        actions: const [SizedBox(width: 8)],
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.only(bottom: vPad),

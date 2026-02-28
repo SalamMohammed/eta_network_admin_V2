@@ -9,6 +9,7 @@ import '../auth/auth_gate.dart';
 import '../services/auth_verification_service.dart';
 import '../services/mining_state_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../l10n/generated/app_localizations.dart';
 
 // The main scaffold for the logged-in mobile app.
 // It handles navigation between the main tabs (Home, Balance, Referrals, Profile).
@@ -64,22 +65,22 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                 _profileInitialized = true;
               }
             }),
-            destinations: const [
+            destinations: [
               NavigationDestination(
-                icon: Icon(Icons.home_rounded),
-                label: 'Home',
+                icon: const Icon(Icons.home_rounded),
+                label: AppLocalizations.of(context)!.home,
               ),
               NavigationDestination(
-                icon: Icon(Icons.account_balance_wallet_rounded),
-                label: 'Balance',
+                icon: const Icon(Icons.account_balance_wallet_rounded),
+                label: AppLocalizations.of(context)!.balanceTitle,
               ),
               NavigationDestination(
-                icon: Icon(Icons.group_add_rounded),
-                label: 'Referrals',
+                icon: const Icon(Icons.group_add_rounded),
+                label: AppLocalizations.of(context)!.referral,
               ),
               NavigationDestination(
-                icon: Icon(Icons.person_rounded),
-                label: 'Profile',
+                icon: const Icon(Icons.person_rounded),
+                label: AppLocalizations.of(context)!.profile,
               ),
             ],
           ),
@@ -129,9 +130,9 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                         ),
                       ),
                       const SizedBox(height: 32),
-                      const Text(
-                        'Verify Your Email',
-                        style: TextStyle(
+                      Text(
+                        AppLocalizations.of(context)!.verifyEmailTitle,
+                        style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
@@ -139,9 +140,9 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                         textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
-                      const Text(
-                        'We have sent a verification link to your email address. Please verify your account to unlock all features.',
-                        style: TextStyle(
+                      Text(
+                        AppLocalizations.of(context)!.verifyEmailMessage,
+                        style: const TextStyle(
                           fontSize: 16,
                           color: Colors.white70,
                           height: 1.5,
@@ -157,8 +158,12 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                             await AuthVerificationService.sendVerificationEmail();
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Verification email sent'),
+                                SnackBar(
+                                  content: Text(
+                                    AppLocalizations.of(
+                                      context,
+                                    )!.verificationEmailSent,
+                                  ),
                                 ),
                               );
                             }
@@ -169,9 +174,12 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
-                            'Resend Email',
-                            style: TextStyle(fontSize: 16, color: Colors.white),
+                          child: Text(
+                            AppLocalizations.of(context)!.resendEmail,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
@@ -185,15 +193,21 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                                 await AuthVerificationService.refreshAndCheckVerified();
                             if (ok && context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Email verified successfully!'),
+                                SnackBar(
+                                  content: Text(
+                                    AppLocalizations.of(
+                                      context,
+                                    )!.emailVerifiedSuccess,
+                                  ),
                                 ),
                               );
                             } else if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
+                                SnackBar(
                                   content: Text(
-                                    'Email not verified yet. Please check your inbox.',
+                                    AppLocalizations.of(
+                                      context,
+                                    )!.emailNotVerified,
                                   ),
                                 ),
                               );
@@ -205,9 +219,12 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
-                            'I have verified',
-                            style: TextStyle(fontSize: 16, color: Colors.white),
+                          child: Text(
+                            AppLocalizations.of(context)!.iHaveVerified,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.white,
+                            ),
                           ),
                         ),
                       ),
@@ -219,7 +236,8 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                           onPressed: () async {
                             MiningStateService().reset();
                             try {
-                              final prefs = await SharedPreferences.getInstance();
+                              final prefs =
+                                  await SharedPreferences.getInstance();
                               await prefs.remove(
                                 'referral_code_${FirebaseAuth.instance.currentUser?.uid ?? ''}',
                               );
@@ -246,9 +264,9 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
-                            'Logout',
-                            style: TextStyle(
+                          child: Text(
+                            AppLocalizations.of(context)!.logout,
+                            style: const TextStyle(
                               fontSize: 16,
                               color: Colors.redAccent,
                             ),

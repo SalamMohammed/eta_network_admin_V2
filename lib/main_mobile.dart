@@ -8,6 +8,9 @@ import 'services/notification_service.dart';
 import 'services/ads_service.dart';
 import 'services/install_referrer_service.dart';
 import 'shared/constants.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'l10n/generated/app_localizations.dart';
+import 'services/locale_provider.dart';
 
 // This is the main entry point specifically for the Mobile version of the app.
 Future<void> main() async {
@@ -25,6 +28,9 @@ Future<void> main() async {
     await _initBackgroundServices();
   }
 
+  // Load saved locale
+  await localeProvider.load();
+
   // Run the mobile-specific app widget.
   runApp(const MyMobileApp());
 }
@@ -35,14 +41,30 @@ class MyMobileApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'ETA Network',
-      
-      // Apply dark theme.
-      theme: AppTheme.dark,
-      
-      // Start at the AuthGate to check login status.
-      home: const AuthGate(),
+    return AnimatedBuilder(
+      animation: localeProvider,
+      builder: (context, child) {
+        return MaterialApp(
+          title: 'ETA Network',
+
+          // Apply dark theme.
+          theme: AppTheme.dark,
+          locale: localeProvider.locale,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('en'), // English
+            Locale('es'), // Spanish
+          ],
+
+          // Start at the AuthGate to check login status.
+          home: const AuthGate(),
+        );
+      },
     );
   }
 }

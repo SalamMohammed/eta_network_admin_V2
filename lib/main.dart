@@ -9,6 +9,9 @@ import 'services/ads_service.dart';
 import 'services/background_service.dart';
 import 'shared/constants.dart';
 import 'services/coin_service.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'l10n/generated/app_localizations.dart';
+import 'services/locale_provider.dart';
 
 // This is the main entry point of the application.
 // It initializes all necessary services and starts the app.
@@ -28,6 +31,9 @@ Future<void> main() async {
     _initBackgroundServices();
   }
 
+  // Load saved locale
+  await localeProvider.load();
+
   // Run the main application widget.
   runApp(const MyApp());
 }
@@ -39,14 +45,31 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Sets up the Material Design structure.
-    return MaterialApp(
-      title: 'ETA Network',
+    return AnimatedBuilder(
+      animation: localeProvider,
+      builder: (context, child) {
+        return MaterialApp(
+          title: 'ETA Network',
 
-      // Apply the custom dark theme defined in AppTheme.
-      theme: AppTheme.dark,
+          // Apply the custom dark theme defined in AppTheme.
+          theme: AppTheme.dark,
+          locale: localeProvider.locale,
 
-      // The starting screen is the AuthGate, which decides if the user is logged in or not.
-      home: const AuthGate(),
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('en'), // English
+            Locale('es'), // Spanish
+          ],
+
+          // The starting screen is the AuthGate, which decides if the user is logged in or not.
+          home: const AuthGate(),
+        );
+      },
     );
   }
 }

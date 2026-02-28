@@ -7,8 +7,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../../shared/firestore_constants.dart';
-import '../../shared/constants.dart';
+// import '../../shared/constants.dart';
 import '../../utils/firestore_helper.dart';
+import '../../l10n/generated/app_localizations.dart';
 
 class ReferralsPage extends StatefulWidget {
   const ReferralsPage({super.key});
@@ -110,18 +111,18 @@ class _ReferralsPageState extends State<ReferralsPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'How it works',
-                  style: TextStyle(
+                Text(
+                  AppLocalizations.of(context)!.howItWorks,
+                  style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
                     color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 10),
-                const Text(
-                  'Share your code with friends. When they join and become active, you grow your team and improve your earning potential.',
-                  style: TextStyle(
+                Text(
+                  AppLocalizations.of(context)!.referralDescription,
+                  style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 14.5,
                     height: 1.3,
@@ -134,9 +135,9 @@ class _ReferralsPageState extends State<ReferralsPage> {
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
                     style: TextButton.styleFrom(foregroundColor: buttonBlue),
-                    child: const Text(
-                      'Close',
-                      style: TextStyle(fontWeight: FontWeight.w800),
+                    child: Text(
+                      AppLocalizations.of(context)!.close,
+                      style: const TextStyle(fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),
@@ -161,9 +162,9 @@ class _ReferralsPageState extends State<ReferralsPage> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
-                  'Your Team',
-                  style: TextStyle(
+                Text(
+                  AppLocalizations.of(context)!.yourTeam,
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     color: Colors.white,
@@ -171,9 +172,11 @@ class _ReferralsPageState extends State<ReferralsPage> {
                 ),
                 const SizedBox(height: 12),
                 if (_referrals.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(12),
-                    child: Center(child: Text('No referrals yet')),
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Center(
+                      child: Text(AppLocalizations.of(context)!.noReferrals),
+                    ),
                   )
                 else
                   Flexible(
@@ -185,7 +188,9 @@ class _ReferralsPageState extends State<ReferralsPage> {
                       itemBuilder: (context, i) {
                         final u = _referrals[i];
                         final isMining = u.status == 'Active';
-                        final statusLabel = isMining ? 'Mining' : 'Inactive';
+                        final statusLabel = isMining
+                            ? AppLocalizations.of(context)!.mining
+                            : AppLocalizations.of(context)!.inactive;
                         return ListTile(
                           contentPadding: EdgeInsets.zero,
                           leading: const CircleAvatar(
@@ -351,8 +356,8 @@ class _ReferralsPageState extends State<ReferralsPage> {
 
       final results = await Future.wait([sharedDocFuture, statsDocFuture]);
 
-      final sharedDoc = results[0] as DocumentSnapshot<Map<String, dynamic>>;
-      final statsDoc = results[1] as DocumentSnapshot<Map<String, dynamic>>;
+      final sharedDoc = results[0];
+      final statsDoc = results[1];
 
       final List<_ReferralItem> finalOrderedItems = [];
       int activeInvited = 0;
@@ -488,9 +493,9 @@ class _ReferralsPageState extends State<ReferralsPage> {
     if (_referralCode == null) return;
     await Clipboard.setData(ClipboardData(text: _referralCode!));
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(_themedSnack('Referral code copied'));
+    ScaffoldMessenger.of(context).showSnackBar(
+      _themedSnack(AppLocalizations.of(context)!.referralCodeCopied),
+    );
   }
 
   Future<void> _shareLink() async {
@@ -524,16 +529,16 @@ class _ReferralsPageState extends State<ReferralsPage> {
             TextButton(
               onPressed: () {
                 Clipboard.setData(ClipboardData(text: text));
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(_themedSnack('Link copied'));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  _themedSnack(AppLocalizations.of(context)!.linkCopied),
+                );
                 Navigator.pop(context);
               },
-              child: const Text('Copy'),
+              child: Text(AppLocalizations.of(context)!.copy),
             ),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
+              child: Text(AppLocalizations.of(context)!.close),
             ),
           ],
         ),
@@ -553,7 +558,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Referrals'),
+        title: Text(AppLocalizations.of(context)!.referralsTitle),
         centerTitle: true,
         actions: [
           IconButton(
@@ -614,7 +619,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
                           child: FittedBox(
                             fit: BoxFit.scaleDown,
                             child: Text(
-                              'Invite & Earn',
+                              AppLocalizations.of(context)!.inviteEarn,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -629,7 +634,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
                         FractionallySizedBox(
                           widthFactor: 0.95,
                           child: Text(
-                            'Share your unique code with friends to boost your mining rate.',
+                            AppLocalizations.of(context)!.shareCodeDescription,
                             maxLines: 2,
                             overflow: TextOverflow.clip,
                             textAlign: TextAlign.center,
@@ -702,7 +707,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
                                     color: Colors.white,
                                   ),
                                   label: Text(
-                                    'Copy',
+                                    AppLocalizations.of(context)!.copy,
                                     style: TextStyle(
                                       fontSize: s(15),
                                       fontWeight: FontWeight.w800,
@@ -737,7 +742,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
                                     color: Colors.white,
                                   ),
                                   label: Text(
-                                    'Share Link',
+                                    AppLocalizations.of(context)!.shareLink,
                                     style: TextStyle(
                                       fontSize: s(15),
                                       fontWeight: FontWeight.w800,
@@ -756,7 +761,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
                     children: [
                       Expanded(
                         child: _metricCard(
-                          title: 'TOTAL INVITED',
+                          title: AppLocalizations.of(context)!.totalInvited,
                           value: _loading ? '—' : '$_totalInvited',
                           icon: Icons.group_rounded,
                           accent: Colors.white54,
@@ -773,7 +778,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
                       SizedBox(width: s(12)),
                       Expanded(
                         child: _metricCard(
-                          title: 'ACTIVE NOW',
+                          title: AppLocalizations.of(context)!.activeNow,
                           value: _loading ? '—' : '$_activeInvited',
                           icon: Icons.bolt_rounded,
                           accent: buttonBlue,
@@ -814,7 +819,7 @@ class _ReferralsPageState extends State<ReferralsPage> {
                           foregroundColor: buttonBlue,
                         ),
                         child: Text(
-                          'View All  ›',
+                          '${AppLocalizations.of(context)!.viewAll}  ›',
                           style: TextStyle(
                             fontSize: s(14),
                             fontWeight: FontWeight.w700,
@@ -841,8 +846,10 @@ class _ReferralsPageState extends State<ReferralsPage> {
                         if (visible.isEmpty && !_loading) {
                           return Padding(
                             padding: EdgeInsets.all(s(16)),
-                            child: const Center(
-                              child: Text('No referrals yet'),
+                            child: Center(
+                              child: Text(
+                                AppLocalizations.of(context)!.noReferrals,
+                              ),
                             ),
                           );
                         }
@@ -983,7 +990,9 @@ class _ReferralsPageState extends State<ReferralsPage> {
     required Color buttonBlue,
   }) {
     final isMining = item.status == 'Active';
-    final statusLabel = isMining ? 'Mining' : 'Inactive';
+    final statusLabel = isMining
+        ? AppLocalizations.of(context)!.mining
+        : AppLocalizations.of(context)!.inactive;
     final pillBg = isMining
         ? buttonBlue.withValues(alpha: 0.20)
         : Colors.white.withValues(alpha: 0.08);

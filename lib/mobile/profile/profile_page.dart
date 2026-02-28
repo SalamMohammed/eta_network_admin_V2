@@ -16,7 +16,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../shared/pick_image_io.dart'
     if (dart.library.html) '../../shared/pick_image_web.dart'
     as picker;
+import '../../l10n/generated/app_localizations.dart';
 import 'legal_content_page.dart';
+import '../settings/language_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -495,6 +497,34 @@ class _ProfilePageState extends State<ProfilePage> {
                           ),
                           onTap: () =>
                               _openAboutPage(context, s, cardBg, cardBg2),
+                        ),
+                        Padding(
+                          padding: EdgeInsets.symmetric(horizontal: s(14)),
+                          child: Container(
+                            height: 1,
+                            color: Colors.white.withValues(alpha: 0.06),
+                          ),
+                        ),
+                        _settingsTile(
+                          scale: s,
+                          icon: Icons.language_rounded,
+                          title: AppLocalizations.of(context)!.language,
+                          subtitle: AppLocalizations.of(
+                            context,
+                          )!.languageSubtitle,
+                          trailing: Icon(
+                            Icons.chevron_right_rounded,
+                            color: Colors.white54,
+                            size: s(24),
+                          ),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (ctx) => const LanguagePage(),
+                              ),
+                            );
+                          },
                         ),
                         Padding(
                           padding: EdgeInsets.symmetric(horizontal: s(14)),
@@ -1638,9 +1668,9 @@ class _AccountInfoSheetState extends State<_AccountInfoSheet> {
                   style: TextButton.styleFrom(
                     foregroundColor: const Color(0xFF1677FF),
                   ),
-                  child: const Text(
-                    'Close',
-                    style: TextStyle(fontWeight: FontWeight.w800),
+                  child: Text(
+                    AppLocalizations.of(context)!.close,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
                   ),
                 ),
               ),

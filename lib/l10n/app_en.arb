@@ -1,0 +1,680 @@
+{
+  "totalBalance": "Total Balance",
+  "@totalBalance": {
+    "description": "The total balance shown on the wallet summary card"
+  },
+  "joinedDate": "Joined {date}",
+  "@joinedDate": {
+    "description": "Date when user joined",
+    "placeholders": {
+      "link": {
+        "type": "String"
+      }
+    }
+  },
+  "inviteEarn": "Invite & Earn",
+  "@inviteEarn": {
+    "description": "Title for invite section"
+  },
+  "shareCodeDescription": "Share your unique code with friends to boost your mining rate.",
+  "@shareCodeDescription": {
+    "description": "Description for sharing code"
+  },
+  "shareLink": "Share Link",
+  "@shareLink": {
+    "description": "Button text to share link"
+  },
+  "totalInvited": "TOTAL INVITED",
+  "@totalInvited": {
+    "description": "Label for total invited count"
+  },
+  "activeNow": "ACTIVE NOW",
+  "@activeNow": {
+    "description": "Label for active invited count"
+  },
+  "viewAll": "View All",
+  "@viewAll": {
+    "description": "Button text to view all items"
+  },
+  "createCoin": "Create Coin",
+  "@createCoin": {
+    "description": "Button to create a new coin"
+  },
+  "mining": "Mining",
+  "@mining": {
+    "description": "Mining status or label"
+  },
+  "settings": "Settings",
+  "@settings": {
+    "description": "Settings page title"
+  },
+  "language": "Language",
+  "@language": {
+    "description": "Language setting title"
+  },
+  "languageSubtitle": "Change app language",
+  "@languageSubtitle": {
+    "description": "Subtitle for language setting"
+  },
+  "selectLanguage": "Select Language",
+  "@selectLanguage": {
+    "description": "Title for language selection page"
+  },
+  "balanceTitle": "Balance",
+  "@balanceTitle": {
+    "description": "Title for the balance page"
+  },
+  "home": "Home",
+  "@home": {
+    "description": "Bottom navigation label for Home"
+  },
+  "referral": "Referral",
+  "@referral": {
+    "description": "Bottom navigation label for Referral"
+  },
+  "profile": "Profile",
+  "@profile": {
+    "description": "Bottom navigation label for Profile"
+  },
+  "dayStreak": "Day Streak",
+  "@dayStreak": {
+    "description": "Label for Day Streak"
+  },
+  "dayStreakValue": "{count} Day Streak",
+  "@dayStreakValue": {
+    "description": "Day Streak value with count",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "active": "Active",
+  "@active": {
+    "description": "Status label for Active"
+  },
+  "inactive": "Inactive",
+  "@inactive": {
+    "description": "Status label for Inactive"
+  },
+  "sessionEndsIn": "Session ends in",
+  "@sessionEndsIn": {
+    "description": "Label for session countdown"
+  },
+  "startEarning": "Start Earning",
+  "@startEarning": {
+    "description": "Button text to start mining/earning"
+  },
+  "loadingAd": "Loading ad…",
+  "@loadingAd": {
+    "description": "Text shown when ad is loading"
+  },
+  "waitSeconds": "Wait {seconds}s",
+  "@waitSeconds": {
+    "description": "Text shown during ad cooldown",
+    "placeholders": {
+      "seconds": {
+        "type": "int"
+      }
+    }
+  },
+  "rewardPlusPercent": "Reward +{percent}%",
+  "@rewardPlusPercent": {
+    "description": "Text showing reward percentage",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "rewardedAdNotAvailable": "Rewarded ad not available",
+  "@rewardedAdNotAvailable": {
+    "description": "Snackbar text when rewarded ad is unavailable"
+  },
+  "rateBoosted": "Rate boosted: +{rate} ETA/hr",
+  "@rateBoosted": {
+    "description": "Snackbar text when mining rate is boosted",
+    "placeholders": {
+      "rate": {
+        "type": "String"
+      }
+    }
+  },
+  "adBonusFailed": "Ad bonus failed: {message}",
+  "@adBonusFailed": {
+    "description": "Snackbar text when applying ad bonus fails",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "rateBreakdown": "Rate breakdown: Base {base}, Streak +{streak}, Rank +{rank}, Referrals +{referrals} = {total} ETA/hr",
+  "@rateBreakdown": {
+    "description": "Debug snackbar showing rate breakdown",
+    "placeholders": {
+      "base": {
+        "type": "String"
+      },
+      "streak": {
+        "type": "String"
+      },
+      "rank": {
+        "type": "String"
+      },
+      "referrals": {
+        "type": "String"
+      },
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "unableToStartMining": "Unable to start mining. Please check your internet connection and try again.",
+  "@unableToStartMining": {
+    "description": "Snackbar text when mining start fails"
+  },
+  "createCommunityCoin": "Create Community Coin",
+  "@createCommunityCoin": {
+    "description": "Title for creating a community coin"
+  },
+  "launchCoinDescription": "Launch your own coin on ETA Network instantly.",
+  "@launchCoinDescription": {
+    "description": "Description for launching a coin"
+  },
+  "createYourOwnCoin": "Create your own coin",
+  "@createYourOwnCoin": {
+    "description": "Alternative title for creating a coin"
+  },
+  "launchCommunityCoinDescription": "Launch your own community coin that other ETA users can mine.",
+  "@launchCommunityCoinDescription": {
+    "description": "Alternative description for launching a coin"
+  },
+  "editCoin": "Edit coin",
+  "@editCoin": {
+    "description": "Button to edit a coin"
+  },
+  "baseRate": "Base rate: {rate} coins/hour",
+  "@baseRate": {
+    "description": "Base mining rate",
+    "placeholders": {
+      "rate": {
+        "type": "String"
+      }
+    }
+  },
+  "createdBy": "Created by @{username}",
+  "@createdBy": {
+    "description": "Creator attribution",
+    "placeholders": {
+      "username": {
+        "type": "String"
+      }
+    }
+  },
+  "etaPerHr": "+{rate} ETA/hr",
+  "@etaPerHr": {
+    "description": "Mining rate in ETA/hr",
+    "placeholders": {
+      "rate": {
+        "type": "String"
+      }
+    }
+  },
+  "noCoinsYet": "No coins yet. Add from Live Coins.",
+  "@noCoinsYet": {
+    "description": "Message when no coins are mined"
+  },
+  "mine": "Mine",
+  "@mine": {
+    "description": "Verb to mine"
+  },
+  "remaining": "remaining",
+  "@remaining": {
+    "description": "Text indicating time remaining"
+  },
+  "holders": "Holders",
+  "@holders": {
+    "description": "Label for number of holders"
+  },
+  "close": "Close",
+  "@close": {
+    "description": "Button text to close a dialog"
+  },
+  "readMore": "Read More",
+  "@readMore": {
+    "description": "Link text to expand description"
+  },
+  "readLess": "Read Less",
+  "@readLess": {
+    "description": "Link text to collapse description"
+  },
+  "projectLinks": "Project Links",
+  "@projectLinks": {
+    "description": "Header for project links"
+  },
+  "verifyEmailTitle": "Verify Your Email",
+  "@verifyEmailTitle": {
+    "description": "Title for email verification screen"
+  },
+  "verifyEmailMessage": "We have sent a verification link to your email address. Please verify your account to unlock all features.",
+  "@verifyEmailMessage": {
+    "description": "Message for email verification"
+  },
+  "resendEmail": "Resend Email",
+  "@resendEmail": {
+    "description": "Button text to resend verification email"
+  },
+  "iHaveVerified": "I have verified",
+  "@iHaveVerified": {
+    "description": "Button text to confirm verification"
+  },
+  "logout": "Logout",
+  "@logout": {
+    "description": "Button text to logout"
+  },
+  "emailVerifiedSuccess": "Email verified successfully!",
+  "@emailVerifiedSuccess": {
+    "description": "Success message for email verification"
+  },
+  "emailNotVerified": "Email not verified yet. Please check your inbox.",
+  "@emailNotVerified": {
+    "description": "Error message when email is not verified"
+  },
+  "verificationEmailSent": "Verification email sent",
+  "@verificationEmailSent": {
+    "description": "Message confirming verification email sent"
+  },
+  "startMining": "Start Mining",
+  "@startMining": {
+    "description": "Button text to start mining"
+  },
+  "minedCoins": "Mined Coins",
+  "@minedCoins": {
+    "description": "Tab label for Mined coins"
+  },
+  "liveCoins": "Live Coins",
+  "@liveCoins": {
+    "description": "Tab label for Live coins"
+  },
+  "asset": "Asset",
+  "@asset": {
+    "description": "Label for Asset"
+  },
+  "filterStatus": "Status",
+  "@filterStatus": {
+    "description": "Filter label for Status"
+  },
+  "filterPopular": "Popular",
+  "@filterPopular": {
+    "description": "Filter option for Popular"
+  },
+  "filterNames": "Names",
+  "@filterNames": {
+    "description": "Filter option for Names"
+  },
+  "filterOldNew": "Old - New",
+  "@filterOldNew": {
+    "description": "Filter option for Old to New"
+  },
+  "filterNewOld": "New - Old",
+  "@filterNewOld": {
+    "description": "Filter option for New to Old"
+  },
+  "startMiningWithCount": "Start Mining ({count})",
+  "@startMiningWithCount": {
+    "description": "Button text to start mining with selection count",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clearSelection": "Clear Selection",
+  "@clearSelection": {
+    "description": "Button text to clear current selection"
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Button text to cancel and close dialog"
+  },
+  "refreshStatus": "Refresh Status",
+  "@refreshStatus": {
+    "description": "Button text to refresh verification status"
+  },
+  "purchaseFailed": "Purchase failed",
+  "@purchaseFailed": {
+    "description": "Snackbar text when purchase fails"
+  },
+  "securePaymentViaGooglePlay": "Secure payment via Google Play",
+  "@securePaymentViaGooglePlay": {
+    "description": "Text indicating secure Google Play payment"
+  },
+  "addedToMinedCoins": "Added to Mined Coins",
+  "@addedToMinedCoins": {
+    "description": "Snackbar text when a coin is added to mined coins"
+  },
+  "failedToAdd": "Failed to add: {message}",
+  "@failedToAdd": {
+    "description": "Snackbar text when adding a coin fails",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      }
+    }
+  },
+  "subscriptionsUnavailable": "Subscriptions are only available on Android/iOS.",
+  "@subscriptionsUnavailable": {
+    "description": "Snackbar text when subscriptions are not available on this platform"
+  },
+  "miningRate": "Mining rate",
+  "@miningRate": {
+    "description": "Label for Mining rate"
+  },
+  "about": "About",
+  "@about": {
+    "description": "Label for About section"
+  },
+  "yourMined": "Your Mined",
+  "@yourMined": {
+    "description": "Label for user's mined amount"
+  },
+  "totalMined": "Total Mined",
+  "@totalMined": {
+    "description": "Label for Total Mined amount"
+  },
+  "noReferrals": "No referrals yet",
+  "@noReferrals": {
+    "description": "Message when user has no referrals"
+  },
+  "linkCopied": "Link copied",
+  "@linkCopied": {
+    "description": "Snackbar text when link is copied"
+  },
+  "copy": "Copy",
+  "@copy": {
+    "description": "Button text to copy link"
+  },
+  "howItWorks": "How it works",
+  "@howItWorks": {
+    "description": "Title for How it works section"
+  },
+  "referralDescription": "Share your code with friends. When they join and become active, you grow your team and improve your earning potential.",
+  "@referralDescription": {
+    "description": "Description of the referral program"
+  },
+  "yourTeam": "Your Team",
+  "@yourTeam": {
+    "description": "Title for the team section"
+  },
+  "referralsTitle": "Referrals",
+  "@referralsTitle": {
+    "description": "Title for the Referrals page"
+  },
+  "shareLinkTitle": "Share Link",
+  "@shareLinkTitle": {
+    "description": "Title for share link dialog"
+  },
+  "copyLinkInstruction": "Copy this link to share:",
+  "@copyLinkInstruction": {
+    "description": "Instruction to copy link"
+  },
+  "referralCodeCopied": "Referral code copied",
+  "@referralCodeCopied": {
+    "description": "Snackbar text when referral code is copied"
+  },
+  "joinMeText": "Join me on Eta Network! Use my code: {code} {link}",
+  "@joinMeText": {
+    "description": "Text to share with others",
+    "placeholders": {
+      "code": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      }
+    }
+  },
+  "etaNetwork": "ETA Network",
+  "@etaNetwork": {
+    "description": "App title"
+  },
+  "noLiveCommunityCoins": "No live community coins",
+  "@noLiveCommunityCoins": {
+    "description": "Message when no live community coins are found"
+  },
+  "rate": "RATE",
+  "@rate": {
+    "description": "Label for mining rate"
+  },
+  "filterRandom": "Random",
+  "@filterRandom": {
+    "description": "Filter option for Random"
+  },
+  "baseRateLabel": "Base Rate",
+  "@baseRateLabel": {
+    "description": "Label for base rate"
+  },
+  "startFailed": "Start failed: {error}",
+  "@startFailed": {
+    "description": "Error message when mining start fails",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "sessionProgress": "Session Progress",
+  "@sessionProgress": {
+    "description": "Label for session progress"
+  },
+  "remainingLabel": "remaining",
+  "@remainingLabel": {
+    "description": "Label for remaining time"
+  },
+  "boostRate": "Boost Rate",
+  "@boostRate": {
+    "description": "Label for boost rate"
+  },
+  "minedLabel": "Mined",
+  "@minedLabel": {
+    "description": "Label for mined amount"
+  },
+  "noSubscriptionPlansAvailable": "No subscription plans available",
+  "@noSubscriptionPlansAvailable": {
+    "description": "Message when no subscription plans are available"
+  },
+  "subscriptionPlans": "Subscription Plans",
+  "@subscriptionPlans": {
+    "description": "Title for subscription plans dialog"
+  },
+  "recommended": "Recommended",
+  "@recommended": {
+    "description": "Label for recommended plan"
+  },
+  "editCommunityCoin": "Edit Community Coin",
+  "@editCommunityCoin": {
+    "description": "Title for editing a community coin"
+  },
+  "launchCoinEcosystemDescription": "Launch your own coin inside ETA ecosystem for your community.",
+  "@launchCoinEcosystemDescription": {
+    "description": "Subtitle describing community coin creation"
+  },
+  "upload": "Upload",
+  "@upload": {
+    "description": "Upload button label"
+  },
+  "recommendedImageSize": "Recommended 200×200px",
+  "@recommendedImageSize": {
+    "description": "Recommended image size hint"
+  },
+  "coinNameLabel": "Coin name",
+  "@coinNameLabel": {
+    "description": "Label for coin name input"
+  },
+  "symbolLabel": "Symbol",
+  "@symbolLabel": {
+    "description": "Label for coin symbol input"
+  },
+  "descriptionLabel": "Description",
+  "@descriptionLabel": {
+    "description": "Label for coin description input"
+  },
+  "baseMiningRateLabel": "Base mining rate (coins/hour)",
+  "@baseMiningRateLabel": {
+    "description": "Label for base mining rate input"
+  },
+  "maxAllowed": "Max Allowed : {max}",
+  "@maxAllowed": {
+    "description": "Helper text showing maximum allowed value",
+    "placeholders": {
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "socialProjectLinksOptional": "Social & project links (optional)",
+  "@socialProjectLinksOptional": {
+    "description": "Section title for social and project links"
+  },
+  "linkTypeWebsite": "Website",
+  "@linkTypeWebsite": {
+    "description": "Link type option: website"
+  },
+  "linkTypeYouTube": "YouTube",
+  "@linkTypeYouTube": {
+    "description": "Link type option: YouTube"
+  },
+  "linkTypeFacebook": "Facebook",
+  "@linkTypeFacebook": {
+    "description": "Link type option: Facebook"
+  },
+  "linkTypeTwitter": "X / Twitter",
+  "@linkTypeTwitter": {
+    "description": "Link type option: Twitter"
+  },
+  "linkTypeInstagram": "Instagram",
+  "@linkTypeInstagram": {
+    "description": "Link type option: Instagram"
+  },
+  "linkTypeTelegram": "Telegram",
+  "@linkTypeTelegram": {
+    "description": "Link type option: Telegram"
+  },
+  "linkTypeOther": "Other",
+  "@linkTypeOther": {
+    "description": "Link type option: Other"
+  },
+  "pasteUrl": "Paste URL",
+  "@pasteUrl": {
+    "description": "Placeholder for link URL input"
+  },
+  "importantNoticeTitle": "Important Notice",
+  "@importantNoticeTitle": {
+    "description": "Title for important notice section"
+  },
+  "importantNoticeBody": "This coin is part of the ETA Network ecosystem and represents participation in a growing digital community. Community coins are created by users to build, experiment, and engage within the network. ETA Network is in an early stage of development. As the ecosystem grows, new utilities, features, and integrations may be introduced based on community activity, platform evolution, and applicable guidelines.",
+  "@importantNoticeBody": {
+    "description": "Body text for important notice section"
+  },
+  "pleaseWait": "Please wait…",
+  "@pleaseWait": {
+    "description": "Label shown while submitting"
+  },
+  "save": "Save",
+  "@save": {
+    "description": "Save button label"
+  },
+  "createCoinFailed": "Failed to create coin: {error}",
+  "@createCoinFailed": {
+    "description": "Error message when coin creation fails",
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "coinNameLengthError": "Coin name must be 3–30 characters.",
+  "@coinNameLengthError": {
+    "description": "Validation error for coin name length"
+  },
+  "symbolRequiredError": "Symbol is required.",
+  "@symbolRequiredError": {
+    "description": "Validation error when symbol is missing"
+  },
+  "symbolLengthError": "Symbol must be 2–6 letters/numbers.",
+  "@symbolLengthError": {
+    "description": "Validation error for symbol length"
+  },
+  "descriptionTooLongError": "Description is too long.",
+  "@descriptionTooLongError": {
+    "description": "Validation error when description exceeds max length"
+  },
+  "baseRateRangeError": "Base mining rate must be between 0.000000001 and {max}.",
+  "@baseRateRangeError": {
+    "description": "Validation error for base rate out of range",
+    "placeholders": {
+      "max": {
+        "type": "String"
+      }
+    }
+  },
+  "coinNameExistsError": "Coin name already exists. Please choose another.",
+  "@coinNameExistsError": {
+    "description": "Validation error when coin name already exists"
+  },
+  "symbolExistsError": "Symbol already exists. Please choose another.",
+  "@symbolExistsError": {
+    "description": "Validation error when symbol already exists"
+  },
+  "urlInvalidError": "One of the URLs is invalid.",
+  "@urlInvalidError": {
+    "description": "Validation error when a URL is invalid"
+  },
+  "subscribeAndBoost": "Subscribe & Boost Mining",
+  "@subscribeAndBoost": {
+    "description": "Button text to subscribe and boost mining"
+  },
+  "autoCollect": "Auto-collect",
+  "@autoCollect": {
+    "description": "Feature label for auto-collect"
+  },
+  "autoMineCoins": "Auto mine {count} coins",
+  "@autoMineCoins": {
+    "description": "Feature label for auto-mining coins",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "speedBoost": "+{percent}% Speed",
+  "@speedBoost": {
+    "description": "Label for speed boost percentage",
+    "placeholders": {
+      "percent": {
+        "type": "String"
+      }
+    }
+  },
+  "perHourSuffix": "/hr",
+  "@perHourSuffix": {
+    "description": "Suffix for per hour rate"
+  },
+  "etaPerHourSuffix": "ETA/hr",
+  "@etaPerHourSuffix": {
+    "description": "Suffix for ETA per hour rate"
+  },
+  "eta": "ETA",
+  "@eta": {
+    "description": "Token name"
+  },
+  "noDescriptionAvailable": "No description available.",
+  "@noDescriptionAvailable": {
+    "description": "Message when no description is available"
+  },
+  "unknownUser": "Unknown",
+  "@unknownUser": {
+    "description": "Placeholder for unknown user"
+  }
+}
