@@ -242,17 +242,55 @@ class EarningsEngine {
         (liveData[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
         (data[FirestoreUserFields.rateReferral] as num?)?.toDouble() ??
         0.0;
-    final double rateManager =
+
+    // Strict Manager Check (Subscriber Only) - Mirroring OfflineMiningService
+    final bool isPro =
+        (data[FirestoreUserFields.role] as String?) == FirestoreUserRoles.pro;
+    final sub = data[FirestoreUserFields.subscription] as Map<String, dynamic>?;
+    final subStatus = sub?[FirestoreUserSubscriptionFields.status] as String?;
+    final subExpires =
+        sub?[FirestoreUserSubscriptionFields.expiresAt] as Timestamp?;
+    final bool isSubActive = subStatus == 'active';
+    final bool isExpired =
+        subExpires != null && now.isAfter(subExpires.toDate());
+    final bool managerEnabledRaw =
+        (data[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+
+    final bool managerEnabled =
+        isPro && isSubActive && !isExpired && managerEnabledRaw;
+
+    double rateManager =
         (liveData[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
         (data[FirestoreUserFields.rateManager] as num?)?.toDouble() ??
         0.0;
+
+    double managerBonusPerHour =
+        (liveData[FirestoreUserFields.managerBonusPerHour] as num?)
+            ?.toDouble() ??
+        (data[FirestoreUserFields.managerBonusPerHour] as num?)?.toDouble() ??
+        0.0;
+
+    if (!managerEnabled) {
+      // Force 0 if not eligible, even if Firestore has a value
+      rateManager = 0.0;
+      managerBonusPerHour = 0.0;
+    }
+
     final double rateAds =
         (liveData[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
         (data[FirestoreUserFields.rateAds] as num?)?.toDouble() ??
         0.0;
 
-    final bool managerEnabled =
-        (data[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+    // managerEnabled for UI/Logic flow (already fetched above as raw, but we want the effective one)
+    // The original code used 'managerEnabled' just from the flag, but we should probably use the effective one
+    // or keep it as is if it controls other things? 
+    // The original code: final bool managerEnabled = (data[FirestoreUserFields.managerEnabled] as bool?) ?? false;
+    // We already defined 'managerEnabled' above with strict logic. 
+    // Let's use a different variable name for the raw flag to avoid conflict if needed, 
+    // but looking at usage below:
+    // final List<String> managedCoinSelections = managerEnabled ? ...
+    // If they are not eligible, they shouldn't have managed selections active either?
+    // Let's use the strict 'managerEnabled' for the selections logic too.
 
     final List<String> managedCoinSelections = managerEnabled
         ? ((liveData[FirestoreUserFields.managedCoinSelections] as List?)
@@ -261,12 +299,6 @@ class EarningsEngine {
                   ?.cast<String>() ??
               [])
         : [];
-
-    final double managerBonusPerHour =
-        (liveData[FirestoreUserFields.managerBonusPerHour] as num?)
-            ?.toDouble() ??
-        (data[FirestoreUserFields.managerBonusPerHour] as num?)?.toDouble() ??
-        0.0;
 
     final DateTime? startTime = lastMiningStart;
     final DateTime? endTime = lastMiningEnd;

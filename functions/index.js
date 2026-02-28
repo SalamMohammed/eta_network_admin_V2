@@ -42,6 +42,8 @@ const SUB_AUTO_RENEW = 'autoRenew';
 // User Fields
 const USER_MANAGER_ENABLED = 'managerEnabled';
 const USER_ACTIVE_MANAGER_ID = 'activeManagerId';
+const USER_ROLE = 'role';
+const ROLE_PRO = 'pro';
 const USER_FCM_TOKEN = 'fcmToken';
 const USER_INVITED_BY = 'invitedBy';
 const USER_TOTAL_INVITED = 'totalInvited';
@@ -373,7 +375,23 @@ function buildUserEarningsMigrationPlan({ uid, userData, realtimeData, subCoinsD
   if (rateReferral !== undefined) {
     newUserDoc[USER_RATE_REFERRAL] = rateReferral;
   }
-  const rateManager = pickRateField(USER_RATE_MANAGER);
+  // Strict Manager Check (Subscriber Only)
+  const isPro = (userData && userData[USER_ROLE]) === ROLE_PRO;
+  const sub = userData && userData[SUBSCRIPTION_FIELD];
+  const subStatus = sub && sub[SUB_STATUS];
+  const subExpires = sub && sub[SUB_EXPIRES_AT];
+  const isSubActive = subStatus === 'active';
+  const now = new Date();
+  const isExpired = subExpires && subExpires.toDate && now > subExpires.toDate();
+  const managerEnabledRaw = (userData && userData[USER_MANAGER_ENABLED]) || false;
+
+  const managerEnabled = isPro && isSubActive && !isExpired && managerEnabledRaw;
+
+  let rateManager = pickRateField(USER_RATE_MANAGER);
+  if (!managerEnabled) {
+    rateManager = 0.0;
+  }
+
   if (rateManager !== undefined) {
     newUserDoc[USER_RATE_MANAGER] = rateManager;
   }
@@ -387,11 +405,19 @@ function buildUserEarningsMigrationPlan({ uid, userData, realtimeData, subCoinsD
     }
   }
 
-  const managerBonusPerHour = pickRateField(USER_MANAGER_BONUS_PER_HOUR);
+  let managerBonusPerHour = pickRateField(USER_MANAGER_BONUS_PER_HOUR);
+  if (!managerEnabled) {
+    managerBonusPerHour = 0.0;
+  }
+
   if (managerBonusPerHour !== undefined) {
     newUserDoc[USER_MANAGER_BONUS_PER_HOUR] = managerBonusPerHour;
   }
-  const managedCoinSelections = pickFromRealtimeOrUser(USER_MANAGED_COIN_SELECTIONS);
+  let managedCoinSelections = pickFromRealtimeOrUser(USER_MANAGED_COIN_SELECTIONS);
+  if (!managerEnabled) {
+    managedCoinSelections = [];
+  }
+  
   if (managedCoinSelections !== undefined) {
     newUserDoc[USER_MANAGED_COIN_SELECTIONS] = managedCoinSelections;
   }
@@ -1316,21 +1342,30 @@ exports.checkExpiredSubscriptions = onSchedule("every 24 hours", async (event) =
         return;
     }
 
-    const batch = db.batch();
     let count = 0;
-
-    snapshot.docs.forEach(doc => {
-        const userRef = doc.ref;
-        batch.update(userRef, {
-            [`${SUBSCRIPTION_FIELD}.${SUB_STATUS}`]: 'expired',
-            [`${SUBSCRIPTION_FIELD}.${SUB_AUTO_RENEW}`]: false,
-            [USER_MANAGER_ENABLED]: false,
-            [USER_ACTIVE_MANAGER_ID]: null,
+    const chunkSize = 400; // Safe limit below 500
+    const docs = snapshot.docs;
+    
+    for (let i = 0; i < docs.length; i += chunkSize) {
+        const chunk = docs.slice(i, i + chunkSize);
+        const batch = db.batch();
+        
+        chunk.forEach(doc => {
+            const userRef = doc.ref;
+            batch.update(userRef, {
+                [`${SUBSCRIPTION_FIELD}.${SUB_STATUS}`]: 'expired',
+                [`${SUBSCRIPTION_FIELD}.${SUB_AUTO_RENEW}`]: false,
+                [USER_MANAGER_ENABLED]: false,
+                [USER_ACTIVE_MANAGER_ID]: null,
+                [USER_RATE_MANAGER]: 0,
+                [USER_MANAGER_BONUS_PER_HOUR]: 0,
+            });
+            count++;
         });
-        count++;
-    });
 
-    await batch.commit();
+        await batch.commit();
+    }
+    
     console.log(`Updated ${count} expired subscriptions.`);
 });
 

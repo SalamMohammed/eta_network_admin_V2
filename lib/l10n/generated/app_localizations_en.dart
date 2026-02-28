@@ -489,4 +489,147 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get unknownUser => 'Unknown';
+
+  @override
+  String get streakLabel => 'STREAK';
+
+  @override
+  String get referralsLabel => 'REFERRALS';
+
+  @override
+  String get sessionsLabel => 'SESSIONS';
+
+  @override
+  String get accountInfoSection => 'Account Info';
+
+  @override
+  String get accountInfoTile => 'Account Info';
+
+  @override
+  String get invitedByPrompt => 'Invited by someone?';
+
+  @override
+  String get enterReferralCode => 'Enter referral code';
+
+  @override
+  String get invitedStatus => 'Invited';
+
+  @override
+  String get lockedStatus => 'Locked';
+
+  @override
+  String get applyButton => 'Apply';
+
+  @override
+  String get aboutPageTitle => 'About';
+
+  @override
+  String get faqTile => 'FAQ';
+
+  @override
+  String get whitePaperTile => 'White Paper';
+
+  @override
+  String get contactUsTile => 'Contact Us';
+
+  @override
+  String get securitySettingsTile => 'Security Settings';
+
+  @override
+  String get securitySettingsPageTitle => 'Security Settings';
+
+  @override
+  String get deleteAccountTile => 'Delete Account';
+
+  @override
+  String get deleteAccountSubtitle =>
+      'Permanently delete your account and data';
+
+  @override
+  String get deleteAccountDialogTitle => 'Delete account?';
+
+  @override
+  String get deleteAccountDialogContent =>
+      'This will permanently delete your account, data, and sessions. This action cannot be undone.';
+
+  @override
+  String get deleteButton => 'Delete';
+
+  @override
+  String get kycVerificationTile => 'KYC Verification';
+
+  @override
+  String get kycVerificationDialogTitle => 'KYC Verification';
+
+  @override
+  String get kycComingSoonMessage => 'Will be activated in the coming stages.';
+
+  @override
+  String get okButton => 'OK';
+
+  @override
+  String get logOutLabel => 'Log Out';
+
+  @override
+  String get confirmDeletionTitle => 'Confirm deletion';
+
+  @override
+  String get enterAccountPassword => 'Enter account password';
+
+  @override
+  String get confirmButton => 'Confirm';
+
+  @override
+  String get usernameLabel => 'Username';
+
+  @override
+  String get emailLabel => 'Email';
+
+  @override
+  String get nameLabel => 'Name';
+
+  @override
+  String get ageLabel => 'Age';
+
+  @override
+  String get countryLabel => 'Country';
+
+  @override
+  String get addressLabel => 'Address';
+
+  @override
+  String get genderLabel => 'Gender';
+
+  @override
+  String get enterUsernameHint => 'Enter username';
+
+  @override
+  String get enterNameHint => 'Enter name';
+
+  @override
+  String get enterAgeHint => 'Enter age';
+
+  @override
+  String get enterCountryHint => 'Enter country';
+
+  @override
+  String get enterAddressHint => 'Enter address';
+
+  @override
+  String get enterGenderHint => 'Enter gender';
+
+  @override
+  String get savingLabel => 'Saving...';
+
+  @override
+  String get usernameEmptyError => 'Username cannot be empty';
+
+  @override
+  String get invalidAgeError => 'Invalid age value';
+
+  @override
+  String get saveError => 'Failed to save changes';
+
+  @override
+  String get cancelButton => 'Cancel';
 }

@@ -955,6 +955,288 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Unknown'**
   String get unknownUser;
+
+  /// Label for streak stat
+  ///
+  /// In en, this message translates to:
+  /// **'STREAK'**
+  String get streakLabel;
+
+  /// Label for referrals stat
+  ///
+  /// In en, this message translates to:
+  /// **'REFERRALS'**
+  String get referralsLabel;
+
+  /// Label for sessions stat
+  ///
+  /// In en, this message translates to:
+  /// **'SESSIONS'**
+  String get sessionsLabel;
+
+  /// Section header for account info
+  ///
+  /// In en, this message translates to:
+  /// **'Account Info'**
+  String get accountInfoSection;
+
+  /// Tile title for account info
+  ///
+  /// In en, this message translates to:
+  /// **'Account Info'**
+  String get accountInfoTile;
+
+  /// Prompt for referral code entry
+  ///
+  /// In en, this message translates to:
+  /// **'Invited by someone?'**
+  String get invitedByPrompt;
+
+  /// Placeholder for referral code input
+  ///
+  /// In en, this message translates to:
+  /// **'Enter referral code'**
+  String get enterReferralCode;
+
+  /// Status when already invited
+  ///
+  /// In en, this message translates to:
+  /// **'Invited'**
+  String get invitedStatus;
+
+  /// Status when referral entry is locked
+  ///
+  /// In en, this message translates to:
+  /// **'Locked'**
+  String get lockedStatus;
+
+  /// Button text to apply referral code
+  ///
+  /// In en, this message translates to:
+  /// **'Apply'**
+  String get applyButton;
+
+  /// Title for About page
+  ///
+  /// In en, this message translates to:
+  /// **'About'**
+  String get aboutPageTitle;
+
+  /// Tile title for FAQ
+  ///
+  /// In en, this message translates to:
+  /// **'FAQ'**
+  String get faqTile;
+
+  /// Tile title for White Paper
+  ///
+  /// In en, this message translates to:
+  /// **'White Paper'**
+  String get whitePaperTile;
+
+  /// Tile title for Contact Us
+  ///
+  /// In en, this message translates to:
+  /// **'Contact Us'**
+  String get contactUsTile;
+
+  /// Tile title for Security Settings
+  ///
+  /// In en, this message translates to:
+  /// **'Security Settings'**
+  String get securitySettingsTile;
+
+  /// Title for Security Settings page
+  ///
+  /// In en, this message translates to:
+  /// **'Security Settings'**
+  String get securitySettingsPageTitle;
+
+  /// Tile title for Delete Account
+  ///
+  /// In en, this message translates to:
+  /// **'Delete Account'**
+  String get deleteAccountTile;
+
+  /// Subtitle for Delete Account tile
+  ///
+  /// In en, this message translates to:
+  /// **'Permanently delete your account and data'**
+  String get deleteAccountSubtitle;
+
+  /// Title for delete account dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Delete account?'**
+  String get deleteAccountDialogTitle;
+
+  /// Content for delete account dialog
+  ///
+  /// In en, this message translates to:
+  /// **'This will permanently delete your account, data, and sessions. This action cannot be undone.'**
+  String get deleteAccountDialogContent;
+
+  /// Button text to delete
+  ///
+  /// In en, this message translates to:
+  /// **'Delete'**
+  String get deleteButton;
+
+  /// Tile title for KYC Verification
+  ///
+  /// In en, this message translates to:
+  /// **'KYC Verification'**
+  String get kycVerificationTile;
+
+  /// Title for KYC Verification dialog
+  ///
+  /// In en, this message translates to:
+  /// **'KYC Verification'**
+  String get kycVerificationDialogTitle;
+
+  /// Message for KYC coming soon
+  ///
+  /// In en, this message translates to:
+  /// **'Will be activated in the coming stages.'**
+  String get kycComingSoonMessage;
+
+  /// Button text for OK
+  ///
+  /// In en, this message translates to:
+  /// **'OK'**
+  String get okButton;
+
+  /// Button text for Log Out
+  ///
+  /// In en, this message translates to:
+  /// **'Log Out'**
+  String get logOutLabel;
+
+  /// Title for confirmation dialog
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm deletion'**
+  String get confirmDeletionTitle;
+
+  /// Label for password input
+  ///
+  /// In en, this message translates to:
+  /// **'Enter account password'**
+  String get enterAccountPassword;
+
+  /// Button text to confirm
+  ///
+  /// In en, this message translates to:
+  /// **'Confirm'**
+  String get confirmButton;
+
+  /// Label for username field
+  ///
+  /// In en, this message translates to:
+  /// **'Username'**
+  String get usernameLabel;
+
+  /// Label for email field
+  ///
+  /// In en, this message translates to:
+  /// **'Email'**
+  String get emailLabel;
+
+  /// Label for name field
+  ///
+  /// In en, this message translates to:
+  /// **'Name'**
+  String get nameLabel;
+
+  /// Label for age field
+  ///
+  /// In en, this message translates to:
+  /// **'Age'**
+  String get ageLabel;
+
+  /// Label for country field
+  ///
+  /// In en, this message translates to:
+  /// **'Country'**
+  String get countryLabel;
+
+  /// Label for address field
+  ///
+  /// In en, this message translates to:
+  /// **'Address'**
+  String get addressLabel;
+
+  /// Label for gender field
+  ///
+  /// In en, this message translates to:
+  /// **'Gender'**
+  String get genderLabel;
+
+  /// Hint text for username input
+  ///
+  /// In en, this message translates to:
+  /// **'Enter username'**
+  String get enterUsernameHint;
+
+  /// Hint text for name input
+  ///
+  /// In en, this message translates to:
+  /// **'Enter name'**
+  String get enterNameHint;
+
+  /// Hint text for age input
+  ///
+  /// In en, this message translates to:
+  /// **'Enter age'**
+  String get enterAgeHint;
+
+  /// Hint text for country input
+  ///
+  /// In en, this message translates to:
+  /// **'Enter country'**
+  String get enterCountryHint;
+
+  /// Hint text for address input
+  ///
+  /// In en, this message translates to:
+  /// **'Enter address'**
+  String get enterAddressHint;
+
+  /// Hint text for gender input
+  ///
+  /// In en, this message translates to:
+  /// **'Enter gender'**
+  String get enterGenderHint;
+
+  /// Text shown while saving
+  ///
+  /// In en, this message translates to:
+  /// **'Saving...'**
+  String get savingLabel;
+
+  /// Error when username is empty
+  ///
+  /// In en, this message translates to:
+  /// **'Username cannot be empty'**
+  String get usernameEmptyError;
+
+  /// Error when age is invalid
+  ///
+  /// In en, this message translates to:
+  /// **'Invalid age value'**
+  String get invalidAgeError;
+
+  /// Error when saving fails
+  ///
+  /// In en, this message translates to:
+  /// **'Failed to save changes'**
+  String get saveError;
+
+  /// Button text to cancel
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancelButton;
 }
 
 class _AppLocalizationsDelegate

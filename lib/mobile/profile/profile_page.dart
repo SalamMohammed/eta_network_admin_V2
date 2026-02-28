@@ -120,6 +120,33 @@ class _ProfilePageState extends State<ProfilePage> {
     await _load();
   }
 
+  Future<void> _uploadProfileImage() async {
+    final image = await picker.pickImage();
+    if (image == null) return;
+    try {
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('profile_images')
+          .child('$uid.jpg');
+      final metadata = SettableMetadata(contentType: image.contentType);
+      await ref.putData(image.bytes, metadata);
+      final url = await ref.getDownloadURL();
+
+      await FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .update({FirestoreUserFields.thumbnailUrl: url});
+
+      if (mounted) {
+        setState(() {
+          thumbnailUrl = url;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error uploading profile image: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     const pageBgTop = Color(0xFF0B1620);
@@ -134,7 +161,7 @@ class _ProfilePageState extends State<ProfilePage> {
     return Scaffold(
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Profile'),
+        title: Text(AppLocalizations.of(context)!.profile),
         centerTitle: true,
       ),
       body: Container(
@@ -300,7 +327,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: _statCard(
                           icon: Icons.local_fire_department_rounded,
                           value: '$streakDays',
-                          label: 'STREAK',
+                          label: AppLocalizations.of(context)!.streakLabel,
                           scale: s,
                           cardBg: cardBg,
                           cardBg2: cardBg2,
@@ -312,7 +339,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: _statCard(
                           icon: Icons.groups_rounded,
                           value: '$totalInvited',
-                          label: 'REFERRALS',
+                          label: AppLocalizations.of(context)!.referralsLabel,
                           scale: s,
                           cardBg: cardBg,
                           cardBg2: cardBg2,
@@ -324,7 +351,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         child: _statCard(
                           icon: Icons.bolt_rounded,
                           value: '$totalSessions',
-                          label: 'SESSIONS',
+                          label: AppLocalizations.of(context)!.sessionsLabel,
                           scale: s,
                           cardBg: cardBg,
                           cardBg2: cardBg2,
@@ -334,7 +361,10 @@ class _ProfilePageState extends State<ProfilePage> {
                     ],
                   ),
                   SizedBox(height: s(18)),
-                  _sectionTitle('Account Info', scale: s),
+                  _sectionTitle(
+                    AppLocalizations.of(context)!.accountInfoSection,
+                    scale: s,
+                  ),
                   SizedBox(height: s(10)),
                   _settingsCard(
                     scale: s,
@@ -343,7 +373,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: _settingsTile(
                       scale: s,
                       icon: Icons.person_rounded,
-                      title: 'Account Info',
+                      title: AppLocalizations.of(context)!.accountInfoTile,
                       subtitle: null,
                       trailing: Icon(
                         Icons.chevron_right_rounded,
@@ -425,7 +455,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   //   ),
                   // ),
                   SizedBox(height: s(18)),
-                  _sectionTitle('Invited by someone?', scale: s),
+                  _sectionTitle(
+                    AppLocalizations.of(context)!.invitedByPrompt,
+                    scale: s,
+                  ),
                   SizedBox(height: s(10)),
                   Row(
                     children: [
@@ -442,10 +475,12 @@ class _ProfilePageState extends State<ProfilePage> {
                             enabled: canEnterReferral,
                             decoration: InputDecoration(
                               hintText: canEnterReferral
-                                  ? 'Enter referral code'
+                                  ? AppLocalizations.of(
+                                      context,
+                                    )!.enterReferralCode
                                   : (invitedBy != null && invitedBy!.isNotEmpty)
-                                  ? 'Invited'
-                                  : 'Locked',
+                                  ? AppLocalizations.of(context)!.invitedStatus
+                                  : AppLocalizations.of(context)!.lockedStatus,
                               border: InputBorder.none,
                             ),
                           ),
@@ -468,7 +503,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             ),
                           ),
                           child: Text(
-                            'Apply',
+                            AppLocalizations.of(context)!.applyButton,
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: s(15),
@@ -488,7 +523,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         _settingsTile(
                           scale: s,
                           icon: Icons.info_outline_rounded,
-                          title: 'About',
+                          title: AppLocalizations.of(context)!.aboutPageTitle,
                           subtitle: null,
                           trailing: Icon(
                             Icons.chevron_right_rounded,
@@ -536,7 +571,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         _settingsTile(
                           scale: s,
                           icon: Icons.security_rounded,
-                          title: 'Security Settings',
+                          title: AppLocalizations.of(
+                            context,
+                          )!.securitySettingsTile,
                           subtitle: null,
                           trailing: Icon(
                             Icons.chevron_right_rounded,
@@ -556,7 +593,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         _settingsTile(
                           scale: s,
                           icon: Icons.qr_code_rounded,
-                          title: 'KYC Verification',
+                          title: AppLocalizations.of(
+                            context,
+                          )!.kycVerificationTile,
                           subtitle: null,
                           trailing: Icon(
                             Icons.chevron_right_rounded,
@@ -568,18 +607,24 @@ class _ProfilePageState extends State<ProfilePage> {
                               context: context,
                               builder: (ctx) => AlertDialog(
                                 backgroundColor: const Color(0xFF1B2632),
-                                title: const Text(
-                                  'KYC Verification',
-                                  style: TextStyle(color: Colors.white),
+                                title: Text(
+                                  AppLocalizations.of(
+                                    context,
+                                  )!.kycVerificationDialogTitle,
+                                  style: const TextStyle(color: Colors.white),
                                 ),
-                                content: const Text(
-                                  'Will be activated in the coming stages.',
-                                  style: TextStyle(color: Colors.white70),
+                                content: Text(
+                                  AppLocalizations.of(
+                                    context,
+                                  )!.kycComingSoonMessage,
+                                  style: const TextStyle(color: Colors.white70),
                                 ),
                                 actions: [
                                   TextButton(
                                     onPressed: () => Navigator.pop(ctx),
-                                    child: const Text('OK'),
+                                    child: Text(
+                                      AppLocalizations.of(context)!.okButton,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -631,7 +676,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       icon: Icon(Icons.logout_rounded, size: s(18)),
                       label: Text(
-                        'Log Out',
+                        AppLocalizations.of(context)!.logOutLabel,
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: s(15),
@@ -671,7 +716,7 @@ class _ProfilePageState extends State<ProfilePage> {
       MaterialPageRoute(
         builder: (ctx) => Scaffold(
           appBar: AppBar(
-            title: const Text('About'),
+            title: Text(AppLocalizations.of(context)!.aboutPageTitle),
             centerTitle: true,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_rounded),
@@ -698,16 +743,18 @@ class _ProfilePageState extends State<ProfilePage> {
                       _settingsTile(
                         scale: s,
                         icon: Icons.help_outline_rounded,
-                        title: 'FAQ',
+                        title: AppLocalizations.of(context)!.faqTile,
                         subtitle: null,
                         trailing: Icon(
                           Icons.open_in_new_rounded,
                           color: Colors.white54,
                           size: s(18),
                         ),
-                        onTap: () => _openLegal(context, 'FAQ', [
-                          FirestoreLegalFields.faq,
-                        ]),
+                        onTap: () => _openLegal(
+                          context,
+                          AppLocalizations.of(context)!.faqTile,
+                          [FirestoreLegalFields.faq],
+                        ),
                       ),
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: s(14)),
@@ -719,16 +766,18 @@ class _ProfilePageState extends State<ProfilePage> {
                       _settingsTile(
                         scale: s,
                         icon: Icons.description_rounded,
-                        title: 'White Paper',
+                        title: AppLocalizations.of(context)!.whitePaperTile,
                         subtitle: null,
                         trailing: Icon(
                           Icons.description_outlined,
                           color: Colors.white54,
                           size: s(18),
                         ),
-                        onTap: () => _openLegal(context, 'White Paper', [
-                          FirestoreLegalFields.whitePaper,
-                        ]),
+                        onTap: () => _openLegal(
+                          context,
+                          AppLocalizations.of(context)!.whitePaperTile,
+                          [FirestoreLegalFields.whitePaper],
+                        ),
                       ),
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: s(14)),
@@ -740,16 +789,18 @@ class _ProfilePageState extends State<ProfilePage> {
                       _settingsTile(
                         scale: s,
                         icon: Icons.mail_outline_rounded,
-                        title: 'Contact Us',
+                        title: AppLocalizations.of(context)!.contactUsTile,
                         subtitle: null,
                         trailing: Icon(
                           Icons.mail_outline_rounded,
                           color: Colors.white54,
                           size: s(18),
                         ),
-                        onTap: () => _openLegal(context, 'Contact Us', [
-                          FirestoreLegalFields.contactUs,
-                        ]),
+                        onTap: () => _openLegal(
+                          context,
+                          AppLocalizations.of(context)!.contactUsTile,
+                          [FirestoreLegalFields.contactUs],
+                        ),
                       ),
                     ],
                   ),
@@ -773,7 +824,9 @@ class _ProfilePageState extends State<ProfilePage> {
       MaterialPageRoute(
         builder: (ctx) => Scaffold(
           appBar: AppBar(
-            title: const Text('Security Settings'),
+            title: Text(
+              AppLocalizations.of(context)!.securitySettingsPageTitle,
+            ),
             centerTitle: true,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back_rounded),
@@ -798,8 +851,10 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: _settingsTile(
                     scale: s,
                     icon: Icons.delete_forever_rounded,
-                    title: 'Delete Account',
-                    subtitle: 'Permanently delete your account and data',
+                    title: AppLocalizations.of(context)!.deleteAccountTile,
+                    subtitle: AppLocalizations.of(
+                      context,
+                    )!.deleteAccountSubtitle,
                     textColor: Colors.redAccent,
                     trailing: Icon(
                       Icons.chevron_right_rounded,
@@ -812,14 +867,22 @@ class _ProfilePageState extends State<ProfilePage> {
                         barrierDismissible: true,
                         builder: (ctx) {
                           return AlertDialog(
-                            title: const Text('Delete account?'),
-                            content: const Text(
-                              'This will permanently delete your account, data, and sessions. This action cannot be undone.',
+                            title: Text(
+                              AppLocalizations.of(
+                                context,
+                              )!.deleteAccountDialogTitle,
+                            ),
+                            content: Text(
+                              AppLocalizations.of(
+                                context,
+                              )!.deleteAccountDialogContent,
                             ),
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Cancel'),
+                                child: Text(
+                                  AppLocalizations.of(context)!.cancelButton,
+                                ),
                               ),
                               ElevatedButton(
                                 onPressed: () => Navigator.pop(ctx, true),
@@ -827,7 +890,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                   backgroundColor: Colors.red,
                                   foregroundColor: Colors.white,
                                 ),
-                                child: const Text('Delete'),
+                                child: Text(
+                                  AppLocalizations.of(context)!.deleteButton,
+                                ),
                               ),
                             ],
                           );
@@ -844,32 +909,6 @@ class _ProfilePageState extends State<ProfilePage> {
         ),
       ),
     );
-  }
-
-  Future<void> _uploadProfileImage() async {
-    final u = FirebaseAuth.instance.currentUser;
-    final uidLocal = u?.uid;
-    if (uidLocal == null || uidLocal.isEmpty) return;
-    final picked = await picker.pickImage();
-    final bytes = picked?.bytes;
-    final ct = picked?.contentType;
-    if (bytes == null || bytes.isEmpty) return;
-    final r = FirebaseStorage.instance.ref().child('users/$uidLocal/thumbnail');
-    await r.putData(bytes, SettableMetadata(contentType: ct ?? 'image/png'));
-    final url = await r.getDownloadURL();
-    await FirestoreHelper.instance
-        .collection(FirestoreConstants.users)
-        .doc(uidLocal)
-        .set({
-          FirestoreUserFields.thumbnailUrl: url,
-          FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-    await OfflineMiningEngine(
-      FirestoreHelper.instance,
-    ).reloadFromRemote(uidLocal);
-    setState(() {
-      thumbnailUrl = url;
-    });
   }
 
   Future<void> _deleteAccount() async {
@@ -999,22 +1038,22 @@ class _ProfilePageState extends State<ProfilePage> {
       barrierDismissible: true,
       builder: (ctx) {
         return AlertDialog(
-          title: const Text('Confirm deletion'),
+          title: Text(AppLocalizations.of(context)!.confirmDeletionTitle),
           content: TextField(
             controller: ctrl,
             obscureText: true,
-            decoration: const InputDecoration(
-              labelText: 'Enter account password',
+            decoration: InputDecoration(
+              labelText: AppLocalizations.of(context)!.enterAccountPassword,
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
+              child: Text(AppLocalizations.of(context)!.cancelButton),
             ),
             ElevatedButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: const Text('Confirm'),
+              child: Text(AppLocalizations.of(context)!.confirmButton),
             ),
           ],
         );
@@ -1403,18 +1442,20 @@ class _AccountInfoSheetState extends State<_AccountInfoSheet> {
   Future<void> _save() async {
     final newUsername = _usernameCtrl.text.trim();
     if (newUsername.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Username cannot be empty')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context)!.usernameEmptyError),
+        ),
+      );
       return;
     }
 
     final ageStr = _ageCtrl.text.trim();
     final ageNum = ageStr.isEmpty ? null : int.tryParse(ageStr);
     if (ageStr.isNotEmpty && (ageNum == null || ageNum < 0 || ageNum > 150)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Invalid age value')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(AppLocalizations.of(context)!.invalidAgeError)),
+      );
       return;
     }
 
@@ -1456,9 +1497,9 @@ class _AccountInfoSheetState extends State<_AccountInfoSheet> {
       });
     } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Failed to save changes')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(AppLocalizations.of(context)!.saveError)),
+        );
       }
     } finally {
       if (mounted) {
@@ -1499,10 +1540,10 @@ class _AccountInfoSheetState extends State<_AccountInfoSheet> {
           children: [
             Row(
               children: [
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'Account Info',
-                    style: TextStyle(
+                    AppLocalizations.of(context)!.accountInfoTile,
+                    style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                       color: Colors.white,
@@ -1526,7 +1567,7 @@ class _AccountInfoSheetState extends State<_AccountInfoSheet> {
             SizedBox(height: widget.scale(8)),
             if (!_isEditing) ...[
               Text(
-                'Username',
+                AppLocalizations.of(context)!.usernameLabel,
                 style: TextStyle(
                   color: Colors.white54,
                   fontSize: widget.scale(12.5),
@@ -1552,7 +1593,7 @@ class _AccountInfoSheetState extends State<_AccountInfoSheet> {
               ),
               SizedBox(height: widget.scale(12)),
               Text(
-                'Email',
+                AppLocalizations.of(context)!.emailLabel,
                 style: TextStyle(
                   color: Colors.white54,
                   fontSize: widget.scale(12.5),
@@ -1569,59 +1610,74 @@ class _AccountInfoSheetState extends State<_AccountInfoSheet> {
                 ),
               ),
               SizedBox(height: widget.scale(14)),
-              _labelValue('Name', _nameCtrl.text),
+              _labelValue(
+                AppLocalizations.of(context)!.nameLabel,
+                _nameCtrl.text,
+              ),
               SizedBox(height: widget.scale(12)),
-              _labelValue('Age', _ageCtrl.text),
+              _labelValue(
+                AppLocalizations.of(context)!.ageLabel,
+                _ageCtrl.text,
+              ),
               SizedBox(height: widget.scale(12)),
-              _labelValue('Country', _countryCtrl.text),
+              _labelValue(
+                AppLocalizations.of(context)!.countryLabel,
+                _countryCtrl.text,
+              ),
               SizedBox(height: widget.scale(12)),
-              _labelValue('Address', _addressCtrl.text),
+              _labelValue(
+                AppLocalizations.of(context)!.addressLabel,
+                _addressCtrl.text,
+              ),
               SizedBox(height: widget.scale(12)),
-              _labelValue('Gender', _genderCtrl.text),
+              _labelValue(
+                AppLocalizations.of(context)!.genderLabel,
+                _genderCtrl.text,
+              ),
             ] else ...[
               _field(
-                label: 'Username',
+                label: AppLocalizations.of(context)!.usernameLabel,
                 controller: _usernameCtrl,
-                hint: 'Enter username',
+                hint: AppLocalizations.of(context)!.enterUsernameHint,
               ),
               SizedBox(height: widget.scale(12)),
               _field(
-                label: 'Email',
+                label: AppLocalizations.of(context)!.emailLabel,
                 controller: _emailCtrl,
                 hint: '—',
                 enabled: false,
               ),
               SizedBox(height: widget.scale(12)),
               _field(
-                label: 'Name (optional)',
+                label: AppLocalizations.of(context)!.nameLabel,
                 controller: _nameCtrl,
-                hint: 'Enter name',
+                hint: AppLocalizations.of(context)!.enterNameHint,
               ),
               SizedBox(height: widget.scale(12)),
               _field(
-                label: 'Age (optional)',
+                label: AppLocalizations.of(context)!.ageLabel,
                 controller: _ageCtrl,
-                hint: 'Enter age',
+                hint: AppLocalizations.of(context)!.enterAgeHint,
                 keyboardType: TextInputType.number,
               ),
               SizedBox(height: widget.scale(12)),
               _field(
-                label: 'Country (optional)',
+                label: AppLocalizations.of(context)!.countryLabel,
                 controller: _countryCtrl,
-                hint: 'Enter country',
+                hint: AppLocalizations.of(context)!.enterCountryHint,
               ),
               SizedBox(height: widget.scale(12)),
               _field(
-                label: 'Address (optional)',
+                label: AppLocalizations.of(context)!.addressLabel,
                 controller: _addressCtrl,
-                hint: 'Enter address',
+                hint: AppLocalizations.of(context)!.enterAddressHint,
                 maxLines: 2,
               ),
               SizedBox(height: widget.scale(12)),
               _field(
-                label: 'Gender (optional)',
+                label: AppLocalizations.of(context)!.genderLabel,
                 controller: _genderCtrl,
-                hint: 'Enter gender',
+                hint: AppLocalizations.of(context)!.enterGenderHint,
               ),
               SizedBox(height: widget.scale(14)),
               SizedBox(
@@ -1637,7 +1693,9 @@ class _AccountInfoSheetState extends State<_AccountInfoSheet> {
                     ),
                   ),
                   child: Text(
-                    _saving ? 'Saving...' : 'Save',
+                    _saving
+                        ? AppLocalizations.of(context)!.savingLabel
+                        : AppLocalizations.of(context)!.save,
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: widget.scale(15),

@@ -492,4 +492,147 @@ class AppLocalizationsEs extends AppLocalizations {
 
   @override
   String get unknownUser => 'Desconocido';
+
+  @override
+  String get streakLabel => 'RACHA';
+
+  @override
+  String get referralsLabel => 'REFERIDOS';
+
+  @override
+  String get sessionsLabel => 'SESIONES';
+
+  @override
+  String get accountInfoSection => 'Información de la Cuenta';
+
+  @override
+  String get accountInfoTile => 'Información de la Cuenta';
+
+  @override
+  String get invitedByPrompt => '¿Invitado por alguien?';
+
+  @override
+  String get enterReferralCode => 'Ingresa código de referido';
+
+  @override
+  String get invitedStatus => 'Invitado';
+
+  @override
+  String get lockedStatus => 'Bloqueado';
+
+  @override
+  String get applyButton => 'Aplicar';
+
+  @override
+  String get aboutPageTitle => 'Acerca de';
+
+  @override
+  String get faqTile => 'Preguntas Frecuentes';
+
+  @override
+  String get whitePaperTile => 'Libro Blanco';
+
+  @override
+  String get contactUsTile => 'Contáctanos';
+
+  @override
+  String get securitySettingsTile => 'Configuración de Seguridad';
+
+  @override
+  String get securitySettingsPageTitle => 'Configuración de Seguridad';
+
+  @override
+  String get deleteAccountTile => 'Eliminar Cuenta';
+
+  @override
+  String get deleteAccountSubtitle =>
+      'Eliminar permanentemente tu cuenta y datos';
+
+  @override
+  String get deleteAccountDialogTitle => '¿Eliminar cuenta?';
+
+  @override
+  String get deleteAccountDialogContent =>
+      'Esto eliminará permanentemente tu cuenta, datos y sesiones. Esta acción no se puede deshacer.';
+
+  @override
+  String get deleteButton => 'Eliminar';
+
+  @override
+  String get kycVerificationTile => 'Verificación KYC';
+
+  @override
+  String get kycVerificationDialogTitle => 'Verificación KYC';
+
+  @override
+  String get kycComingSoonMessage => 'Se activará en las próximas etapas.';
+
+  @override
+  String get okButton => 'Aceptar';
+
+  @override
+  String get logOutLabel => 'Cerrar Sesión';
+
+  @override
+  String get confirmDeletionTitle => 'Confirmar eliminación';
+
+  @override
+  String get enterAccountPassword => 'Ingresa la contraseña de la cuenta';
+
+  @override
+  String get confirmButton => 'Confirmar';
+
+  @override
+  String get usernameLabel => 'Nombre de usuario';
+
+  @override
+  String get emailLabel => 'Correo electrónico';
+
+  @override
+  String get nameLabel => 'Nombre';
+
+  @override
+  String get ageLabel => 'Edad';
+
+  @override
+  String get countryLabel => 'País';
+
+  @override
+  String get addressLabel => 'Dirección';
+
+  @override
+  String get genderLabel => 'Género';
+
+  @override
+  String get enterUsernameHint => 'Ingresa nombre de usuario';
+
+  @override
+  String get enterNameHint => 'Ingresa nombre';
+
+  @override
+  String get enterAgeHint => 'Ingresa edad';
+
+  @override
+  String get enterCountryHint => 'Ingresa país';
+
+  @override
+  String get enterAddressHint => 'Ingresa dirección';
+
+  @override
+  String get enterGenderHint => 'Ingresa género';
+
+  @override
+  String get savingLabel => 'Guardando...';
+
+  @override
+  String get usernameEmptyError => 'El nombre de usuario no puede estar vacío';
+
+  @override
+  String get invalidAgeError => 'Valor de edad inválido';
+
+  @override
+  String get saveError => 'Fallo al guardar los cambios';
+
+  @override
+  String get cancelButton => 'Cancelar';
 }
