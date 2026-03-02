@@ -44,7 +44,8 @@ class _MobileAppScaffoldState extends State<MobileAppScaffold> {
       builder: (context, snapshot) {
         final u = snapshot.data;
 
-        final unverified = u != null && !(u.emailVerified);
+        // final unverified = u != null && !(u.emailVerified);
+        final unverified = false; // TEMPORARILY DISABLED FOR TESTING
 
         // The main layout with the content body and bottom navigation bar.
         final scaffold = Scaffold(

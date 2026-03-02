@@ -37,20 +37,20 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   intl: ^0.20.2
-  firebase_core: ^4.2.1
-  cloud_firestore: ^6.1.0
-  firebase_auth: ^6.1.2
+  firebase_core: ^4.5.0
+  cloud_firestore: 6.1.2
+  firebase_auth: 6.1.1
   google_sign_in: ^6.3.0
-  firebase_storage: ^13.0.4
+  firebase_storage: 13.0.3
   firebase_storage_web: ^3.8.4
-  file_picker: ^8.1.7
+  file_picker: 8.3.6
   shared_preferences: ^2.3.2
   url_launcher: ^6.3.2
-  share_plus: ^12.0.1
+  share_plus: 12.0.0
   flutter_local_notifications: ^18.0.1
   firebase_messaging: ^16.0.4
   timezone: ^0.9.4 # Required for scheduled notifications
-  flutter_timezone: ^3.0.1 # To get local timezone
+  flutter_timezone: ^5.0.1 # To get local timezone
   purchases_flutter: ^9.10.1
   http: ^1.6.0
   google_mobile_ads: ^6.0.0

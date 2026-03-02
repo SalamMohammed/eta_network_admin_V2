@@ -2467,6 +2467,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
     if (doc == null) return;
 
     final u = FirebaseAuth.instance.currentUser;
+    /* TEMPORARILY DISABLED FOR TESTING
     if (u != null && !(u.emailVerified)) {
       final proceed = await showDialog<bool>(
         context: context,
@@ -2499,6 +2500,7 @@ class _ManagerSelectDialogState extends State<_ManagerSelectDialog> {
       );
       if (proceed != true) return;
     }
+    */
 
     final data = doc.data();
     final storeProductId =
