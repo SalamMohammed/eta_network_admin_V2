@@ -508,10 +508,11 @@ class NotificationService {
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     final dayMs = 24 * 60 * 60 * 1000;
     final token = await _firebaseMessaging.getToken() ?? '';
+    if (token.isEmpty) return;
     final shouldVerify =
         force ||
         (nowMs - lastMs > dayMs) ||
-        (token.isNotEmpty && token != lastToken);
+        token != lastToken;
     if (!shouldVerify) return;
     await FirestoreHelper.instance
         .collection(FirestoreConstants.users)

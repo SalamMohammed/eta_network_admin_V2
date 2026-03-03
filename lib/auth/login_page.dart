@@ -6,6 +6,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../shared/theme/colors.dart';
 import '../shared/firestore_constants.dart';
 import '../utils/firestore_helper.dart';
+import '../services/notification_service.dart';
 import '../services/user_service.dart';
 import 'signup_page.dart';
 import '../firebase_options.dart';
@@ -103,6 +104,7 @@ class _LoginPageState extends State<LoginPage> {
           data[FirestoreUserFields.updatedAt] as Timestamp?;
       final hasUidMigrationFinished =
           (data[FirestoreUserFields.uidMigrationCheckFinished] as bool?);
+      final existingFcmToken = data[FirestoreUserFields.fcmToken] as String?;
 
       bool needsUpdate = false;
       if (existingEmail != user.email) {
@@ -196,6 +198,12 @@ class _LoginPageState extends State<LoginPage> {
             extra: {'uid': user.uid},
           );
         }
+      }
+      if ((existingFcmToken ?? '').isEmpty) {
+        try {
+          await NotificationService().init();
+          await NotificationService().ensureTokenRegistered(force: true);
+        } catch (_) {}
       }
       return;
     }

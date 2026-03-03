@@ -11,6 +11,7 @@ import 'login_page.dart';
 import '../services/referral_engine.dart';
 import '../services/auth_verification_service.dart';
 import '../services/install_referrer_service.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 
 import 'auth_gate.dart';
 
@@ -176,6 +177,56 @@ class _SignupPageState extends State<SignupPage> {
               FirestoreUserFields.rateAds: 0.0,
               FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
             }, SetOptions(merge: true)),
+      );
+
+      final appsRef = FirestoreHelper.instance
+          .collection(FirestoreConstants.users)
+          .doc(uid)
+          .collection('apps')
+          .doc('INEW');
+      final displayName = ((cred.user?.displayName ?? '').trim().isNotEmpty)
+          ? cred.user!.displayName!.trim()
+          : 'User';
+      String tzName = 'UTC';
+      try {
+        tzName = (await FlutterTimezone.getLocalTimezone()).identifier;
+      } catch (_) {}
+      await _retry(
+        () => appsRef.set({
+          'firebaseUid': uid,
+          'name': displayName,
+          'firstName': null,
+          'lastName': null,
+          'email': cred.user!.email,
+          'avatarUrl': null,
+          'education': null,
+          'work': null,
+          'dateOfBirth': null,
+          'gender': null,
+          'accessLevel': 'free',
+          'isActive': true,
+          'isAdmin': false,
+          'revenueCatUserId': null,
+          'metadata': null,
+          'fcmToken': null,
+          'fcmTokenUpdatedAt': null,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true)),
+      );
+      final notifRef =
+          appsRef.collection('settings').doc('notifications');
+      await _retry(
+        () => notifRef.set({
+          'userId': uid,
+          'dailyReminders': 5,
+          'reminderFrequency': 'every_2_hours',
+          'activeHoursFrom': '09:00',
+          'activeHoursTo': '21:00',
+          'enabled': true,
+          'timezone': tzName,
+          'updatedAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true)),
       );
 
       try {
