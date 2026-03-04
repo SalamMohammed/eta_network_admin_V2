@@ -864,14 +864,16 @@ class MiningBatchCommitEngine {
       });
 
       // 6. Update Firestore
-      // Critical: Persist the new rate to Firestore so that:
+      // Critical: Persist the new rate AND the new session checkpoint to Firestore so that:
       // a) It survives app restarts (restored via _tryRestoreSession)
       // b) Real-time listeners (MiningStateService) pick up the correct value
-      //    instead of overwriting it with 0.0 from a stale doc.
+      //    instead of overwriting it with the old totalPoints/startTime.
       try {
         await _db.collection(FirestoreConstants.users).doc(uid).set({
           FirestoreUserFields.rateAds: newRateAds,
           FirestoreUserFields.hourlyRate: newHourlyRate,
+          FirestoreUserFields.totalPoints: newStartTotalPoints,
+          FirestoreUserFields.lastMiningStart: newStartTime,
           FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
       } catch (e) {
