@@ -12,7 +12,7 @@
     <application
         android:label="ETA Network"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon"
+        android:icon="@mipmap/ic_launcher"
         tools:replace="android:label">
         
         <!-- AdMob App ID -->
@@ -23,7 +23,7 @@
         <!-- Firebase Default Notification Icon -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
-            android:resource="@mipmap/launcher_icon" />
+            android:resource="@mipmap/ic_launcher" />
 
         <!-- Meta Audience Network Configuration -->
         <!-- TODO: Replace with your actual Facebook App ID -->

@@ -936,6 +936,52 @@ class _MobileHomePageState extends State<MobileHomePage>
                   ],
                 ),
               ),
+              Positioned(
+                top: s(4),
+                right: s(4),
+                child: ScaleTransition(
+                  scale: _pulseAnimation ?? const AlwaysStoppedAnimation(1.0),
+                  child: GestureDetector(
+                    onTap: () async {
+                      final url = Uri.parse(
+                        'https://play.google.com/store/apps/details?id=com.evolve.evolveyou&pcampaignid=web_share',
+                      );
+                      if (await canLaunchUrl(url)) {
+                        await launchUrl(
+                          url,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      }
+                    },
+                    child: Container(
+                      width: s(36),
+                      height: s(36),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFFFD700), // Gold
+                          width: s(1.5),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(
+                              0xFFFFD700,
+                            ).withValues(alpha: 0.5), // Golden Glow
+                            blurRadius: s(12),
+                            spreadRadius: s(2),
+                          ),
+                        ],
+                      ),
+                      child: ClipOval(
+                        child: Image.asset(
+                          'android/app/src/images/INEW.png',
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         );
