@@ -27,13 +27,13 @@
 
         <!-- Meta Audience Network Configuration -->
         <!-- TODO: Replace with your actual Facebook App ID -->
-        <meta-data
+        <!-- <meta-data
             android:name="com.facebook.sdk.ApplicationId"
-            android:value="REPLACE_WITH_YOUR_FACEBOOK_APP_ID"/>
+            android:value="REPLACE_WITH_YOUR_FACEBOOK_APP_ID"/> -->
         <!-- TODO: Replace with your actual Client Token -->
-        <meta-data
+        <!-- <meta-data
             android:name="com.facebook.sdk.ClientToken"
-            android:value="REPLACE_WITH_YOUR_FACEBOOK_CLIENT_TOKEN"/>
+            android:value="REPLACE_WITH_YOUR_FACEBOOK_CLIENT_TOKEN"/> -->
 
         <activity
             android:name=".MainActivity"

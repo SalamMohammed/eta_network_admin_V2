@@ -11,7 +11,7 @@ plugins {
 import java.util.Properties
 
 android {
-    namespace = "net.etanetwork.app_V2_Test"
+    namespace = "net.etanetwork.app"
     compileSdk = 36
     ndkVersion = "27.0.12077973"
 
@@ -33,7 +33,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "net.etanetwork.app_V2_Test"
+        applicationId = "net.etanetwork.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 23

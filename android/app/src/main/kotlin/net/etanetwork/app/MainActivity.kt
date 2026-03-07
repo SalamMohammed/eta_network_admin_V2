@@ -1,4 +1,4 @@
-package net.etanetwork.app_V2_Test
+package net.etanetwork.app
 
 import io.flutter.embedding.android.FlutterActivity
 

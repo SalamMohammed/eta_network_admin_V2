@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'firebase_options.dart';
 import 'shared/theme/app_theme.dart';
 import 'auth/auth_gate.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, kDebugMode;
 import 'services/notification_service.dart';
 import 'services/ads_service.dart';
 import 'services/background_service.dart';
@@ -24,6 +25,45 @@ Future<void> main() async {
 
   // Initialize Firebase connection using the platform-specific options.
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Initialize App Check to verify app integrity
+  // This is required because Firebase Storage has App Check enforcement enabled.
+  if (!kIsWeb) {
+    // You can also use a "Debug Token" in development to test App Check
+    // This is required because Firebase Storage has App Check enforcement enabled.
+    try {
+      // Use the correct parameter names for the latest version
+      await FirebaseAppCheck.instance.activate(
+        // providerAndroid takes an AndroidAppCheckProvider instance
+        providerAndroid: kDebugMode
+            ? AndroidDebugProvider()
+            : AndroidPlayIntegrityProvider(),
+
+        // providerApple takes an AppleAppCheckProvider instance
+        providerApple: kDebugMode
+            ? AppleDebugProvider()
+            : AppleDeviceCheckProvider(),
+      );
+      debugPrint('[Main] App Check activated successfully.');
+      if (kDebugMode) {
+        debugPrint(
+          '========================================================================',
+        );
+        debugPrint('APP CHECK IS ENABLED IN DEBUG MODE');
+        debugPrint(
+          'Search your logs for "DebugAppCheckProvider" to find your debug secret.',
+        );
+        debugPrint(
+          'Then add it to Firebase Console -> App Check -> Manage debug tokens.',
+        );
+        debugPrint(
+          '========================================================================',
+        );
+      }
+    } catch (e) {
+      debugPrint('[Main] Failed to activate App Check: $e');
+    }
+  }
 
   // If the app is NOT running on the web (i.e., it's on mobile or desktop),
   // initialize background services like notifications and ads.

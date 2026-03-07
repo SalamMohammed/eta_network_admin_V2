@@ -1372,11 +1372,17 @@ class _CreateCoinDialogState extends State<CreateCoinDialog> {
       coinDoc[FirestoreUserCoinFields.createdAt] = now;
       coinDoc[FirestoreUserCoinFields.isActive] = true;
     }
-    if (_thumbBytes == null &&
-        (_initialImageUrl != null && _initialImageUrl!.isNotEmpty)) {
+    if (_initialImageUrl != null && _initialImageUrl!.isNotEmpty) {
       coinDoc[FirestoreUserCoinFields.imageUrl] = _initialImageUrl!;
     }
     try {
+      // Force refresh user token to avoid unauthenticated errors
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        debugPrint('[CreateCoinDialog] Forcing token refresh before submit...');
+        await user.getIdToken(true);
+      }
+
       await CoinService.createOrUpdateUserCoin(
         uid: uid,
         coin: coinDoc,

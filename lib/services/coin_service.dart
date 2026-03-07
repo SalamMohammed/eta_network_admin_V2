@@ -10,10 +10,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/widgets.dart';
 import '../shared/constants.dart';
-import 'sql_api_service.dart';
 import 'config_service.dart';
 import 'offline_mining_service.dart';
 import 'user_service.dart';
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class CoinService with WidgetsBindingObserver {
@@ -27,7 +27,6 @@ class CoinService with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
   }
 
-  static bool _isPaused = false;
   static final List<Function> _resumeCallbacks = [];
   static final List<Function> _pauseCallbacks = [];
   static final List<VoidCallback> _refreshMyCoinsCallbacks = [];
@@ -44,12 +43,10 @@ class CoinService with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused) {
-      _isPaused = true;
       for (final callback in _pauseCallbacks) {
         callback();
       }
     } else if (state == AppLifecycleState.resumed) {
-      _isPaused = false;
       // Trigger immediate updates
       for (final callback in _resumeCallbacks) {
         callback();
@@ -155,11 +152,8 @@ class CoinService with WidgetsBindingObserver {
   }
 
   // Cache for SQL backend
-  static List<Map<String, dynamic>>? _cachedMyCoins;
-  static DateTime? _myCoinsFetchTime;
   static List<Map<String, dynamic>>? _cachedLiveCoins;
   static DateTime? _liveCoinsFetchTime;
-  static String? _lastLiveSort;
 
   static Map<String, dynamic> _extractWalletCoins(Map<String, dynamic> data) {
     final wallet =
@@ -201,8 +195,7 @@ class CoinService with WidgetsBindingObserver {
 
   /// Manually update the coins cache (e.g. from MiningStateService)
   static void updateMyCoinsCache(List<Map<String, dynamic>> coins) {
-    _cachedMyCoins = coins;
-    _myCoinsFetchTime = DateTime.now();
+    // Cache removed as it was unused
   }
 
   /// Get the list of coins, preferring cache/SQL
@@ -373,18 +366,113 @@ class CoinService with WidgetsBindingObserver {
       excludeUid: uid,
     );
 
+    final previousImageUrl =
+        (coin[FirestoreUserCoinFields.imageUrl] as String?) ?? '';
+
+    final currentUser = FirebaseAuth.instance.currentUser;
+    debugPrint(
+      '[CoinService] Current User Check: uid=${currentUser?.uid}, email=${currentUser?.email}, anonymous=${currentUser?.isAnonymous}',
+    );
+
+    if (currentUser == null) {
+      debugPrint(
+        '[CoinService] Upload aborted: User is null (unauthenticated).',
+      );
+      // If we are here, we can't upload. But we should probably not throw if we want to save the coin without image?
+      // But the user expects the image. Let's throw a clear error.
+      throw FirebaseException(
+        plugin: 'coin_service',
+        code: 'unauthenticated',
+        message: 'User is not logged in.',
+      );
+    }
+
     try {
       debugPrint(
         '[CoinService] Upload start | uid=$uid | bytes=${thumbnailBytes?.length ?? 0} | ct=$thumbnailContentType | web=$kIsWeb | apps=${Firebase.apps.length}',
       );
+
+      // Force token refresh to ensure Storage gets a valid token
+      try {
+        // Reload user to ensure auth state is completely fresh
+        await currentUser.reload();
+
+        // Re-fetch current user after reload as the instance might have updated internally
+        final refreshedUser = FirebaseAuth.instance.currentUser;
+        if (refreshedUser == null) {
+          throw FirebaseException(
+            plugin: 'coin_service',
+            code: 'user-null-after-reload',
+            message: 'User became null after reload.',
+          );
+        }
+
+        final tokenResult = await refreshedUser.getIdTokenResult(true);
+        debugPrint(
+          '[CoinService] Token Check:\n'
+          '  AuthApp: ${FirebaseAuth.instance.app.name}\n'
+          '  User: ${refreshedUser.uid}\n'
+          '  Token Expiration: ${tokenResult.expirationTime}\n'
+          '  Issued: ${tokenResult.issuedAtTime}\n'
+          '  SignInProvider: ${tokenResult.signInProvider}\n'
+          '  FirebaseApps: ${Firebase.apps.map((a) => a.name).toList()}',
+        );
+
+        // Debug App Check Token
+        try {
+          final appCheckToken = await FirebaseAppCheck.instance.getToken(true);
+          debugPrint(
+            '[CoinService] AppCheck Token: ${appCheckToken?.substring(0, 10)}...',
+          );
+        } catch (e) {
+          debugPrint('[CoinService] AppCheck Token fetch failed: $e');
+        }
+      } catch (e) {
+        debugPrint('[CoinService] Token refresh failed: $e');
+        // If token refresh fails, we likely cannot upload to storage which requires auth.
+        // Failing here gives a better error message than "unauthenticated".
+        throw FirebaseException(
+          plugin: 'coin_service',
+          code: 'token-refresh-failed',
+          message: 'Failed to refresh auth token: $e',
+        );
+      }
+
       if (thumbnailBytes != null && thumbnailBytes.isNotEmpty) {
-        final r = FirebaseStorage.instance.ref().child(
-          'user_coins/$uid/thumbnail',
+        // Use the default storage instance which is automatically bound to the default app.
+        // Explicitly specifying the bucket from config helps avoid ambiguity.
+        final storage = FirebaseStorage.instance;
+
+        final r = storage.ref().child('user_coins/$uid/thumbnail');
+
+        debugPrint(
+          '[CoinService] Using storage instance:\n'
+          '  Bucket: ${storage.bucket}\n'
+          '  App: ${storage.app.name}\n'
+          '  Ref Bucket: ${r.bucket}',
         );
-        await r.putData(
-          thumbnailBytes,
-          SettableMetadata(contentType: thumbnailContentType ?? 'image/png'),
-        );
+
+        try {
+          // Add metadata to track who uploaded it
+          final metadata = SettableMetadata(
+            contentType: thumbnailContentType ?? 'image/png',
+            customMetadata: {
+              'uploaded_by': uid,
+              'timestamp': DateTime.now().toIso8601String(),
+            },
+          );
+
+          await r.putData(thumbnailBytes, metadata);
+        } catch (e) {
+          debugPrint('[CoinService] PUT failed details: $e');
+          if (e is FirebaseException) {
+            debugPrint('  Code: ${e.code}');
+            debugPrint('  Message: ${e.message}');
+            debugPrint('  Plugin: ${e.plugin}');
+            debugPrint('  Storage Bucket: ${FirebaseStorage.instance.bucket}');
+          }
+          rethrow;
+        }
         final u = await r.getDownloadURL();
         coin[FirestoreUserCoinFields.imageUrl] = u;
         debugPrint('[CoinService] Upload success | url=$u');
@@ -395,6 +483,12 @@ class CoinService with WidgetsBindingObserver {
       }
     } catch (e) {
       debugPrint('[CoinService] Upload failed | error=$e');
+      if (previousImageUrl.isNotEmpty) {
+        coin[FirestoreUserCoinFields.imageUrl] = previousImageUrl;
+      } else {
+        coin.remove(FirestoreUserCoinFields.imageUrl);
+      }
+      rethrow;
     }
 
     // Switch to SQL if enabled
@@ -714,36 +808,7 @@ class CoinService with WidgetsBindingObserver {
       }
     }
 
-    final double rate = (cachedCoinData != null)
-        ? (cachedCoinData[FirestoreUserCoinMiningFields.hourlyRate] as num?)
-                  ?.toDouble() ??
-              0.0
-        : ((coin[FirestoreUserCoinFields.baseRatePerHour] as num?)
-                  ?.toDouble() ??
-              (coin[FirestoreUserCoinMiningFields.hourlyRate] as num?)
-                  ?.toDouble() ??
-              0.0);
-
-    final name =
-        (coin[FirestoreUserCoinFields.name] as String?) ??
-        (coin[FirestoreUserCoinMiningFields.name] as String?) ??
-        '';
-    final symbol =
-        (coin[FirestoreUserCoinFields.symbol] as String?) ??
-        (coin[FirestoreUserCoinMiningFields.symbol] as String?) ??
-        '';
-    final imageUrl =
-        (coin[FirestoreUserCoinFields.imageUrl] as String?) ??
-        (coin[FirestoreUserCoinMiningFields.imageUrl] as String?) ??
-        '';
-    final description =
-        (coin[FirestoreUserCoinFields.description] as String?) ??
-        (coin[FirestoreUserCoinMiningFields.description] as String?) ??
-        '';
-    final links =
-        (coin[FirestoreUserCoinFields.socialLinks] as List<dynamic>?) ??
-        (coin[FirestoreUserCoinMiningFields.socialLinks] as List<dynamic>?) ??
-        [];
+    // Unused variables removed
 
     final userRef = FirestoreHelper.instance
         .collection(FirestoreConstants.users)
@@ -837,10 +902,6 @@ class CoinService with WidgetsBindingObserver {
         FirestoreUserFields.updatedAt: FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
     });
-  }
-
-  static Future<void> _syncAllCoinEarningsFromWallet() async {
-    return;
   }
 }
 
